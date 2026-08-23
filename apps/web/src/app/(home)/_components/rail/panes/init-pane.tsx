@@ -7,15 +7,19 @@ function Divider() {
   return <span aria-hidden="true" className="h-px w-full bg-fd-border" />;
 }
 
-export default function InitPane() {
+export default function InitPane({ showLiveData }: { showLiveData: boolean }) {
   return (
     <>
       <HeroPane />
       <Divider />
       <InstallPane />
-      <Divider />
-      <StatsPane />
-      <LiveFeed />
+      {showLiveData ? (
+        <>
+          <Divider />
+          <StatsPane />
+          <LiveFeed />
+        </>
+      ) : null}
     </>
   );
 }

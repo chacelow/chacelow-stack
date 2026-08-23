@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 
 import { SITE_URL } from "@/lib/site";
 import { fetchSponsors } from "@/lib/sponsors";
+import { isConvexConfigured } from "@/lib/convex-config";
 
 import { SponsorsPage } from "./_components/sponsors-page";
 
@@ -39,7 +40,7 @@ export const metadata: Metadata = {
 export default async function Sponsors() {
   const [sponsorsData, stats] = await Promise.all([
     fetchSponsors(),
-    fetchQuery(api.analytics.getStats, {}),
+    isConvexConfigured ? fetchQuery(api.analytics.getStats, {}) : Promise.resolve(null),
   ]);
   return <SponsorsPage sponsorsData={sponsorsData} totalProjects={stats?.totalProjects ?? 0} />;
 }

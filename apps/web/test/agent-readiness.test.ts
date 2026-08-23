@@ -13,7 +13,7 @@ import {
 } from "../src/lib/agent-content";
 import { DEFAULT_STACK } from "../src/lib/constant";
 import { SITE_URL } from "../src/lib/site";
-import { proxy } from "../src/proxy";
+import { proxy } from "../src/lib/markdown-negotiation";
 
 describe("agent discovery content", () => {
   test("puts the quick start first and advertises every supported automation interface", () => {

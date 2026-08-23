@@ -8,7 +8,12 @@
     "dev": "next dev --port 3333",
     "start": "next start",
     "postinstall": "fumadocs-mdx",
-    "generate-schema": "(cd ../../packages/types && bun run build) && bun scripts/generate-schema.ts"
+    "generate-schema": "(cd ../../packages/types && bun run build) && bun scripts/generate-schema.ts",
+    "build:cloudflare": "opennextjs-cloudflare build",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -62,6 +67,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.2",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/bun": "^1.3.14",
     "@types/culori": "^4.0.1",
@@ -77,7 +83,8 @@
     "postcss": "^8.5.24",
     "tailwindcss": "^4.3.3",
     "tw-animate-css": "^1.4.0",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "wrangler": "^4.125.0"
   },
   "packageManager": "bun@1.3.14"
 }

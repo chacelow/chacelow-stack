@@ -5,14 +5,19 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 
 import { Toaster } from "@/components/ui/sonner";
 
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL || "");
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <ConvexProvider client={convex}>
+      {convex ? (
+        <ConvexProvider client={convex}>
+          <NuqsAdapter>{children}</NuqsAdapter>
+        </ConvexProvider>
+      ) : (
         <NuqsAdapter>{children}</NuqsAdapter>
-      </ConvexProvider>
+      )}
       <Toaster />
     </>
   );

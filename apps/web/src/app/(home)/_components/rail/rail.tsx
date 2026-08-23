@@ -6,7 +6,7 @@ import { RailContext } from "./rail-context";
 import StatusBar from "./status-bar";
 import { useRailNav } from "./use-rail-nav";
 
-export default function Rail({ children }: { children: ReactNode }) {
+export default function Rail({ children, showLiveData }: { children: ReactNode; showLiveData: boolean }) {
   const railRef = useRef<HTMLDivElement>(null);
   const { activeIndex, atStart, atEnd, goTo } = useRailNav(railRef);
 
@@ -37,7 +37,7 @@ export default function Rail({ children }: { children: ReactNode }) {
           {children}
         </div>
 
-        <StatusBar />
+        <StatusBar showLiveData={showLiveData} />
       </div>
     </RailContext.Provider>
   );

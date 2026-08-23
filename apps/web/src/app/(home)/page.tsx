@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { fetchSponsors } from "@/lib/sponsors";
+import { isConvexConfigured } from "@/lib/convex-config";
 
 import Pane from "./_components/rail/pane";
 import { PANES } from "./_components/rail/panes-config";
@@ -27,15 +28,19 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   const sponsorsData = await fetchSponsors();
-  const fetchedTweets = await fetchQuery(api.testimonials.getTweets);
-  const fetchedVideos = await fetchQuery(api.testimonials.getVideos);
-  const videos = fetchedVideos.map((v) => ({ embedId: v.embedId, title: v.title }));
-  const tweets = fetchedTweets.map((t) => ({ tweetId: t.tweetId }));
+  const [fetchedTweets, fetchedVideos] = isConvexConfigured
+    ? await Promise.all([
+        fetchQuery(api.testimonials.getTweets),
+        fetchQuery(api.testimonials.getVideos),
+      ])
+    : [[], []];
+  const videos = fetchedVideos.map((video) => ({ embedId: video.embedId, title: video.title }));
+  const tweets = fetchedTweets.map((tweet) => ({ tweetId: tweet.tweetId }));
 
   // Keyed by pane id, not array position: PANES lives in another file and
   // reordering one list must not silently pair a title with the wrong body.
   const content = new Map<string, { body: ReactNode; count?: number; footer?: ReactNode }>([
-    ["pane-init", { body: <InitPane /> }],
+    ["pane-init", { body: <InitPane showLiveData={isConvexConfigured} /> }],
     [
       "pane-sponsors",
       {
@@ -57,7 +62,7 @@ export default async function HomePage() {
   return (
     <>
       <h1 className="sr-only">Chacelow Stack: roll your own stack</h1>
-      <Rail>
+      <Rail showLiveData={isConvexConfigured}>
         {PANES.map((pane, index) => {
           const paneContent = content.get(pane.id);
           return (

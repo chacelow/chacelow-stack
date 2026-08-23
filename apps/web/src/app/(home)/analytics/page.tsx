@@ -1,8 +1,13 @@
 import { api } from "@chacelow-stack/backend/convex/_generated/api";
 import { preloadQuery } from "convex/nextjs";
+import { Activity } from "lucide-react";
 import type { Metadata } from "next";
 
 import { SITE_URL } from "@/lib/site";
+import { isConvexConfigured } from "@/lib/convex-config";
+
+import { PageHeader } from "../_components/page-header";
+import { PageShell } from "../_components/page-shell";
 
 import { AnalyticsClient } from "./analytics-client";
 
@@ -34,6 +39,18 @@ export const metadata: Metadata = {
 };
 
 export default async function Analytics() {
+  if (!isConvexConfigured) {
+    return (
+      <PageShell>
+        <PageHeader
+          icon={Activity}
+          title="ANALYTICS.OFFLINE"
+          description="Analytics is disabled for this deployment. The Stack Builder remains fully available."
+        />
+      </PageShell>
+    );
+  }
+
   const [preloadedStats, preloadedDailyStats, preloadedMonthlyStats] = await Promise.all([
     preloadQuery(api.analytics.getStats, {}),
     preloadQuery(api.analytics.getDailyStats, { days: 30 }),

@@ -19,10 +19,22 @@ function Metric({ value, unit }: { value: number | null; unit: string }) {
   );
 }
 
-export default function StatusBar() {
+function LiveMetrics() {
+  const stats = useProjectStats();
+  return (
+    <>
+      <Metric value={stats.totalProjects} unit="projects" />
+      <span aria-hidden="true">·</span>
+      <Metric value={stats.starCount} unit="stars" />
+      <span aria-hidden="true">·</span>
+      <Metric value={stats.downloadCount} unit="dl" />
+    </>
+  );
+}
+export default function StatusBar({ showLiveData }: { showLiveData: boolean }) {
   const { activeIndex, atStart, atEnd, goTo } = useRail();
   const version = useNpmVersion();
-  const stats = useProjectStats();
+  const stats = showLiveData ? <LiveMetrics /> : null;
 
   return (
     <footer className="flex h-7 shrink-0 items-center gap-x-3 gap-y-0.5 border-t px-4 font-mono text-[10px] uppercase tracking-[0.10em] max-md:sticky max-md:bottom-0 max-md:z-30 max-md:h-auto max-md:flex-wrap max-md:bg-fd-background max-md:py-1">
@@ -65,13 +77,7 @@ export default function StatusBar() {
 
       <span className="flex-1" />
 
-      <span className="hidden items-center gap-2 text-fd-muted-foreground md:flex">
-        <Metric value={stats.totalProjects} unit="projects" />
-        <span aria-hidden="true">·</span>
-        <Metric value={stats.starCount} unit="stars" />
-        <span aria-hidden="true">·</span>
-        <Metric value={stats.downloadCount} unit="dl" />
-      </span>
+      <span className="hidden items-center gap-2 text-fd-muted-foreground md:flex">{stats}</span>
 
       <Sep className="hidden md:inline-block" />
 

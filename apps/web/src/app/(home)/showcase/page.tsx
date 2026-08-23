@@ -5,6 +5,7 @@ import { fetchQuery } from "convex/nextjs";
 import type { Metadata } from "next";
 
 import { SITE_URL } from "@/lib/site";
+import { isConvexConfigured } from "@/lib/convex-config";
 
 import { ShowcasePage } from "./_components/showcase-page";
 
@@ -36,6 +37,8 @@ export const metadata: Metadata = {
 };
 
 export default async function Showcase() {
-  const showcaseProjects = await fetchQuery(api.showcase.getShowcaseProjects);
+  const showcaseProjects = isConvexConfigured
+    ? await fetchQuery(api.showcase.getShowcaseProjects)
+    : [];
   return <ShowcasePage showcaseProjects={showcaseProjects} />;
 }
