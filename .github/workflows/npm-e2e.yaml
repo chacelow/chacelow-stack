@@ -33,6 +33,8 @@ jobs:
           npm exec --yes --package="@chacelow-stack/create@${{ inputs.version }}" -- \
             create-chacelow-stack create npm-admin \
             --template chacelow-admin \
+            --yes \
+            --package-manager pnpm \
             --no-install \
             --no-git
 
