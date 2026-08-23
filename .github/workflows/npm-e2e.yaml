@@ -48,7 +48,7 @@ jobs:
 
       - name: Install generated project
         working-directory: npm-admin
-        run: pnpm install --registry=https://registry.npmjs.org --frozen-lockfile
+        run: pnpm install --registry=https://registry.npmjs.org --no-frozen-lockfile
 
       - name: Typecheck generated project
         working-directory: npm-admin
