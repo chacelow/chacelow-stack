@@ -51,17 +51,15 @@ h1 { max-width: 780px; margin: 22px 0 18px; font-size: clamp(46px, 7vw, 102px); 
 h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
 .category-heading > span { color: #6e736a; }
 .option-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.option-card { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 11px; min-height: 92px; padding: 15px; border: 1px solid var(--line); border-radius: 7px; background: #0e0f0d; text-align: left; cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease; }
 .option-card:hover { border-color: #4b4f47; background: var(--surface); }
 .option-card.selected { border-color: #8cc54c; background: linear-gradient(145deg, #17200f, #11140e); box-shadow: inset 0 0 0 1px #b8ff6617; }
-.option-card { position: relative; display: grid; grid-template-columns: auto 34px 1fr; gap: 11px; min-height: 92px; padding: 15px; border: 1px solid var(--line); border-radius: 7px; background: #0e0f0d; text-align: left; cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease; }
+.option-card { position: relative; display: grid; grid-template-columns: auto 16px 1fr; align-items: start; gap: 8px; min-height: 76px; padding: 13px; border: 1px solid var(--line); border-radius: 4px; background: #0e0f0d; text-align: left; cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease; }
 .selected .option-mark { color: var(--accent); }
-.option-copy { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
-.option-copy strong { font-size: 13px; font-weight: 600; }
-.option-copy small { color: var(--muted); font-size: 11px; line-height: 1.45; text-wrap: pretty; }
-.option-icon { display: grid; width: 34px; height: 34px; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: #f1f2ec; color: #141511; font: 600 13px "DM Mono", monospace; }
-.option-icon img { width: 22px; height: 22px; object-fit: contain; }
-.option-copy { align-self: center; }
+.tech-icon { width: 16px; height: 16px; margin-top: 1px; flex: none; color: #cdd1c8; stroke-width: 1.8; }
+.semantic-icon { color: #aeb5a9; }
+.option-copy { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
+.option-copy strong { font: 500 13px/1.3 "DM Mono", monospace; }
+.option-copy small { color: var(--muted); font: 400 10px/1.45 "DM Mono", monospace; text-wrap: pretty; }
 .addons-category .option-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .addon-toolbar { display: grid; grid-template-columns: 1fr 240px; gap: 18px; align-items: center; margin: -2px 0 18px; }
 .addon-toolbar p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }

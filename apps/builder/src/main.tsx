@@ -8,6 +8,7 @@ import { formatProjectName, generateStackCommand, getSelectedTechs } from "@/lib
 
 import "./styles.css";
 import { getOptionDescription, type Language, messages } from "./i18n";
+import { TechIcon } from "./tech-icon";
 
 type Category = keyof typeof TECH_OPTIONS;
 type Option = (typeof TECH_OPTIONS)[Category][number];
@@ -170,13 +171,7 @@ function App() {
                         onClick={() => selectOption(category, option.id, Boolean(multiple))}
                       >
                         <span className="option-mark">{selected ? "●" : "○"}</span>
-                        <span className="option-icon" aria-hidden="true">
-                          {option.icon ? (
-                            <img src={option.icon} alt="" loading="lazy" />
-                          ) : (
-                            option.name.slice(0, 1)
-                          )}
-                        </span>
+                        <TechIcon id={option.id} name={option.name} />
                         <span className="option-copy">
                           <strong>{option.name}</strong>
                           <small>{getOptionDescription(language, option.id, option.name, option.description)}</small>
