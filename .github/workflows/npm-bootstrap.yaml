@@ -73,19 +73,19 @@ jobs:
         working-directory: packages/types
         run: npm publish --access public --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish template generator
         working-directory: packages/template-generator
         run: npm publish --access public --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish CLI
         working-directory: apps/cli
         run: npm publish --access public --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Verify registry packages
         env:
@@ -94,4 +94,4 @@ jobs:
           test "$(npm view "@chacelow-stack/types@$VERSION" version)" = "$VERSION"
           test "$(npm view "@chacelow-stack/template-generator@$VERSION" version)" = "$VERSION"
           test "$(npm view "create-chacelow-stack@$VERSION" version)" = "$VERSION"
-          echo "Bootstrap complete. Configure Trusted Publishers for release.yaml, then delete NPM_BOOTSTRAP_TOKEN."
+          echo "Bootstrap complete. Configure Trusted Publishers for release.yaml, then delete NPM_TOKEN."
