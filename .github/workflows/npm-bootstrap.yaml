@@ -70,6 +70,17 @@ jobs:
           npm pack --dry-run --json --workspace packages/template-generator
           npm pack --dry-run --json --workspace apps/cli
 
+      - name: Publish types
+        working-directory: packages/types
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish template generator
+        working-directory: packages/template-generator
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish CLI
         working-directory: apps/cli
