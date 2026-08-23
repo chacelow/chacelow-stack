@@ -1,4 +1,4 @@
-import { type ProjectConfig, usesAlchemyManagedDatabase } from "@better-t-stack/types";
+import { type ProjectConfig, usesAlchemyManagedDatabase } from "@chacelow-stack/types";
 import Handlebars from "handlebars";
 import isBinaryPath from "is-binary-path";
 

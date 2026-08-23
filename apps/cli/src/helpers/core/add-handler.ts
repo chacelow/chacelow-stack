@@ -10,8 +10,8 @@ import {
   processVitePlusConfig,
   processTemplateString,
   VirtualFileSystem,
-} from "@better-t-stack/template-generator";
-import { writeTree } from "@better-t-stack/template-generator/fs-writer";
+} from "@chacelow-stack/template-generator";
+import { writeTree } from "@chacelow-stack/template-generator/fs-writer";
 import { intro, log, outro } from "@clack/prompts";
 import { Result } from "better-result";
 import fs from "fs-extra";
@@ -213,7 +213,7 @@ async function addHandlerInternal(
   if (!existingConfig) {
     return Result.err(
       new CLIError({
-        message: `No Better-T-Stack project found in ${projectDir}. Make sure bts.jsonc exists.`,
+        message: `No Chacelow-Stack project found in ${projectDir}. Make sure bts.jsonc exists.`,
       }),
     );
   }

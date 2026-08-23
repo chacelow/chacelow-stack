@@ -15,5 +15,5 @@ export function getCliSubcommandCommand(
         ? "npm"
         : fallbackPackageManager;
 
-  return getPackageExecutionCommand(packageManager, `create-better-t-stack@latest ${subcommand}`);
+  return getPackageExecutionCommand(packageManager, `create-chacelow-stack@latest ${subcommand}`);
 }

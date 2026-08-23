@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { usesAlchemyManagedDatabase } from "@better-t-stack/types";
+import { usesAlchemyManagedDatabase } from "@chacelow-stack/types";
 
 import { createVirtual } from "../src/index";
 import { collectFiles } from "./setup";

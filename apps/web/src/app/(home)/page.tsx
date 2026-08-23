@@ -1,6 +1,6 @@
 export const dynamic = "force-static";
 
-import { api } from "@better-t-stack/backend/convex/_generated/api";
+import { api } from "@chacelow-stack/backend/convex/_generated/api";
 import { fetchQuery } from "convex/nextjs";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
@@ -56,7 +56,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <h1 className="sr-only">Better T Stack: roll your own stack</h1>
+      <h1 className="sr-only">Chacelow Stack: roll your own stack</h1>
       <Rail>
         {PANES.map((pane, index) => {
           const paneContent = content.get(pane.id);

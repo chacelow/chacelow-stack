@@ -1,4 +1,4 @@
-import { AnalyticsEventSchema } from "@better-t-stack/types";
+import { AnalyticsEventSchema } from "@chacelow-stack/types";
 import { httpRouter } from "convex/server";
 
 import { internal } from "./_generated/api";

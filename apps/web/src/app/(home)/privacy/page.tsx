@@ -9,16 +9,16 @@ import { SITE_URL, SUPPORT_EMAIL } from "@/lib/site";
 import { TrustPage, TrustSection, trustPageLinkClass } from "../_components/trust-page";
 
 const description =
-  "What the Better-T-Stack website and CLI collect, why it is used, and how to opt out.";
+  "What the Chacelow-Stack website and CLI collect, why it is used, and how to opt out.";
 
 export const metadata: Metadata = {
-  title: "Privacy - Better-T-Stack",
+  title: "Privacy - Chacelow-Stack",
   description,
   alternates: {
     canonical: "/privacy",
   },
   openGraph: {
-    title: "Privacy - Better-T-Stack",
+    title: "Privacy - Chacelow-Stack",
     description,
     url: `${SITE_URL}/privacy`,
   },
@@ -36,7 +36,7 @@ export default function PrivacyPage() {
           address, browser headers, and the requested resource.
         </p>
         <p>
-          Better-T-Stack does not provide user accounts on this website and does not sell personal
+          Chacelow-Stack does not provide user accounts on this website and does not sell personal
           information. Theme and interface preferences may be stored locally in the browser.
         </p>
       </TrustSection>

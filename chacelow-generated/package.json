@@ -1,0 +1,50 @@
+{
+  "name": "chacelow-generated",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "check-types": "turbo run check-types",
+    "template:init": "bun scripts/init-template.ts",
+    "dev:web": "turbo run dev -F web --",
+    "dev:server": "turbo run dev -F server --",
+    "db:push": "turbo run db:push -F @chacelow-generated/db --",
+    "db:studio": "turbo run db:studio -F @chacelow-generated/db --",
+    "db:generate": "turbo run db:generate -F @chacelow-generated/db --",
+    "db:migrate": "turbo run db:migrate -F @chacelow-generated/db --",
+    "db:start": "turbo run db:start -F @chacelow-generated/db --",
+    "db:watch": "turbo run db:watch -F @chacelow-generated/db --",
+    "db:stop": "turbo run db:stop -F @chacelow-generated/db --",
+    "db:down": "turbo run db:down -F @chacelow-generated/db --",
+    "deploy": "turbo run deploy -F @chacelow-generated/infra --",
+    "destroy": "turbo run destroy -F @chacelow-generated/infra --",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "check": "ultracite check",
+    "fix": "ultracite fix",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@chacelow-generated/env": "workspace:*",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.3",
+    "@chacelow-generated/config": "workspace:*",
+    "@cloudflare/workers-types": "^5.20260728.1",
+    "@types/bun": "catalog:",
+    "husky": "latest",
+    "turbo": "^2.10.7",
+    "typescript": "catalog:",
+    "ultracite": "7.9.4"
+  },
+  "packageManager": "pnpm@11.18.0"
+}

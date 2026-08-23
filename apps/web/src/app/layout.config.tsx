@@ -9,8 +9,8 @@ import mainLogoLight from "@/public/logo-light.svg";
 
 export const logo = (
   <>
-    <Image alt="better-t-stack" src={mainLogoLight} className="w-8 dark:hidden" />
-    <Image alt="better-t-stack" src={mainLogoDark} className="hidden w-8 dark:block" />
+    <Image alt="chacelow-stack" src={mainLogoLight} className="w-8 dark:hidden" />
+    <Image alt="chacelow-stack" src={mainLogoDark} className="hidden w-8 dark:block" />
   </>
 );
 
@@ -46,7 +46,7 @@ export const links: LinkItemType[] = [
     icon: <Image src={npmLogo} alt="npm" className="size-4 invert-0 dark:invert" />,
     label: "NPM",
     type: "icon",
-    url: "https://www.npmjs.com/package/create-better-t-stack",
+    url: "https://www.npmjs.com/package/create-chacelow-stack",
     external: true,
     secondary: true,
   },
@@ -76,11 +76,11 @@ export const baseOptions: BaseLayoutProps = {
       <>
         {logo}
         <span className="inline shrink-0 whitespace-nowrap font-medium font-mono text-base tracking-tighter md:hidden xl:inline">
-          Better T Stack
+          Chacelow Stack
         </span>
       </>
     ),
   },
   links: links,
-  githubUrl: "https://github.com/AmanVarshney01/create-better-t-stack",
+  githubUrl: "https://github.com/AmanVarshney01/create-chacelow-stack",
 };

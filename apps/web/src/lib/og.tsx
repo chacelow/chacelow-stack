@@ -61,7 +61,7 @@ export const OG_FONT_FAMILY = "Geist Mono, ui-monospace, monospace";
 export function OgShell({
   path,
   section,
-  footerRight = "better-t-stack.dev",
+  footerRight = "chacelow-stack.dev",
   children,
 }: {
   path: string;
@@ -133,7 +133,7 @@ export function OgShell({
         >
           <span style={{ color: ogColors.accent, display: "flex" }}>•</span>
           <span style={{ color: ogColors.text, fontWeight: 500, display: "flex" }}>
-            better-t-stack
+            chacelow-stack
           </span>
           <span style={{ color: ogColors.border, display: "flex" }}>|</span>
           <span style={{ color: ogColors.subtext, display: "flex" }}>{section}</span>

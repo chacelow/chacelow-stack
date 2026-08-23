@@ -2,10 +2,10 @@ import { confirm, isCancel, multiselect, spinner } from "@clack/prompts";
 import { $ } from "bun";
 
 const PACKAGES = [
-  "create-better-t-stack",
+  "create-chacelow-stack",
   "create-bts",
-  "@better-t-stack/types",
-  "@better-t-stack/template-generator",
+  "@chacelow-stack/types",
+  "@chacelow-stack/template-generator",
 ] as const;
 
 interface DistTags {

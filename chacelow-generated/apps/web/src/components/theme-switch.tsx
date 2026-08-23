@@ -1,0 +1,54 @@
+import { Check, Moon, Sun } from "lucide-react";
+import { useCallback, useEffect } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useTheme } from "@/context/theme-provider";
+import { cn } from "@/lib/utils";
+
+export function ThemeSwitch() {
+  const { theme, setTheme } = useTheme();
+  const selectLight = useCallback(() => setTheme("light"), [setTheme]);
+  const selectDark = useCallback(() => setTheme("dark"), [setTheme]);
+  const selectSystem = useCallback(() => setTheme("system"), [setTheme]);
+
+  /* Update theme-color meta tag
+   * when theme is updated */
+  useEffect(() => {
+    const themeColor = theme === "dark" ? "#171717" : "#fff";
+    const metaThemeColor = document.querySelector("meta[name='theme-color']");
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", themeColor);
+    }
+  }, [theme]);
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button className="scale-95 rounded-full" size="icon" variant="ghost">
+          <Sun className="size-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute size-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Toggle theme</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={selectLight}>
+          Light <Check className={cn("ms-auto", theme !== "light" && "hidden")} size={14} />
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={selectDark}>
+          Dark
+          <Check className={cn("ms-auto", theme !== "dark" && "hidden")} size={14} />
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={selectSystem}>
+          System
+          <Check className={cn("ms-auto", theme !== "system" && "hidden")} size={14} />
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

@@ -1,0 +1,18 @@
+import { env } from "@chacelow-generated/env/web";
+import { adminClient } from "better-auth/client/plugins";
+import { createAuthClient } from "better-auth/react";
+
+const getServerUrl = (url: string) => {
+  const normalized = url.endsWith("/") ? url.slice(0, -1) : url;
+  if (!normalized.startsWith("/")) {
+    return normalized;
+  }
+  return typeof window === "undefined"
+    ? `http://localhost:3000${normalized}`
+    : `${window.location.origin}${normalized}`;
+};
+
+export const authClient = createAuthClient({
+  baseURL: new URL("/api/auth", getServerUrl(env.VITE_SERVER_URL)).toString(),
+  plugins: [adminClient()],
+});

@@ -1,4 +1,4 @@
-import { getLocalD1Owner, type ProjectConfig } from "@better-t-stack/types";
+import { getLocalD1Owner, type ProjectConfig } from "@chacelow-stack/types";
 
 import type { VirtualFileSystem } from "../core/virtual-fs";
 import { addPackageDependency } from "../utils/add-deps";

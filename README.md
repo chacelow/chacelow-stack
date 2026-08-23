@@ -1,4 +1,4 @@
-# Better-T-Stack
+# Chacelow-Stack
 
 A modern CLI tool for scaffolding end-to-end type-safe TypeScript projects with best practices and customizable configurations
 
@@ -11,7 +11,7 @@ A modern CLI tool for scaffolding end-to-end type-safe TypeScript projects with 
 ## Sponsors
 
 <p align="center">
-<img src="https://sponsors.better-t-stack.dev/sponsors.png" alt="Sponsors">
+<img src="https://sponsors.chacelow-stack.dev/sponsors.png" alt="Sponsors">
 </p>
 
 https://github.com/user-attachments/assets/87b541ea-9d4d-4734-b383-00784b0b43ff
@@ -27,25 +27,25 @@ https://github.com/user-attachments/assets/87b541ea-9d4d-4734-b383-00784b0b43ff
 
 ```bash
 # Using bun (recommended)
-bun create better-t-stack@latest
+bun create chacelow-stack@latest
 
 # Using pnpm
-pnpm create better-t-stack@latest
+pnpm create chacelow-stack@latest
 
 # Using npm
-npx create-better-t-stack@latest
+npx create-chacelow-stack@latest
 ```
 
 ## Claude Code plugin
 
-Want your AI assistant to scaffold and extend projects with Better-T-Stack? Install the plugin and it will plan a valid stack and generate it through the bundled MCP server instead of hand-rolling boilerplate.
+Want your AI assistant to scaffold and extend projects with Chacelow-Stack? Install the plugin and it will plan a valid stack and generate it through the bundled MCP server instead of hand-rolling boilerplate.
 
 ```bash
-/plugin marketplace add AmanVarshney01/create-better-t-stack
-/plugin install better-t-stack@better-t-stack
+/plugin marketplace add AmanVarshney01/create-chacelow-stack
+/plugin install chacelow-stack@chacelow-stack
 ```
 
-Then ask: _"create a fullstack app with Next, Hono, Postgres and Better Auth"_, or run `/better-t-stack:new <description>`. See [`plugin/`](plugin) and the [Agent Workflows docs](https://better-t-stack.dev/docs/cli/agent-workflows#claude-code-plugin).
+Then ask: _"create a fullstack app with Next, Hono, Postgres and Better Auth"_, or run `/chacelow-stack:new <description>`. See [`plugin/`](plugin) and the [Agent Workflows docs](https://chacelow-stack.dev/docs/cli/agent-workflows#claude-code-plugin).
 
 ## Features
 
@@ -73,13 +73,13 @@ This repository is organized as a monorepo containing:
 
 ## Documentation
 
-Visit [better-t-stack.dev](https://better-t-stack.dev) for full documentation, guides, and examples. You can also use the visual Stack Builder at `https://better-t-stack.dev/new` to generate a command for your stack.
+Visit [chacelow-stack.dev](https://chacelow-stack.dev) for full documentation, guides, and examples. You can also use the visual Stack Builder at `https://chacelow-stack.dev/new` to generate a command for your stack.
 
 ## Development
 
 ```bash
 # Clone the repository
-git clone https://github.com/AmanVarshney01/create-better-t-stack.git
+git clone https://github.com/AmanVarshney01/create-chacelow-stack.git
 
 # Install dependencies
 bun install
@@ -100,10 +100,10 @@ Please read the Contribution Guide first and open an issue before starting new f
 
 ## Star History
 
-<a href="https://www.star-history.com/#AmanVarshney01/create-better-t-stack&Date">
+<a href="https://www.star-history.com/#AmanVarshney01/create-chacelow-stack&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=AmanVarshney01/create-better-t-stack&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=AmanVarshney01/create-better-t-stack&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=AmanVarshney01/create-better-t-stack&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=AmanVarshney01/create-chacelow-stack&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=AmanVarshney01/create-chacelow-stack&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=AmanVarshney01/create-chacelow-stack&type=Date" />
  </picture>
 </a>

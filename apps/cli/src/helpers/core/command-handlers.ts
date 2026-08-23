@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { generateReproducibleCommand } from "@better-t-stack/template-generator";
+import { generateReproducibleCommand } from "@chacelow-stack/template-generator";
 import { intro, log, outro } from "@clack/prompts";
 import { Result, UnhandledException } from "better-result";
 import pc from "picocolors";

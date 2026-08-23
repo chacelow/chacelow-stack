@@ -248,7 +248,7 @@ export function SponsorsPage({
       <PageHeader
         icon={Heart}
         title="SPONSORS.SH"
-        description="The companies and developers funding create-better-t-stack"
+        description="The companies and developers funding create-chacelow-stack"
         meta={`LAST_SYNC: ${lastSync}`}
         actions={
           <a
@@ -327,7 +327,7 @@ export function SponsorsPage({
               Vercel OSS Program
             </h3>
             <p className="text-[13px] text-fd-muted-foreground leading-[1.55]">
-              Hosting and infrastructure for better-t-stack.dev
+              Hosting and infrastructure for chacelow-stack.dev
             </p>
           </div>
           <span className="ml-auto hidden text-[10px] text-fd-muted-foreground uppercase tracking-[0.10em] sm:block">
@@ -386,7 +386,7 @@ export function SponsorsPage({
           <div className="flex items-center gap-2 text-[13px] leading-[1.55]">
             <span className="text-primary">$</span>
             <span className="text-fd-muted-foreground">
-              Sponsorship funds development and infrastructure for create-better-t-stack
+              Sponsorship funds development and infrastructure for create-chacelow-stack
             </span>
           </div>
           {totalProjects > 0 && (

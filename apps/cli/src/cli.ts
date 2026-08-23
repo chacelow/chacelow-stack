@@ -5,12 +5,12 @@ const [, , command, ...args] = process.argv;
 
 if (command === "mcp") {
   if (args.includes("--help") || args.includes("-h")) {
-    console.log(`Usage: create-better-t-stack mcp
+    console.log(`Usage: create-chacelow-stack mcp
 
-Start the Better T Stack MCP server over stdio.
+Start the Chacelow Stack MCP server over stdio.
 
 This command is intended to be launched by an MCP client, for example:
-  create-better-t-stack mcp`);
+  create-chacelow-stack mcp`);
     process.exit(0);
   }
 

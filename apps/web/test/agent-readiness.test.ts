@@ -22,11 +22,11 @@ describe("agent discovery content", () => {
       { data: { title: "Quick Start", description: "Start here" }, url: "/docs" },
     ]);
 
-    expect(markdown).toStartWith("# Better-T-Stack");
+    expect(markdown).toStartWith("# Chacelow-Stack");
     expect(markdown.indexOf("[Quick Start]")).toBeLessThan(markdown.indexOf("[Zebra]"));
-    expect(markdown).toContain("npx create-better-t-stack@latest my-app");
-    expect(markdown).toContain("create-better-t-stack create-json");
-    expect(markdown).toContain("npx create-better-t-stack@latest mcp");
+    expect(markdown).toContain("npx create-chacelow-stack@latest my-app");
+    expect(markdown).toContain("create-chacelow-stack create-json");
+    expect(markdown).toContain("npx create-chacelow-stack@latest mcp");
     expect(markdown).toContain(`${SITE_URL}/llms-full.txt`);
     expect(markdown).toContain(`${SITE_URL}/docs/index.mdx`);
     expect(markdown).toContain("does not expose a public hosted application API");

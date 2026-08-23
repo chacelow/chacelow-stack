@@ -30,7 +30,7 @@ export default function StatusBar() {
         <span aria-hidden="true" className="text-primary">
           •
         </span>
-        better-t-stack
+        chacelow-stack
       </span>
 
       <Sep className="max-lg:hidden" />

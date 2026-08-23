@@ -6,8 +6,8 @@ export const dynamic = "force-static";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Better T Stack",
-    short_name: "Better T Stack",
+    name: "Chacelow Stack",
+    short_name: "Chacelow Stack",
     description: SITE_DESCRIPTION,
     start_url: "/new",
     display: "standalone",

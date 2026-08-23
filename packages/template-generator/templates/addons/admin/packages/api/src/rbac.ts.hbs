@@ -1,0 +1,258 @@
+import { db } from "@{{projectName}}/db";
+import {
+  auditLog,
+  permission,
+  role,
+  rolePermission,
+  userRole,
+} from "@{{projectName}}/db/schema/rbac";
+import { and, eq, inArray } from "drizzle-orm";
+
+import {
+  ALL_PERMISSION_KEYS,
+  PERMISSIONS,
+  type PermissionKey,
+} from "./permissions";
+
+export const SUPER_ADMIN_SLUG = "super-admin";
+
+const DEFAULT_ROLES: ReadonlyArray<{
+  description: string;
+  name: string;
+  permissionKeys: readonly PermissionKey[];
+  slug: string;
+}> = [
+  {
+    description:
+      "Full administrative access without super-administrator status.",
+    name: "Administrator",
+    permissionKeys: ALL_PERMISSION_KEYS,
+    slug: "administrator",
+  },
+  {
+    description: "Manage users, their roles, account status, and sessions.",
+    name: "User Manager",
+    permissionKeys: [
+      "dashboard:read",
+      "user:read",
+      "user:update",
+      "user:assign-role",
+      "user:revoke-session",
+      "role:read",
+    ],
+    slug: "user-manager",
+  },
+  {
+    description: "Read-only access to users, roles, and audit history.",
+    name: "Auditor",
+    permissionKeys: ["dashboard:read", "user:read", "role:read", "audit:read"],
+    slug: "auditor",
+  },
+  {
+    description: "Read-only access to the dashboard.",
+    name: "Viewer",
+    permissionKeys: ["dashboard:read"],
+    slug: "viewer",
+  },
+];
+
+export async function ensureRbacSeed(userId?: string) {
+  await db
+    .insert(permission)
+    .values(
+      PERMISSIONS.map((item) => ({
+        id: item.key,
+        ...item,
+      }))
+    )
+    .onConflictDoNothing();
+
+  await db
+    .insert(role)
+    .values({
+      description: "Full system access. This protected role cannot be deleted.",
+      id: SUPER_ADMIN_SLUG,
+      isSystem: true,
+      name: "Super Administrator",
+      slug: SUPER_ADMIN_SLUG,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(role)
+    .values(
+      DEFAULT_ROLES.map(({ description, name, slug }) => ({
+        description,
+        id: slug,
+        isSystem: true,
+        name,
+        slug,
+      }))
+    )
+    .onConflictDoNothing();
+
+  await db
+    .insert(rolePermission)
+    .values(
+      ALL_PERMISSION_KEYS.map((permissionId) => ({
+        permissionId,
+        roleId: SUPER_ADMIN_SLUG,
+      }))
+    )
+    .onConflictDoNothing();
+
+  await db
+    .insert(rolePermission)
+    .values(
+      DEFAULT_ROLES.flatMap(({ permissionKeys, slug }) =>
+        permissionKeys.map((permissionId) => ({
+          permissionId,
+          roleId: slug,
+        }))
+      )
+    )
+    .onConflictDoNothing();
+
+  if (userId) {
+    const existingSuperAdmins = await db
+      .select({ userId: userRole.userId })
+      .from(userRole)
+      .where(eq(userRole.roleId, SUPER_ADMIN_SLUG))
+      .limit(1);
+    if (existingSuperAdmins.length === 0) {
+      await db
+        .insert(userRole)
+        .values({ roleId: SUPER_ADMIN_SLUG, userId })
+        .onConflictDoNothing();
+    }
+  }
+}
+
+export async function getUserAccess(userId: string) {
+  await ensureRbacSeed(userId);
+
+  const rows = await db
+    .select({
+      permissionKey: permission.key,
+      roleId: role.id,
+      roleName: role.name,
+      roleSlug: role.slug,
+    })
+    .from(userRole)
+    .innerJoin(role, eq(userRole.roleId, role.id))
+    .leftJoin(rolePermission, eq(rolePermission.roleId, role.id))
+    .leftJoin(permission, eq(rolePermission.permissionId, permission.id))
+    .where(eq(userRole.userId, userId));
+
+  const roleMap = new Map<string, { id: string; name: string; slug: string }>();
+  const permissionSet = new Set<PermissionKey>();
+
+  for (const row of rows) {
+    roleMap.set(row.roleId, {
+      id: row.roleId,
+      name: row.roleName,
+      slug: row.roleSlug,
+    });
+    if (
+      row.permissionKey &&
+      ALL_PERMISSION_KEYS.includes(row.permissionKey as PermissionKey)
+    ) {
+      permissionSet.add(row.permissionKey as PermissionKey);
+    }
+  }
+
+  return {
+    isSuperAdmin: [...roleMap.values()].some(
+      ({ slug }) => slug === SUPER_ADMIN_SLUG
+    ),
+    permissions: [...permissionSet],
+    roles: [...roleMap.values()],
+  };
+}
+
+export async function hasPermission(userId: string, required: PermissionKey) {
+  const access = await getUserAccess(userId);
+  return access.isSuperAdmin || access.permissions.includes(required);
+}
+
+export async function replaceRolePermissions(
+  roleId: string,
+  permissionKeys: PermissionKey[]
+) {
+  await db.transaction(async (tx) => {
+    await tx.delete(rolePermission).where(eq(rolePermission.roleId, roleId));
+    if (permissionKeys.length > 0) {
+      await tx
+        .insert(rolePermission)
+        .values(
+          permissionKeys.map((permissionId) => ({ permissionId, roleId }))
+        );
+    }
+  });
+}
+
+export async function replaceUserRoles(userId: string, roleIds: string[]) {
+  await db.transaction(async (tx) => {
+    await tx.delete(userRole).where(eq(userRole.userId, userId));
+    if (roleIds.length > 0) {
+      await tx
+        .insert(userRole)
+        .values(roleIds.map((roleId) => ({ roleId, userId })));
+    }
+  });
+}
+
+export async function countSuperAdmins() {
+  const rows = await db
+    .select({ userId: userRole.userId })
+    .from(userRole)
+    .innerJoin(
+      role,
+      and(eq(userRole.roleId, role.id), eq(role.slug, SUPER_ADMIN_SLUG))
+    );
+  return new Set(rows.map(({ userId }) => userId)).size;
+}
+
+export async function isSuperAdmin(userId: string) {
+  const rows = await db
+    .select({ id: userRole.userId })
+    .from(userRole)
+    .innerJoin(
+      role,
+      and(eq(userRole.roleId, role.id), eq(role.slug, SUPER_ADMIN_SLUG))
+    )
+    .where(eq(userRole.userId, userId))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function writeAudit(input: {
+  actorId: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  await db.insert(auditLog).values({ id: crypto.randomUUID(), ...input });
+}
+
+export function assertPermissionKeys(keys: string[]): PermissionKey[] {
+  const allowed = new Set<string>(ALL_PERMISSION_KEYS);
+  if (keys.some((key) => !allowed.has(key))) {
+    throw new Error("Unknown permission key");
+  }
+  return keys as PermissionKey[];
+}
+
+export async function existingRoleIds(ids: string[]) {
+  if (ids.length === 0) {
+    return [];
+  }
+  const rows = await db
+    .select({ id: role.id })
+    .from(role)
+    .where(inArray(role.id, ids));
+  return rows.map(({ id }) => id);
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { api } from "@better-t-stack/backend/convex/_generated/api";
+import { api } from "@chacelow-stack/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Activity, ChevronRight, Radio } from "lucide-react";

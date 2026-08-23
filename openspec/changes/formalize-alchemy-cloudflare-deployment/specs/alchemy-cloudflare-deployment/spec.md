@@ -2,7 +2,7 @@
 
 ### Requirement: Vetted exact Alchemy version
 
-Every generated Alchemy project SHALL use the exact accepted Alchemy version. The currently selected release SHALL be `alchemy@2.0.0-beta.72`; Alchemy version ranges SHALL NOT be generated. The generated `effect`, `@effect/platform-node`, and `@effect/platform-bun` versions SHALL use the exact latest selected Effect release candidate, currently rc.108. This combination contains Alchemy's released `Schema.TaggedError` migration and SHALL be verified without an older Effect pin, dependency patch, override, or hoisted linker. A replacement version SHALL pass every applicable Better-T-Stack offline and live gate before becoming accepted. A fix on main or in a pull request SHALL not be treated as available until a containing release is pinned and verified. Exact pinning is a permanent publication-safety policy, not a temporary beta shim.
+Every generated Alchemy project SHALL use the exact accepted Alchemy version. The currently selected release SHALL be `alchemy@2.0.0-beta.72`; Alchemy version ranges SHALL NOT be generated. The generated `effect`, `@effect/platform-node`, and `@effect/platform-bun` versions SHALL use the exact latest selected Effect release candidate, currently rc.108. This combination contains Alchemy's released `Schema.TaggedError` migration and SHALL be verified without an older Effect pin, dependency patch, override, or hoisted linker. A replacement version SHALL pass every applicable Chacelow-Stack offline and live gate before becoming accepted. A fix on main or in a pull request SHALL not be treated as available until a containing release is pinned and verified. Exact pinning is a permanent publication-safety policy, not a temporary beta shim.
 
 #### Scenario: Generate a Cloudflare target
 
@@ -123,7 +123,7 @@ Each web framework SHALL use the intentional generated resource and runtime entr
 
 ### Requirement: Released first-class Cloudflare framework resources
 
-Better-T-Stack SHALL generate `Website.Nextjs`, `Website.Nuxt`, `Website.SvelteKit`, or `Website.Astro` only when that API is present in the accepted exact Alchemy release and every dynamically loaded framework source package is published, reproducibly resolvable, peer-compatible with the generated framework, and qualified by that framework's independent gates. A draft, merge commit, upstream-main implementation, git dependency, or passing sibling framework SHALL NOT make a resource eligible.
+Chacelow-Stack SHALL generate `Website.Nextjs`, `Website.Nuxt`, `Website.SvelteKit`, or `Website.Astro` only when that API is present in the accepted exact Alchemy release and every dynamically loaded framework source package is published, reproducibly resolvable, peer-compatible with the generated framework, and qualified by that framework's independent gates. A draft, merge commit, upstream-main implementation, git dependency, or passing sibling framework SHALL NOT make a resource eligible.
 
 #### Scenario: Upstream pull request remains unreleased
 
@@ -133,7 +133,7 @@ Better-T-Stack SHALL generate `Website.Nextjs`, `Website.Nuxt`, `Website.SvelteK
 
 #### Scenario: A release contains only some usable resources
 
-- **WHEN** one exact Alchemy release contains multiple first-class framework resources but only a subset passes Better-T-Stack's framework-specific gates
+- **WHEN** one exact Alchemy release contains multiple first-class framework resources but only a subset passes Chacelow-Stack's framework-specific gates
 - **THEN** only the passing subset SHALL migrate
 - **AND** every blocked framework SHALL retain its previous generated path
 
@@ -190,7 +190,7 @@ Adopting a first-class framework resource SHALL preserve the `web` Worker identi
 #### Scenario: Evaluate Next.js ISR after adoption
 
 - **WHEN** normal SSR and prerendered content pass under `Website.Nextjs`
-- **THEN** Better-T-Stack SHALL still describe on-demand ISR writes as unsupported
+- **THEN** Chacelow-Stack SHALL still describe on-demand ISR writes as unsupported
 - **AND** SHALL NOT promote ISR until a revalidation request proves a working self-reference binding and durable cache write
 
 ### Requirement: Nuxt first-class parity
@@ -221,7 +221,7 @@ Adopting a first-class framework resource SHALL preserve the `web` Worker identi
 
 #### Scenario: Candidate requires a different SvelteKit major
 
-- **WHEN** the released source provider's peer range excludes Better-T-Stack's selected stable SvelteKit version
+- **WHEN** the released source provider's peer range excludes Chacelow-Stack's selected stable SvelteKit version
 - **THEN** SvelteKit SHALL remain on its accepted generic Cloudflare path
 - **AND** the Alchemy upgrade SHALL NOT silently change the generated SvelteKit major
 
@@ -392,7 +392,7 @@ The repository SHALL maintain an accepted-version scoreboard that distinguishes 
 
 #### Scenario: Claim OpenNext ISR
 
-- **WHEN** Better-T-Stack claims on-demand ISR support
+- **WHEN** Chacelow-Stack claims on-demand ISR support
 - **THEN** the live gate SHALL exercise revalidation through `WORKER_SELF_REFERENCE`
 - **AND** normal request success alone SHALL not satisfy the gate
 

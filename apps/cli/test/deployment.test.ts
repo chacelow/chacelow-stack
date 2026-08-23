@@ -474,7 +474,7 @@ describe("Deployment Configurations", () => {
       expect(files.get("README.md")).toContain("Sync preview env");
       expect(files.get("README.md")).toContain("Config: `vercel.json`");
       expect(files.get("README.md")).toContain("env:production --scope your-team");
-      expect(files.get("README.md")).toContain("https://www.better-t-stack.dev/docs/guides/vercel");
+      expect(files.get("README.md")).toContain("https://www.chacelow-stack.dev/docs/guides/vercel");
     });
 
     it("should name deploy scripts by target for mixed Vercel + Cloudflare deploys", async () => {
@@ -1609,7 +1609,7 @@ describe("Deployment Configurations", () => {
       expect(rootPkg.scripts["db:start"]).toBe("docker compose up -d postgres");
       expect(rootPkg.scripts["db:stop"]).toBe("docker compose stop postgres");
       expect(readme).toContain("### Docker Compose");
-      expect(readme).toContain("https://www.better-t-stack.dev/docs/guides/docker");
+      expect(readme).toContain("https://www.chacelow-stack.dev/docs/guides/docker");
     });
 
     it("should generate a web-only container for a fullstack self backend", async () => {

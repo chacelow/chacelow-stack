@@ -1,4 +1,4 @@
-import { usesAlchemyManagedDatabase, type ProjectConfig } from "@better-t-stack/types";
+import { usesAlchemyManagedDatabase, type ProjectConfig } from "@chacelow-stack/types";
 
 import type { VirtualFileSystem } from "../core/virtual-fs";
 

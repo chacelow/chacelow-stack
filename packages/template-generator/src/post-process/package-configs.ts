@@ -3,7 +3,7 @@
  * Updates package names, scripts, and workspaces after template generation
  */
 
-import { getLocalD1Owner, webFrontends, type ProjectConfig } from "@better-t-stack/types";
+import { getLocalD1Owner, webFrontends, type ProjectConfig } from "@chacelow-stack/types";
 
 import type { JsonValue } from "../core/json-types";
 import type { VirtualFileSystem } from "../core/virtual-fs";

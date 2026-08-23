@@ -1,11 +1,11 @@
 {
-  "name": "better-t-stack",
+  "name": "chacelow-stack",
   "interface": {
-    "displayName": "Better-T-Stack"
+    "displayName": "Chacelow-Stack"
   },
   "plugins": [
     {
-      "name": "better-t-stack",
+      "name": "chacelow-stack",
       "source": {
         "source": "local",
         "path": "./plugin"

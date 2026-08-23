@@ -1,0 +1,98 @@
+import {
+  Activity,
+  AudioWaveform,
+  Command,
+  GalleryVerticalEnd,
+  LayoutDashboard,
+  ScrollText,
+  Settings,
+  ShieldCheck,
+  UserCog,
+  Users,
+} from "lucide-react";
+
+import type { SidebarData } from "../types";
+
+export const sidebarData: SidebarData = {
+  navGroups: [
+    {
+      items: [
+        {
+          icon: LayoutDashboard,
+          title: "Dashboard",
+          url: "/",
+        },
+      ],
+      title: "Workspace",
+    },
+    {
+      items: [
+        {
+          icon: ShieldCheck,
+          items: [
+            {
+              icon: Users,
+              title: "Users",
+              url: "/users",
+            },
+            {
+              icon: UserCog,
+              title: "Roles & permissions",
+              url: "/tasks",
+            },
+            {
+              icon: ScrollText,
+              title: "Audit log",
+              url: "/apps",
+            },
+          ],
+          title: "System management",
+        },
+      ],
+      title: "Administration",
+    },
+    {
+      items: [
+        {
+          icon: Settings,
+          items: [
+            {
+              icon: UserCog,
+              title: "Profile",
+              url: "/settings",
+            },
+            {
+              icon: Activity,
+              title: "Account security",
+              url: "/settings/account",
+            },
+          ],
+          title: "Settings",
+        },
+      ],
+      title: "Account",
+    },
+  ],
+  teams: [
+    {
+      logo: Command,
+      name: "chacelow-generated",
+      plan: "Vite + ShadcnUI",
+    },
+    {
+      logo: GalleryVerticalEnd,
+      name: "Acme Inc",
+      plan: "Enterprise",
+    },
+    {
+      logo: AudioWaveform,
+      name: "Acme Corp.",
+      plan: "Startup",
+    },
+  ],
+  user: {
+    avatar: "",
+    email: "",
+    name: "",
+  },
+};

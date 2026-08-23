@@ -7,7 +7,7 @@ export function ColophonFooter() {
       tabIndex={-1}
       className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-mono text-[11px] text-fd-muted-foreground uppercase tracking-[0.08em]"
     >
-      <span>© {new Date().getFullYear()} Better-T-Stack</span>
+      <span>© {new Date().getFullYear()} Chacelow-Stack</span>
       <nav aria-label="Project information" className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <a
           href="/about"

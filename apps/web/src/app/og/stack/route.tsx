@@ -29,9 +29,9 @@ function hasCategoryColor(category: string): category is keyof typeof categoryCh
 }
 
 function commandBase(packageManager: StackState["packageManager"]) {
-  if (packageManager === "npm") return "npx create-better-t-stack@latest";
-  if (packageManager === "pnpm") return "pnpm create better-t-stack@latest";
-  return "bun create better-t-stack@latest";
+  if (packageManager === "npm") return "npx create-chacelow-stack@latest";
+  if (packageManager === "pnpm") return "pnpm create chacelow-stack@latest";
+  return "bun create chacelow-stack@latest";
 }
 
 export async function GET(req: NextRequest) {
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     <OgShell
       path={`~/stack/${projectName}`}
       section="stack"
-      footerRight={`${techs.length} techs · better-t-stack.dev`}
+      footerRight={`${techs.length} techs · chacelow-stack.dev`}
     >
       <div
         style={{

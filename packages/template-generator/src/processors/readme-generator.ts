@@ -3,7 +3,7 @@ import {
   isAlchemyDeployTarget,
   usesAlchemyManagedDatabase,
   type ProjectConfig,
-} from "@better-t-stack/types";
+} from "@chacelow-stack/types";
 
 import type { VirtualFileSystem } from "../core/virtual-fs";
 import { getDbScriptSupport } from "../utils/db-scripts";
@@ -187,7 +187,7 @@ function generateReadmeContent(options: ProjectConfig): string {
 
   return `# ${projectName}
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack${
+This project was created with [Chacelow-Stack](https://github.com/AmanVarshney01/create-chacelow-stack), a modern TypeScript stack${
     stackDescription ? ` that combines ${stackDescription}` : ""
   }.
 
@@ -958,7 +958,7 @@ function generateDeploymentCommands(
 
     lines.push(
       "",
-      "For more details, see the guide on [Deploying with Docker Compose](https://www.better-t-stack.dev/docs/guides/docker).",
+      "For more details, see the guide on [Deploying with Docker Compose](https://www.chacelow-stack.dev/docs/guides/docker).",
     );
   }
 
@@ -996,7 +996,7 @@ function generateDeploymentCommands(
       "Vercel Services share project environment variables, but deploys do not upload local `.env` files automatically. Link the project with `vercel link`, then run the env sync command before your first deploy (otherwise the deployment starts with no env vars), or pass one-off envs with `vercel deploy -e KEY=value`.",
       `Pass Vercel CLI flags to the env sync command directly, for example: \`${packageManagerRunCmd} ${vercelNames.envProduction} --scope your-team\`.`,
       "",
-      "For more details, see the guide on [Deploying to Vercel](https://www.better-t-stack.dev/docs/guides/vercel).",
+      "For more details, see the guide on [Deploying to Vercel](https://www.chacelow-stack.dev/docs/guides/vercel).",
     );
   }
 

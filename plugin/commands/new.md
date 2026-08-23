@@ -1,13 +1,13 @@
 ---
-description: Scaffold a new Better-T-Stack project. Plans a full, validated stack with the Better-T-Stack MCP server, confirms it, then generates the project.
+description: Scaffold a new Chacelow-Stack project. Plans a full, validated stack with the Chacelow-Stack MCP server, confirms it, then generates the project.
 argument-hint: "<project name and/or stack description>"
 ---
 
-# Create a Better-T-Stack project
+# Create a Chacelow-Stack project
 
 User request: $ARGUMENTS
 
-Scaffold a new project using the Better-T-Stack MCP server. Do not hand-roll the project structure, tooling, auth, or database wiring.
+Scaffold a new project using the Chacelow-Stack MCP server. Do not hand-roll the project structure, tooling, auth, or database wiring.
 
 ## Steps
 

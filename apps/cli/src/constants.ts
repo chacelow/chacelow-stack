@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { desktopWebFrontends } from "@better-t-stack/types";
+import { desktopWebFrontends } from "@chacelow-stack/types";
 
 import { getUserPkgManager } from "./utils/get-package-manager";
 
@@ -9,7 +9,7 @@ import { getUserPkgManager } from "./utils/get-package-manager";
 export {
   dependencyVersionMap,
   type AvailableDependencies,
-} from "@better-t-stack/template-generator";
+} from "@chacelow-stack/template-generator";
 
 const __filename = fileURLToPath(import.meta.url);
 const distPath = path.dirname(__filename);
@@ -51,6 +51,9 @@ export const DEFAULT_CONFIG = getDefaultConfig();
 export { desktopWebFrontends };
 
 export const ADDON_COMPATIBILITY = {
+  admin: ["tanstack-router"],
+  rbac: ["tanstack-router"],
+  i18n: ["tanstack-router"],
   pwa: ["tanstack-router", "react-router", "solid", "next"],
   tauri: desktopWebFrontends,
   electrobun: desktopWebFrontends,

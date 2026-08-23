@@ -1,5 +1,5 @@
 {
-  "name": "@better-t-stack/backend",
+  "name": "@chacelow-stack/backend",
   "version": "1.0.0",
   "private": true,
   "description": "",
@@ -13,7 +13,7 @@
     "deploy": "convex deploy"
   },
   "dependencies": {
-    "@better-t-stack/types": "workspace:*",
+    "@chacelow-stack/types": "workspace:*",
     "@convex-dev/crons": "^0.2.2",
     "@erquhart/convex-oss-stats": "catalog:",
     "convex": "catalog:",

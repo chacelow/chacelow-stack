@@ -1,0 +1,24 @@
+{
+  "name": "@chacelow-generated/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@chacelow-generated/db": "workspace:*",
+    "@chacelow-generated/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@chacelow-generated/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

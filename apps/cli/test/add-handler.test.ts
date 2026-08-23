@@ -18,7 +18,7 @@ describe("add()", () => {
 
     expect(result).toBeDefined();
     expect(result?.success).toBe(false);
-    expect(result?.error).toContain("No Better-T-Stack project found");
+    expect(result?.error).toContain("No Chacelow-Stack project found");
   });
 
   it("revalidates deployment constraints when adding an addon", async () => {

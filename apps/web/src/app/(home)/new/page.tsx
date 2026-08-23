@@ -7,13 +7,13 @@ import { fetchSponsors } from "@/lib/sponsors";
 import { StackBuilder } from "./_components/stack-builder";
 
 export const metadata: Metadata = {
-  title: "Stack Builder - Better-T-Stack",
+  title: "Stack Builder - Chacelow-Stack",
   description: "Interactive Ui to roll your own stack",
   alternates: {
     canonical: "/new",
   },
   openGraph: {
-    title: "Stack Builder - Better-T-Stack",
+    title: "Stack Builder - Chacelow-Stack",
     description: "Interactive Ui to roll your own stack",
     url: `${SITE_URL}/new`,
     images: [
@@ -21,13 +21,13 @@ export const metadata: Metadata = {
         url: `${SITE_URL}/og/site/new.png`,
         width: 1200,
         height: 630,
-        alt: "Better-T-Stack Stack Builder",
+        alt: "Chacelow-Stack Stack Builder",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Stack Builder - Better-T-Stack",
+    title: "Stack Builder - Chacelow-Stack",
     description: "Interactive Ui to roll your own stack",
     images: [`${SITE_URL}/og/site/new.png`],
   },

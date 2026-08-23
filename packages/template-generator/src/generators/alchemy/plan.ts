@@ -5,7 +5,7 @@ import {
   type Frontend,
   type ProjectConfig,
   type WebFrontend,
-} from "@better-t-stack/types";
+} from "@chacelow-stack/types";
 
 export type DeployedWebFramework = Exclude<WebFrontend, "none">;
 

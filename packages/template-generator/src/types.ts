@@ -1,4 +1,4 @@
-import type { ProjectConfig } from "@better-t-stack/types";
+import type { ProjectConfig } from "@chacelow-stack/types";
 import { TaggedError } from "better-result";
 
 export interface VirtualFile {

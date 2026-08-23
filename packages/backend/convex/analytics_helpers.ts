@@ -2,7 +2,7 @@ import {
   normalizeAnalyticsCLIVersion,
   normalizeAnalyticsNodeVersion,
   normalizeAnalyticsSelection,
-} from "@better-t-stack/types";
+} from "@chacelow-stack/types";
 
 export type AnalyticsStatsFields = {
   totalProjects: number;

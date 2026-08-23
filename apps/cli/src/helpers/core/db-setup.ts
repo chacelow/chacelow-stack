@@ -6,7 +6,7 @@
 
 import path from "node:path";
 
-import { usesAlchemyManagedDatabase } from "@better-t-stack/types";
+import { usesAlchemyManagedDatabase } from "@chacelow-stack/types";
 import { Result } from "better-result";
 import fs from "fs-extra";
 import pc from "picocolors";

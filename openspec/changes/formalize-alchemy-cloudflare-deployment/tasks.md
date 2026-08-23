@@ -99,7 +99,7 @@
 
 - [x] 9.1 Confirm PRs #886 and #923 are merged and beta.70 plus referenced `@distilled.cloud/*@0.17.1` source packages are published; do not treat publication as live qualification.
 - [x] 9.2 Record beta.70's tag commit, source-package versions, documented props, inspected source behavior, peer ranges, and known limitations separately in the findings ledger.
-- [ ] 9.3 Generate candidate fixtures against the released packages without changing Better-T-Stack defaults, and direct-typecheck the candidate resource calls with native Outputs, Config, secrets, D1, KV, Images, and framework-public variables.
+- [ ] 9.3 Generate candidate fixtures against the released packages without changing Chacelow-Stack defaults, and direct-typecheck the candidate resource calls with native Outputs, Config, secrets, D1, KV, Images, and framework-public variables.
 - [ ] 9.4 Install the candidate dependency graph with npm, pnpm, and Bun in non-hoisted/strict workspace conditions and fail the candidate on missing dynamic imports or unresolved peer incompatibilities.
 - [ ] 9.5 Run existing Hono Worker, Website.Vite, generic StaticSite, D1, Config, Output, `_headers`, `_redirects`, and cleanup regressions against the changed source engine before evaluating framework-specific deletion.
 - [ ] 9.6 Keep the accepted exact Alchemy pin and generic framework paths when the released engine regresses any supported Cloudflare cell, even if a targeted first-class example passes upstream.
@@ -119,7 +119,7 @@
 
 ## 11. Website.Nextjs Adoption
 
-- [ ] 11.1 Generate and typecheck `Website.Nextjs` with the current Better-T-Stack Next.js version, OpenNext config, public server Output, runtime secrets, D1/remote database contract, auth values, and `IMAGES`.
+- [ ] 11.1 Generate and typecheck `Website.Nextjs` with the current Chacelow-Stack Next.js version, OpenNext config, public server Output, runtime secrets, D1/remote database contract, auth values, and `IMAGES`.
 - [ ] 11.2 Prove SSR, a route handler, a static asset, public build-value inlining, and a real Images-backed route or transformation in preview and live deployment.
 - [ ] 11.3 Determine from released source and live workerd behavior whether `global_fetch_strictly_public`, explicit compatibility date/flags, `open-next.config.ts`, `@opennextjs/cloudflare`, and `initOpenNextCloudflareForDev` remain required; remove each independently.
 - [ ] 11.4 Remove `build:cloudflare`, deployment-only Wrangler layout, manual `.open-next` paths, `bundle: false`, generic `memo: false`, and hard-coded dev URL only after the replacement behavior passes shared gates.
@@ -136,7 +136,7 @@
 
 ## 13. Website.SvelteKit Adoption
 
-- [ ] 13.1 Compare the released source provider's SvelteKit/Vite peers with Better-T-Stack's selected stable versions; block adoption rather than silently moving to a prerelease or new major.
+- [ ] 13.1 Compare the released source provider's SvelteKit/Vite peers with Chacelow-Stack's selected stable versions; block adoption rather than silently moving to a prerelease or new major.
 - [ ] 13.2 If a framework-major upgrade is needed, leave this Alchemy task blocked and open a separate product change covering all SvelteKit deployment providers, addons, generated config, migrations, and user-facing breaking changes.
 - [ ] 13.3 For a version-compatible provider, verify preprocessing, aliases, SSR, prerendering, assets, auth, `platform.env`, D1, literal values, and real resource bindings in deployed and local/HMR modes.
 - [ ] 13.4 Remove `@sveltejs/adapter-cloudflare`, the adapter block, `_worker.js` path/bundling shim, `.assetsignore`, Wrangler dependency/config, hard-coded dev URL, and `memo: false` independently after their exact replacement gates pass.

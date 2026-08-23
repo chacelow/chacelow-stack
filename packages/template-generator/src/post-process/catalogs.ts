@@ -3,7 +3,7 @@
  * Deduplicates dependencies across packages using pnpm/bun catalogs
  */
 
-import type { ProjectConfig } from "@better-t-stack/types";
+import type { ProjectConfig } from "@chacelow-stack/types";
 import yaml from "yaml";
 
 import type { JsonValue } from "../core/json-types";
@@ -97,6 +97,7 @@ function findDuplicateDependencies(
     for (const [depName, version] of Object.entries(allDeps)) {
       if (depName.startsWith(projectScope)) continue;
       if (version.startsWith("workspace:")) continue;
+      if (version.startsWith("catalog:")) continue;
 
       const existing = depCount.get(depName);
       if (existing) {

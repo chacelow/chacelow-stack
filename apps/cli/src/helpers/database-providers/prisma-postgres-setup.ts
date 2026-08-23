@@ -44,7 +44,7 @@ const AVAILABLE_REGIONS = [
   { value: "us-west-1", label: "US West (N. California)" },
 ];
 
-const CREATE_DB_USER_AGENT = "aman/better-t-stack";
+const CREATE_DB_USER_AGENT = "aman/chacelow-stack";
 
 async function setupWithCreateDb(
   serverDir: string,

@@ -1,4 +1,4 @@
-import type { BetterTStackConfig, ProjectConfig } from "@better-t-stack/types";
+import type { BetterTStackConfig, ProjectConfig } from "@chacelow-stack/types";
 
 import type { VirtualFileSystem } from "./core/virtual-fs";
 
@@ -37,7 +37,7 @@ export function writeBtsConfigToVfs(
   };
 
   const baseContent = {
-    $schema: "https://r2.better-t-stack.dev/schema.json",
+    $schema: "https://r2.chacelow-stack.dev/schema.json",
     ...btsConfig,
   };
 
@@ -45,18 +45,18 @@ export function writeBtsConfigToVfs(
 
   const addCommand =
     projectConfig.packageManager === "npm"
-      ? "npx create-better-t-stack@latest add"
+      ? "npx create-chacelow-stack@latest add"
       : projectConfig.packageManager === "pnpm"
-        ? "pnpm dlx create-better-t-stack@latest add"
-        : "bunx create-better-t-stack@latest add";
+        ? "pnpm dlx create-chacelow-stack@latest add"
+        : "bunx create-chacelow-stack@latest add";
 
-  const finalContent = `// Better-T-Stack project metadata
+  const finalContent = `// Chacelow-Stack project metadata
 //
 // Keep this file to use the \`add\` command.
 // Add addons: ${addCommand}
 //
-// Docs: https://better-t-stack.dev/docs
-// Stack Builder: https://better-t-stack.dev/new
+// Docs: https://chacelow-stack.dev/docs
+// Stack Builder: https://chacelow-stack.dev/new
 
 ${jsonContent}`;
 

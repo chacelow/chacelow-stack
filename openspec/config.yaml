@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Better-T-Stack is a strict-TypeScript Bun/Turborepo monorepo that generates
+  Chacelow-Stack is a strict-TypeScript Bun/Turborepo monorepo that generates
   npm, pnpm, and Bun projects across multiple frontend, backend, runtime,
   database, ORM, authentication, and deployment combinations. Generated
   deployment behavior lives primarily in packages/template-generator and is

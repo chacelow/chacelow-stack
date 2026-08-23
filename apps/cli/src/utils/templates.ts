@@ -1,6 +1,21 @@
 import type { CreateInput, Template } from "../types";
 
 export const TEMPLATE_PRESETS = {
+  "chacelow-admin": {
+    database: "postgres",
+    orm: "drizzle",
+    backend: "hono",
+    runtime: "bun",
+    frontend: ["tanstack-router"],
+    api: "trpc",
+    auth: "better-auth",
+    payments: "none",
+    addons: ["admin", "rbac", "i18n", "turborepo"],
+    examples: ["none"],
+    dbSetup: "docker",
+    webDeploy: "none",
+    serverDeploy: "none",
+  },
   mern: {
     database: "mongodb",
     orm: "mongoose",
@@ -79,6 +94,7 @@ export function getTemplateConfig(template: Template) {
 
 export function getTemplateDescription(template: Template) {
   const descriptions = {
+    "chacelow-admin": "Production admin with Better Auth, dynamic RBAC, audit logs, and i18n",
     mern: "MongoDB + Express + React + Node.js - Classic MERN stack",
     pern: "PostgreSQL + Express + React + Node.js - Popular PERN stack",
     t3: "T3 Stack - Next.js + tRPC + Prisma + PostgreSQL + Better Auth",

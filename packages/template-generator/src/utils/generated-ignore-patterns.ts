@@ -1,4 +1,4 @@
-import type { ProjectConfig } from "@better-t-stack/types";
+import type { ProjectConfig } from "@chacelow-stack/types";
 
 const NATIVE_GENERATED_PATTERNS = [
   "apps/native/.expo/**",

@@ -1,4 +1,4 @@
-import type { ProjectConfig } from "@better-t-stack/types";
+import type { ProjectConfig } from "@chacelow-stack/types";
 
 import type { VirtualFileSystem } from "../core/virtual-fs";
 import { type TemplateData, processTemplatesFromPrefix } from "./utils";
@@ -9,6 +9,21 @@ export async function processAddonTemplates(
   config: ProjectConfig,
 ): Promise<void> {
   if (!config.addons || config.addons.length === 0) return;
+  if (config.addons.includes("admin")) {
+    for (const obsoletePath of [
+      "apps/web/src/routes/index.tsx",
+      "apps/web/src/routes/login.tsx",
+      "apps/web/src/routes/_auth/dashboard.tsx",
+      "apps/web/src/routes/_auth/route.tsx",
+      "apps/web/src/components/header.tsx",
+      "apps/web/src/components/sign-in-form.tsx",
+      "apps/web/src/components/sign-up-form.tsx",
+      "apps/web/src/components/user-menu.tsx",
+    ]) {
+      vfs.deleteFile(obsoletePath);
+    }
+  }
+
 
   for (const addon of config.addons) {
     if (addon === "none") continue;

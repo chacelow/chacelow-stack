@@ -1,0 +1,48 @@
+import { env } from "@chacelow-generated/env/server";
+import { drizzle } from "drizzle-orm/node-postgres";
+
+import {
+  account,
+  accountRelations,
+  session,
+  sessionRelations,
+  user,
+  userRelations,
+  verification,
+} from "./schema/auth";
+import {
+  auditLog,
+  permission,
+  permissionRelations,
+  role,
+  rolePermission,
+  rolePermissionRelations,
+  roleRelations,
+  userRole,
+  userRoleRelations,
+} from "./schema/rbac";
+
+export function createDb() {
+  return drizzle(env.DATABASE_URL, {
+    schema: {
+      account,
+      accountRelations,
+      auditLog,
+      permission,
+      permissionRelations,
+      role,
+      rolePermission,
+      rolePermissionRelations,
+      roleRelations,
+      session,
+      sessionRelations,
+      user,
+      userRelations,
+      userRole,
+      userRoleRelations,
+      verification,
+    },
+  });
+}
+
+export const db = createDb();

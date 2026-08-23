@@ -1,0 +1,28 @@
+{
+  "name": "@{{projectName}}/api",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@{{projectName}}/auth": "workspace:*",
+    "@{{projectName}}/db": "workspace:*",
+    "@{{projectName}}/env": "workspace:*",
+    "@trpc/client": "^11.18.0",
+    "@trpc/server": "^11.18.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@{{projectName}}/config": "workspace:*",
+    "hono": "^4.12.32",
+    "typescript": "^6.0.3"
+  }
+}

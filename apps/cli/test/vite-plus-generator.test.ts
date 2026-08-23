@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import type { ProjectConfig } from "@better-t-stack/types";
+import type { ProjectConfig } from "@chacelow-stack/types";
 
 import { getVitePlusIgnorePatterns } from "../../../packages/template-generator/src/processors/vite-plus-generator";
 

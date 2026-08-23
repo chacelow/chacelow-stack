@@ -1,6 +1,6 @@
 "use client";
 
-import { api } from "@better-t-stack/backend/convex/_generated/api";
+import { api } from "@chacelow-stack/backend/convex/_generated/api";
 import { useNpmDownloadCounter } from "@erquhart/convex-oss-stats/react";
 import { useQuery } from "convex/react";
 
@@ -24,10 +24,10 @@ export function useProjectStats() {
   const stats = useQuery(api.analytics.getStats, {});
   const monthlyStats = useQuery(api.analytics.getMonthlyStats, {});
   const githubRepo = useQuery(api.stats.getGithubRepo, {
-    name: "AmanVarshney01/create-better-t-stack",
+    name: "AmanVarshney01/create-chacelow-stack",
   }) as GithubRepoStats | null | undefined;
   const npmPackages = useQuery(api.stats.getNpmPackages, {
-    names: ["create-better-t-stack"],
+    names: ["create-chacelow-stack"],
   }) as NpmPackageStats | null | undefined;
 
   const liveNpmDownloadCount = useNpmDownloadCounter(npmPackages);

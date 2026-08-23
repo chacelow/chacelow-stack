@@ -33,6 +33,18 @@ function getAddonDisplay(addon: Addons): AddonDisplay {
   let hint: string;
 
   switch (addon) {
+    case "admin":
+      label = "Admin UI";
+      hint = "Complete shadcn admin application and management workflows";
+      break;
+    case "rbac":
+      label = "RBAC";
+      hint = "Dynamic roles, static permissions, server enforcement, and audit logs";
+      break;
+    case "i18n":
+      label = "Internationalization";
+      hint = "Upstream i18next integration with Chinese and English locales";
+      break;
     case "turborepo":
       label = "Turborepo";
       hint = "High-performance build system";
@@ -99,7 +111,7 @@ function getAddonDisplay(addon: Addons): AddonDisplay {
       break;
     case "mcp":
       label = "MCP";
-      hint = "Install MCP servers, including Better T Stack, via add-mcp";
+      hint = "Install MCP servers, including Chacelow Stack, via add-mcp";
       break;
     case "evlog":
       label = "evlog";
@@ -114,6 +126,7 @@ function getAddonDisplay(addon: Addons): AddonDisplay {
 }
 
 const ADDON_GROUPS = {
+  "Application Infrastructure": ["admin", "rbac", "i18n"],
   "Monorepo & Tasks": ["turborepo", "nx", "vite-plus"],
   "Code Quality": ["biome", "oxlint", "ultracite", "husky", "lefthook"],
   Documentation: ["starlight", "fumadocs"],

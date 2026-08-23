@@ -1,7 +1,7 @@
 # Alchemy v2 beta integration findings
 
 This is the evidence log for upstream Alchemy issues found while integrating Cloudflare deployment
-in Better-T-Stack. Keep confirmed defects separate from limitations and disproved review claims so
+in Chacelow-Stack. Keep confirmed defects separate from limitations and disproved review claims so
 future upgrades do not remove workarounds prematurely or preserve them after upstream fixes.
 
 Last verified: 2026-08-12
@@ -49,7 +49,7 @@ A provider-free plan test against the exact published package observed:
 
 - Upstream `StaticSite`: build env value `undefined`, no server dependency.
 - Direct `Command.Build` input: resolved sentinel URL and server dependency.
-- Better-T-Stack wrapper: resolved sentinel URL and server dependency.
+- Chacelow-Stack wrapper: resolved sentinel URL and server dependency.
 
 The canonical live reproduction is
 [`9-output-in-staticsite-build-env`](https://github.com/AmanVarshney01/alchemy-v2-beta-repros/tree/31b7a35e66956131d0a81726e032290517f70862/9-output-in-staticsite-build-env).
@@ -122,7 +122,7 @@ Relative custom entries resolve against the Vite root and an invalid entry fails
 silently producing an empty handler. Alchemy still does not synthesize a React Router request
 handler, so the explicit registered entry remains required. The older React Router 8.1 pipeable-stream
 failure is version-specific: React Router 8.2 added a Web Streams default, so a fresh unlocked
-install cannot be used to reproduce the earlier runtime behavior. Better-T-Stack still keeps an
+install cannot be used to reproduce the earlier runtime behavior. Chacelow-Stack still keeps an
 explicit registered request-handler entry until the released default path passes its live gate.
 
 Removal condition: the released default `Website.Vite` React Router path must deploy a registered
@@ -137,9 +137,9 @@ Build/Memo source is unchanged on the inspected main commit.
 
 Alchemy accepts explicit `memo.include` globs that reach outside `cwd`. When using them, also set
 `lockfile: true`, because an explicit include disables lockfile hashing by default. However, a
-repository-local include list is not an accepted Better-T-Stack removal gate: one passing sibling
+repository-local include list is not an accepted Chacelow-Stack removal gate: one passing sibling
 edit cannot prove the list covers all transitive workspace and root configuration inputs.
-Better-T-Stack therefore keeps `memo: false` for generated `StaticSite` builds, ensuring
+Chacelow-Stack therefore keeps `memo: false` for generated `StaticSite` builds, ensuring
 shared-package changes rebuild at the cost of skipping this cache.
 
 Removal condition for `memo: false`: a published exact Alchemy release must provide a documented
@@ -151,14 +151,14 @@ cause the next normal deploy to rebuild the frontend.
 
 `alchemy@2.0.0-pipeline-v2-test` sorts above `2.0.0-beta.x` under standard prerelease ordering and
 was observed satisfying a caret beta range under Bun despite lacking expected Cloudflare exports.
-The package is now deprecated on npm, but it remains published. Better-T-Stack pins
+The package is now deprecated on npm, but it remains published. Chacelow-Stack pins
 `2.0.0-beta.72` exactly together with `effect`, `@effect/platform-node`, and
 `@effect/platform-bun` rc.108. This keeps the Effect package family aligned while preventing an
 unrelated prerelease from entering generated projects.
 
 Exact pinning is a permanent publication-safety policy, not a temporary workaround. Changing the
 accepted release means replacing one verified exact version with another verified exact version;
-Better-T-Stack does not generate an open-ended Alchemy version range.
+Chacelow-Stack does not generate an open-ended Alchemy version range.
 
 ### A7: Worker Assets drops `_headers` and `_redirects`
 
@@ -175,7 +175,7 @@ redirect. Its owned Worker stage was destroyed after verification.
 Merged [Alchemy PR #928](https://github.com/alchemy-run/alchemy/pull/928) now forwards both files in
 production and development, preserves them on a no-op/keep-assets deployment, and adds live HTTP
 coverage for create and update behavior. Beta.67 contains the fix and is accepted. The canonical
-external live repro still needs to pass against beta.67 before Better-T-Stack claims complete
+external live repro still needs to pass against beta.67 before Chacelow-Stack claims complete
 static-asset rule parity.
 
 ### A8: Worker Assets assigns incomplete MIME types
@@ -193,7 +193,7 @@ extension in the reported fixture, including AVIF, JPEG, WebP, and WOFF2, plus c
 manifest types. The source-level defect is fixed; rerun the live fixture before closing the
 end-to-end response-header gate.
 
-There is no generic Better-T-Stack workaround at the uploader boundary. Closure condition: a
+There is no generic Chacelow-Stack workaround at the uploader boundary. Closure condition: a
 published Alchemy release must use a complete, charset-aware MIME resolver and the live fixture must
 serve every expected content type.
 
@@ -250,7 +250,7 @@ files accept the broad peer range; typechecking does not prove CLI startup.
 Merged [Alchemy PR #1132](https://github.com/alchemy-run/alchemy/pull/1132) replaces
 `Schema.TaggedErrorClass` with `Schema.TaggedError` and raises the Effect floor. Beta.72 contains
 that fix. Fresh beta.72 + Effect rc.108 Bun, npm, and pnpm projects install, typecheck, and start the
-Alchemy CLI without the old crash. Better-T-Stack therefore removed
+Alchemy CLI without the old crash. Chacelow-Stack therefore removed
 the beta.102 compatibility pin instead of carrying an override, patch, hoisted linker, or git
 dependency.
 
@@ -310,7 +310,7 @@ hoists the application's `drizzle-orm@0.45.2`, and `npm ls drizzle-orm` conseque
 `ELSPROBLEMS` even though npm installation emits no peer error and the generated project works.
 
 This is an Alchemy package-metadata issue rather than a reason to downgrade the application's ORM or
-change the workspace linker. Better-T-Stack supports npm and removes the old rejection without an
+change the workspace linker. Chacelow-Stack supports npm and removes the old rejection without an
 override, duplicate root dependency, special linker mode, or hoisted install. Alchemy should widen
 or remove the exact optional Drizzle peer for consumers that do not use its Drizzle-backed providers.
 
@@ -333,16 +333,16 @@ or remove the exact optional Drizzle peer for consumers that do not use its Driz
   `@alchemy.run/cloudflare-frameworks@2.0.0-beta.72`. Publication closes the intake gate, not each
   framework's adoption gate:
   - `Website.Nuxt` is generated. The provider owns build, preset, assets, workspace discovery, and
-    local bindings; Better-T-Stack passes the native request-context environment into auth and
+    local bindings; Chacelow-Stack passes the native request-context environment into auth and
     database factories.
-  - `Website.SvelteKit` declares a Kit 3 peer while Better-T-Stack uses stable Kit 2. A direct
+  - `Website.SvelteKit` declares a Kit 3 peer while Chacelow-Stack uses stable Kit 2. A direct
     beta.69 development check nevertheless served a real Kit 2 SSR document with HTTP 200, so the
     warning alone is not filed as a runtime bug. Production, bindings, and build-memo gates remain.
   - `Website.Astro` is generated with `@alchemy.run/cloudflare-frameworks`. Released source loads the
     native config and injects the Cloudflare adapter in memory, so the checked-in adapter is removed
     and Alchemy owns the build/dev lifecycle. The wrapper can auto-provision a default session KV,
     but its return type does not add that implicit binding to `InferEnv` and its generated logical ID
-    differs from the existing resource. Better-T-Stack therefore retains explicit `SESSION` and
+    differs from the existing resource. Chacelow-Stack therefore retains explicit `SESSION` and
     `IMAGES` resources so the wrapper reuses the binding and preserves state identity and types.
     On 2026-08-10, a fresh beta.70/beta.102 project served SSR pages, the oRPC reference, and static
     assets, then completed a Better Auth D1 signup under `alchemy dev`. Session behavior, real image
@@ -350,7 +350,7 @@ or remove the exact optional Drizzle peer for consumers that do not use its Driz
   - `Website.Nextjs` has an exact OpenNext 1.20.1 peer while 1.20.2 is current. That warning alone is
     not a runtime verdict; the existing OpenNext/binding/live gates remain.
 - `Website.Astro` deliberately owns the Astro build. Alchemy's own current example therefore has no
-  standalone framework `build` script, and Better-T-Stack follows that model for Cloudflare Astro.
+  standalone framework `build` script, and Chacelow-Stack follows that model for Cloudflare Astro.
   Running `astro build` directly with `output: "server"` and no adapter fails by design; configuring
   `@astrojs/cloudflare` instead conflicts with the adapter injected by the source provider.
 - OpenNext Cloudflare currently omits `pg-cloudflare`'s workerd condition files while tracing a
@@ -358,14 +358,14 @@ or remove the exact optional Drizzle peer for consumers that do not use its Driz
   `pg-cloudflare/dist/index.js`; the upstream packaging report remains open as
   [#1214](https://github.com/opennextjs/opennextjs-cloudflare/issues/1214), with a related Hyperdrive
   runtime report in [#1322](https://github.com/opennextjs/opennextjs-cloudflare/issues/1322).
-  Better-T-Stack therefore rejects generic PostgreSQL Prisma setups such as PlanetScale Postgres or
+  Chacelow-Stack therefore rejects generic PostgreSQL Prisma setups such as PlanetScale Postgres or
   Supabase only for Next.js + Cloudflare. Neon, Prisma Postgres, other Cloudflare frontends, and
   non-Cloudflare deploy targets remain available.
 - A full Nuxt + Prisma Postgres build originally emitted two identical Prisma WASM modules because
   its optimized SSR oRPC client imported the database graph into both the page and Nitro API
   bundles. The generated Cloudflare path now calls `/rpc` through Nitro's in-process `event.fetch`,
   emits one WASM module, and dry-runs below the 3 MiB compressed free-plan limit. This is integration
-  wiring in Better-T-Stack, not an Alchemy defect.
+  wiring in Chacelow-Stack, not an Alchemy defect.
 
 ## Disproved claims
 

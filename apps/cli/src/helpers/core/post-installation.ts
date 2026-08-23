@@ -297,8 +297,8 @@ export async function displayPostInstallInstructions(
   }
 
   cliLog.message(
-    `${pc.bold("Like Better T Stack?")} ${pc.dim("Star the project on GitHub")}\n${pc.cyan(
-      "https://github.com/AmanVarshney01/create-better-t-stack",
+    `${pc.bold("Like Chacelow Stack?")} ${pc.dim("Star the project on GitHub")}\n${pc.cyan(
+      "https://github.com/chacelow/chacelow-stack",
     )}`,
   );
 }
@@ -773,7 +773,7 @@ function getAlchemyDeployInstructions(
           ? "web"
           : "server";
     instructions.push(
-      `${pc.bold(`Deploy ${vercelTargets} with Vercel Services:`)}\n${pc.cyan("•")} Link project: ${`${runCmd} ${vercelSetupScript}`}\n${pc.cyan("•")} Sync env (before first deploy): ${`${runCmd} ${vercelEnvScript}`}\n${pc.cyan("•")} Deploy: ${`${runCmd} ${vercelDeployScript}`}\n${pc.cyan("•")} Guide: https://www.better-t-stack.dev/docs/guides/vercel`,
+      `${pc.bold(`Deploy ${vercelTargets} with Vercel Services:`)}\n${pc.cyan("•")} Link project: ${`${runCmd} ${vercelSetupScript}`}\n${pc.cyan("•")} Sync env (before first deploy): ${`${runCmd} ${vercelEnvScript}`}\n${pc.cyan("•")} Deploy: ${`${runCmd} ${vercelDeployScript}`}\n${pc.cyan("•")} Guide: https://www.chacelow-stack.dev/docs/guides/vercel`,
     );
   }
 

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-lyra",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "aliases": {
+    "components": "@chacelow-generated/ui/components",
+    "utils": "@chacelow-generated/ui/lib/utils",
+    "hooks": "@chacelow-generated/ui/hooks",
+    "lib": "@chacelow-generated/ui/lib",
+    "ui": "@chacelow-generated/ui/components"
+  },
+  "menuColor": "default",
+  "menuAccent": "subtle",
+  "registries": {
+    "@shadcn": "https://ui.shadcn.com/r/{name}.json",
+    "@reui": "https://reui.io/r/{style}/{name}.json",
+    "@shadcnblocks": "https://www.shadcnblocks.com/r/{name}",
+    "@magicui": "https://magicui.design/r/{name}.json",
+    "@aceternity": "https://ui.aceternity.com/registry/{name}.json",
+    "@tailark": "https://tailark.com/r/{name}.json",
+    "@cult-ui": "https://cult-ui.com/r/{name}.json",
+    "@kibo-ui": "https://www.kibo-ui.com/r/{name}.json",
+    "@animate-ui": "https://animate-ui.com/r/{name}.json",
+    "@shadcnstore": "https://shadcnstore.com/r/{name}.json",
+    "@ai-elements": "https://ai-sdk.dev/elements/api/registry/{name}.json",
+    "@assistant-ui": "https://r.assistant-ui.com/styles/{style}/{name}.json",
+    "@shadcn-ui-blocks": "https://www.shadcn-ui-blocks.com/r/{name}.json",
+    "@7ovr": "https://7ovr.com/r/{name}.json",
+    "@blocks-so": "https://blocks.so/r/{name}.json",
+    "@kokonutui": "https://kokonutui.com/r/{name}.json",
+    "@shadcn-studio": "https://shadcnstudio.com/r/{name}.json"
+  }
+}

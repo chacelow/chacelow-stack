@@ -9,16 +9,16 @@ import { NPM_PACKAGE_URL, REPOSITORY_URL, SITE_URL } from "@/lib/site";
 import { TrustPage, TrustSection, trustPageLinkClass } from "../_components/trust-page";
 
 const description =
-  "How Better-T-Stack helps developers and coding agents create modern TypeScript applications.";
+  "How Chacelow-Stack helps developers and coding agents create modern TypeScript applications.";
 
 export const metadata: Metadata = {
-  title: "About - Better-T-Stack",
+  title: "About - Chacelow-Stack",
   description,
   alternates: {
     canonical: "/about",
   },
   openGraph: {
-    title: "About - Better-T-Stack",
+    title: "About - Chacelow-Stack",
     description,
     url: `${SITE_URL}/about`,
   },
@@ -29,7 +29,7 @@ export default function AboutPage() {
     <TrustPage icon={Info} title="ABOUT.MD" description={description}>
       <TrustSection title="WHAT_IT_IS">
         <p>
-          Better-T-Stack is a free, MIT-licensed command-line tool for scaffolding end-to-end
+          Chacelow-Stack is a free, MIT-licensed command-line tool for scaffolding end-to-end
           type-safe TypeScript applications. Developers choose the frontend, backend, runtime,
           database, ORM, API layer, authentication, deployment targets, and optional addons that fit
           their project. The generator then creates a focused codebase instead of forcing a fixed
@@ -37,7 +37,7 @@ export default function AboutPage() {
         </p>
         <p>
           Generated projects are ordinary source code under the developer's control. They do not
-          depend on a required Better-T-Stack account, subscription, or hosted runtime after
+          depend on a required Chacelow-Stack account, subscription, or hosted runtime after
           generation.
         </p>
       </TrustSection>
@@ -84,7 +84,7 @@ export default function AboutPage() {
 
       <TrustSection title="PROJECT_VALUES">
         <p>
-          Better-T-Stack favors explicit choices, minimal templates, reproducible commands, and
+          Chacelow-Stack favors explicit choices, minimal templates, reproducible commands, and
           transparent compatibility rules. Its goal is to remove setup friction while leaving
           architecture decisions and long-term ownership with the people building the application.
         </p>

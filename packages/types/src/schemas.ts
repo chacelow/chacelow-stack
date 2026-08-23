@@ -51,6 +51,9 @@ export const AddonsSchema = z
     "wxt",
     "skills",
     "evlog",
+    "admin",
+    "rbac",
+    "i18n",
     "none",
   ])
   .describe("Additional addons");
@@ -106,7 +109,7 @@ export const DirectoryConflictSchema = z
   .describe("How to handle existing directory conflicts");
 
 export const TemplateSchema = z
-  .enum(["mern", "pern", "t3", "uniwind", "none"])
+  .enum(["chacelow-admin", "mern", "pern", "t3", "uniwind", "none"])
   .describe("Predefined project template");
 
 export const WxtTemplateSchema = z
@@ -144,7 +147,7 @@ export const InstallScopeSchema = z.enum(["project", "global"]).describe("Instal
 
 export const McpServerSchema = z
   .enum([
-    "better-t-stack",
+    "chacelow-stack",
     "context7",
     "nx",
     "cloudflare-docs",
@@ -580,9 +583,9 @@ export const BetterTStackConfigFileSchema = BetterTStackConfigSchema.safeExtend(
 })
   .strict()
   .meta({
-    id: "https://r2.better-t-stack.dev/schema.json",
-    title: "Better-T-Stack Configuration",
-    description: "Configuration file for Better-T-Stack projects",
+    id: "https://r2.chacelow-stack.dev/schema.json",
+    title: "Chacelow-Stack Configuration",
+    description: "Configuration file for Chacelow-Stack projects",
   });
 
 export const InitResultSchema = z.object({

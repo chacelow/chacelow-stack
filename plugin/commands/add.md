@@ -1,17 +1,17 @@
 ---
-description: Add addons/features (PWA, Tauri, docs, linters, task runners, MCP, …) to an existing Better-T-Stack project via the Better-T-Stack MCP server.
+description: Add addons/features (PWA, Tauri, docs, linters, task runners, MCP, …) to an existing Chacelow-Stack project via the Chacelow-Stack MCP server.
 argument-hint: "<addons to add, e.g. pwa biome turborepo>"
 ---
 
-# Add addons to a Better-T-Stack project
+# Add addons to a Chacelow-Stack project
 
 User request: $ARGUMENTS
 
-Add tooling/features to the current Better-T-Stack project using the Better-T-Stack MCP server instead of wiring it by hand.
+Add tooling/features to the current Chacelow-Stack project using the Chacelow-Stack MCP server instead of wiring it by hand.
 
 ## Steps
 
-1. **Confirm** the working directory is a Better-T-Stack project (look for `bts.jsonc`).
+1. **Confirm** the working directory is a Chacelow-Stack project (look for `bts.jsonc`).
 2. **Determine the addon set** from the arguments above. Use `bts_get_schema` for nested addon options when needed.
 3. **Plan with `bts_plan_addons`** (dry run) and review the changes. Surface any conflicts (e.g. `nx`/`turborepo`/`vite-plus` are mutually exclusive).
 4. **Apply with `bts_add_addons`** once confirmed.

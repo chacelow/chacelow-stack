@@ -2,6 +2,25181 @@
 // Run 'bun run generate-templates' to regenerate
 
 export const EMBEDDED_TEMPLATES: Map<string, string> = new Map([
+  ["addons/admin/apps/server/.gitignore", `# prod
+dist/
+/build
+/out/
+
+# dev
+.yarn/
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+.vscode/*
+!.vscode/launch.json
+!.vscode/*.code-snippets
+.idea/workspace.xml
+.idea/usage.statistics.xml
+.idea/shelf
+.wrangler
+.alchemy
+/.next/
+.vercel
+prisma/generated/
+
+
+# deps
+node_modules/
+/node_modules
+/.pnp
+.pnp.*
+
+# env
+.env*
+.env.production
+!.env.example
+.dev.vars
+
+# logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# misc
+.DS_Store
+*.pem
+
+# local db
+*.db*
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+`],
+  ["addons/admin/apps/server/Dockerfile", `FROM node:24-slim AS builder
+RUN npm install -g pnpm@11
+WORKDIR /app
+ENV SKIP_ENV_VALIDATION=1
+
+COPY . .
+RUN --mount=type=cache,target=/pnpm-store pnpm install --store-dir /pnpm-store
+
+ENV NODE_ENV=production
+RUN cd apps/server && pnpm run build
+
+FROM oven/bun:1 AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app /app
+
+EXPOSE 3000
+
+WORKDIR /app/apps/server
+CMD ["bun", "dist/index.mjs"]
+`],
+  ["addons/admin/apps/server/package.json.hbs", `{
+  "name": "server",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsc -b",
+    "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run dist/index.mjs"
+  },
+  "dependencies": {
+    "@hono/trpc-server": "^0.4.2",
+    "@{{projectName}}/api": "workspace:*",
+    "@{{projectName}}/auth": "workspace:*",
+    "@{{projectName}}/db": "workspace:*",
+    "@{{projectName}}/env": "workspace:*",
+    "@trpc/server": "^11.18.0",
+    "better-auth": "1.6.27",
+    "dotenv": "^17.4.2",
+    "hono": "^4.12.32",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@{{projectName}}/config": "workspace:*",
+    "@types/bun": "^1.3.14",
+    "tsdown": "^0.22.14",
+    "typescript": "^6.0.3"
+  }
+}
+`],
+  ["addons/admin/apps/server/src/index.ts.hbs", `import { trpcServer } from "@hono/trpc-server";
+import { createContext } from "@{{projectName}}/api/context";
+import { appRouter } from "@{{projectName}}/api/routers/index";
+import { auth } from "@{{projectName}}/auth";
+import { env } from "@{{projectName}}/env/server";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { logger } from "hono/logger";
+
+const app = new Hono();
+
+app.use(logger());
+app.use(
+  "/*",
+  cors({
+    origin: env.CORS_ORIGIN,
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  }),
+);
+
+app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+
+app.use(
+  "/trpc/*",
+  trpcServer({
+    router: appRouter,
+    createContext: (_opts, context) => {
+      return createContext({ context });
+    },
+  }),
+);
+
+app.get("/", (c) => {
+  return c.text("OK");
+});
+
+export default app;
+`],
+  ["addons/admin/apps/server/tsconfig.json.hbs", `{
+  "extends": "@{{projectName}}/config/tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
+    "strictNullChecks": true
+  }
+}
+`],
+  ["addons/admin/apps/server/tsdown.config.ts.hbs", `import { defineConfig } from "tsdown";
+
+export default defineConfig({
+  entry: "./src/index.ts",
+  format: "esm",
+  outDir: "./dist",
+  clean: true,
+  deps: {
+    alwaysBundle: [/@{{projectName}}\\/.*/],
+  },
+});
+`],
+  ["addons/admin/apps/web/.gitignore", `# Dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Testing
+/coverage
+
+# Build outputs
+/.next/
+/out/
+/build/
+/dist/
+.vinxi
+.output
+.react-router/
+.tanstack/
+.nitro/
+
+# Deployment
+.vercel
+.netlify
+.wrangler
+.alchemy
+
+# Environment & local files
+.env*
+!.env.example
+.DS_Store
+*.pem
+*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log*
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Other
+dev-dist
+
+.wrangler
+.dev.vars*
+
+.open-next
+`],
+  ["addons/admin/apps/web/components.json", `{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/index.css",
+    "baseColor": "slate",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "iconLibrary": "lucide"
+}
+`],
+  ["addons/admin/apps/web/index.html.hbs", `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/images/favicon.svg"
+      media="(prefers-color-scheme: light)"
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/images/favicon_light.svg"
+      media="(prefers-color-scheme: dark)"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      href="/images/favicon.png"
+      media="(prefers-color-scheme: light)"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      href="/images/favicon_light.png"
+      media="(prefers-color-scheme: dark)"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Primary Meta Tags -->
+    <title>{{projectName}}</title>
+    <meta name="title" content="{{projectName}}" />
+    <meta
+      name="description"
+      content="Admin Dashboard UI built with Shadcn and Vite."
+    />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://shadcn-admin.netlify.app" />
+    <meta property="og:title" content="{{projectName}}" />
+    <meta
+      property="og:description"
+      content="Admin Dashboard UI built with Shadcn and Vite."
+    />
+    <meta
+      property="og:image"
+      content="https://shadcn-admin.netlify.app/images/shadcn-admin.png"
+    />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://shadcn-admin.netlify.app" />
+    <meta property="twitter:title" content="{{projectName}}" />
+    <meta
+      property="twitter:description"
+      content="Admin Dashboard UI built with Shadcn and Vite."
+    />
+    <meta
+      property="twitter:image"
+      content="https://shadcn-admin.netlify.app/images/shadcn-admin.png"
+    />
+
+    <!-- font family -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Manrope:wght@200..800&display=swap"
+      rel="stylesheet"
+    />
+
+    <meta name="theme-color" content="#fff" />
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+`],
+  ["addons/admin/apps/web/package.json.hbs", `{
+  "name": "web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "check-types": "tsc -b --pretty false",
+    "dev": "vite",
+    "serve": "vite preview"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@{{projectName}}/api": "workspace:*",
+    "@{{projectName}}/env": "workspace:*",
+    "@{{projectName}}/i18n": "workspace:*",
+    "@clerk/react": "^6.4.3",
+    "@{{projectName}}/ui": "workspace:*",
+    "@radix-ui/react-alert-dialog": "^1.1.15",
+    "@radix-ui/react-avatar": "^1.1.11",
+    "@radix-ui/react-checkbox": "^1.3.3",
+    "@radix-ui/react-collapsible": "^1.1.12",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-direction": "^1.1.1",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-icons": "^1.3.2",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-radio-group": "^1.3.8",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/router-plugin": "^1.167.22",
+    "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-router": "^1.170.18",
+    "@tanstack/react-table": "^8.21.3",
+    "@trpc/client": "^11.18.0",
+    "@trpc/server": "^11.18.0",
+    "@trpc/tanstack-react-query": "^11.18.0",
+    "axios": "^1.15.0",
+    "better-auth": "1.6.27",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "1.1.1",
+    "date-fns": "^4.1.0",
+    "dotenv": "^17.4.2",
+    "input-otp": "^1.4.2",
+    "lucide-react": "^1.27.0",
+    "next-themes": "^0.4.6",
+    "react": "^19.2.8",
+    "react-day-picker": "9.14.0",
+    "react-dom": "^19.2.8",
+    "react-hook-form": "^7.72.1",
+    "react-top-loading-bar": "^3.0.2",
+    "recharts": "^3.8.1",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3",
+    "tw-animate-css": "^1.4.0",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.4.0",
+    "@{{projectName}}/config": "workspace:*",
+    "@tanstack/react-query-devtools": "^5.101.4",
+    "@tanstack/react-router-devtools": "^1.167.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "jsdom": "^30.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.5",
+    "@vitest/browser-playwright": "^4.1.4",
+    "playwright": "1.59.1",
+    "vitest": "^4.1.4",
+    "vitest-browser-react": "^2.2.0",
+    "web-vitals": "^6.0.1"
+  }
+}
+`],
+  ["addons/admin/apps/web/public/images/favicon_light.png", `[Binary file]`],
+  ["addons/admin/apps/web/public/images/favicon_light.svg", `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="948,463.5,24,24"><defs><clipPath id="clip-1"><rect x="948" y="463.5" width="24" height="24" id="clip-1" stroke="none"/></clipPath></defs><g fill="none" fill-rule="nonzero" stroke="none" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><g><g id="Group 1"><g clip-path="url(#clip-1)" id="Group 1"><path d="M963,469.5v12c0,1.65685 1.34315,3 3,3c1.65685,0 3,-1.34315 3,-3c0,-1.65685 -1.34315,-3 -3,-3h-12c-1.65685,0 -3,1.34315 -3,3c0,1.65685 1.34315,3 3,3c1.65685,0 3,-1.34315 3,-3v-12c0,-1.65685 -1.34315,-3 -3,-3c-1.65685,0 -3,1.34315 -3,3c0,1.65685 1.34315,3 3,3h12c1.65685,0 3,-1.34315 3,-3c0,-1.65685 -1.34315,-3 -3,-3c-1.65685,0 -3,1.34315 -3,3" id="Path 1" stroke="#f2f2f2"/></g></g></g></g></svg>`],
+  ["addons/admin/apps/web/public/images/favicon.png", `[Binary file]`],
+  ["addons/admin/apps/web/public/images/favicon.svg", `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:svgjs="http://svgjs.com/svgjs" width="24" height="24"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokewidth="2" strokelinecap="round" strokelinejoin="round">
+  <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"></path>
+</svg><style>@media (prefers-color-scheme: light) { :root { filter: contrast(1) brightness(0.8); } }
+</style></svg>`],
+  ["addons/admin/apps/web/public/images/shadcn-admin.png", `[Binary file]`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-discord.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconDiscord({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Discord</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M8 12a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" />
+      <path d="M14 12a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" />
+      <path d="M15.5 17c0 1 1.5 3 2 3c1.5 0 2.833 -1.667 3.5 -3c.667 -1.667 .5 -5.833 -1.5 -11.5c-1.457 -1.015 -3 -1.34 -4.5 -1.5l-.972 1.923a11.913 11.913 0 0 0 -4.053 0l-.975 -1.923c-1.5 .16 -3.043 .485 -4.5 1.5c-2 5.667 -2.167 9.833 -1.5 11.5c.667 1.333 2 3 3.5 3c.5 0 2 -2 2 -3" />
+      <path d="M7 16.5c3.5 1 6.5 1 10 0" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-docker.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconDocker({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Docker</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M22 12.54c-1.804 -.345 -2.701 -1.08 -3.523 -2.94c-.487 .696 -1.102 1.568 -.92 2.4c.028 .238 -.32 1 -.557 1h-14c0 5.208 3.164 7 6.196 7c4.124 .022 7.828 -1.376 9.854 -5c1.146 -.101 2.296 -1.505 2.95 -2.46z" />
+      <path d="M5 10h3v3h-3z" />
+      <path d="M8 10h3v3h-3z" />
+      <path d="M11 10h3v3h-3z" />
+      <path d="M8 7h3v3h-3z" />
+      <path d="M11 7h3v3h-3z" />
+      <path d="M11 4h3v3h-3z" />
+      <path d="M4.571 18c1.5 0 2.047 -.074 2.958 -.78" />
+      <path d="M10 16l0 .01" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-facebook.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconFacebook({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Facebook</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M7 10v4h3v7h4v-7h3l1 -4h-4v-2a1 1 0 0 1 1 -1h3v-4h-3a5 5 0 0 0 -5 5v2h-3" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-figma.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconFigma({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Figma</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M15 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+      <path d="M6 3m0 3a3 3 0 0 1 3 -3h6a3 3 0 0 1 3 3v0a3 3 0 0 1 -3 3h-6a3 3 0 0 1 -3 -3z" />
+      <path d="M9 9a3 3 0 0 0 0 6h3m-3 0a3 3 0 1 0 3 3v-15" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-github.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconGithub({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>GitHub</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-gitlab.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconGitlab({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>GitLab</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M21 14l-9 7l-9 -7l3 -11l3 7h6l3 -7z" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-gmail.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconGmail({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Gmail</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M16 20h3a1 1 0 0 0 1 -1v-14a1 1 0 0 0 -1 -1h-3v16z" />
+      <path d="M5 20h3v-16h-3a1 1 0 0 0 -1 1v14a1 1 0 0 0 1 1z" />
+      <path d="M16 4l-4 4l-4 -4" />
+      <path d="M4 6.5l8 7.5l8 -7.5" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-medium.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconMedium({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Medium</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M4 4m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z" />
+      <path d="M8 9h1l3 3l3 -3h1" />
+      <path d="M8 15l2 0" />
+      <path d="M14 15l2 0" />
+      <path d="M9 9l0 6" />
+      <path d="M15 9l0 6" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-notion.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconNotion({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Notion</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M11 17.5v-6.5h.5l4 6h.5v-6.5" />
+      <path d="M19.077 20.071l-11.53 .887a1 1 0 0 1 -.876 -.397l-2.471 -3.294a1 1 0 0 1 -.2 -.6v-10.741a1 1 0 0 1 .923 -.997l11.389 -.876a2 2 0 0 1 1.262 .33l1.535 1.023a2 2 0 0 1 .891 1.664v12.004a1 1 0 0 1 -.923 .997z" />
+      <path d="M4.5 5.5l2.5 2.5" />
+      <path d="M20 7l-13 1v12.5" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-skype.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconSkype({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Skype</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3a9 9 0 0 1 8.603 11.65a4.5 4.5 0 0 1 -5.953 5.953a9 9 0 0 1 -11.253 -11.253a4.5 4.5 0 0 1 5.953 -5.954a8.987 8.987 0 0 1 2.65 -.396z" />
+      <path d="M8 14.5c.5 2 2.358 2.5 4 2.5c2.905 0 4 -1.187 4 -2.5c0 -1.503 -1.927 -2.5 -4 -2.5s-4 -1 -4 -2.5c0 -1.313 1.095 -2.5 4 -2.5c1.642 0 3.5 .5 4 2.5" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-slack.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconSlack({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Slack</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 12v-6a2 2 0 0 1 4 0v6m0 -2a2 2 0 1 1 2 2h-6" />
+      <path d="M12 12h6a2 2 0 0 1 0 4h-6m2 0a2 2 0 1 1 -2 2v-6" />
+      <path d="M12 12v6a2 2 0 0 1 -4 0v-6m0 2a2 2 0 1 1 -2 -2h6" />
+      <path d="M12 12h-6a2 2 0 0 1 0 -4h6m-2 0a2 2 0 1 1 2 -2v6" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-stripe.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconStripe({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Stripe</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M11.453 8.056c0 -.623 .518 -.979 1.442 -.979c1.69 0 3.41 .343 4.605 .923l.5 -4c-.948 -.449 -2.82 -1 -5.5 -1c-1.895 0 -3.373 .087 -4.5 1c-1.172 .956 -2 2.33 -2 4c0 3.03 1.958 4.906 5 6c1.961 .69 3 .743 3 1.5c0 .735 -.851 1.5 -2 1.5c-1.423 0 -3.963 -.609 -5.5 -1.5l-.5 4c1.321 .734 3.474 1.5 6 1.5c2 0 3.957 -.468 5.084 -1.36c1.263 -.979 1.916 -2.268 1.916 -4.14c0 -3.096 -1.915 -4.547 -5 -5.637c-1.646 -.605 -2.544 -1.07 -2.544 -1.807z" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-telegram.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconTelegram({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Telegram</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M15 10l-4 4l6 6l4 -16l-18 7l4 2l2 6l3 -4" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-trello.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconTrello({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Trello</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M4 4m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z" />
+      <path d="M7 7h3v10h-3z" />
+      <path d="M14 7h3v6h-3z" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-whatsapp.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconWhatsapp({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>WhatsApp</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M3 21l1.65 -3.8a9 9 0 1 1 3.4 2.9l-5.05 .9" />
+      <path d="M9 10a.5 .5 0 0 0 1 0v-1a.5 .5 0 0 0 -1 0v1a5 5 0 0 0 5 5h1a.5 .5 0 0 0 0 -1h-1a.5 .5 0 0 0 0 1" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/icon-zoom.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconZoom({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      className={cn("[&>path]:stroke-current", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <title>Zoom</title>
+      <path strokeWidth="0" d="M0 0h24v24H0z" fill="none" />
+      <path d="M17.011 9.385v5.128l3.989 3.487v-12z" />
+      <path d="M3.887 6h10.08c1.468 0 3.033 1.203 3.033 2.803v8.196a.991 .991 0 0 1 -.975 1h-10.373c-1.667 0 -2.652 -1.5 -2.652 -3l.01 -8a.882 .882 0 0 1 .208 -.71a.841 .841 0 0 1 .67 -.287z" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/brand-icons/index.ts", `export { IconDiscord } from "./icon-discord";
+export { IconDocker } from "./icon-docker";
+export { IconFacebook } from "./icon-facebook";
+export { IconFigma } from "./icon-figma";
+export { IconGithub } from "./icon-github";
+export { IconGitlab } from "./icon-gitlab";
+export { IconGmail } from "./icon-gmail";
+export { IconMedium } from "./icon-medium";
+export { IconNotion } from "./icon-notion";
+export { IconSkype } from "./icon-skype";
+export { IconSlack } from "./icon-slack";
+export { IconStripe } from "./icon-stripe";
+export { IconTelegram } from "./icon-telegram";
+export { IconTrello } from "./icon-trello";
+export { IconWhatsapp } from "./icon-whatsapp";
+export { IconZoom } from "./icon-zoom";
+`],
+  ["addons/admin/apps/web/src/assets/clerk-full-logo.tsx", `import { type SVGProps } from "react";
+
+export function ClerkFullLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width={77}
+      height={24}
+      viewBox="0 0 77 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      {...props}
+    >
+      <path
+        d="M35.148 16.738a4.198 4.198 0 01-3.06 1.283 3.53 3.53 0 01-2.604-1.034c-.619-.645-.975-1.566-.975-2.665 0-2.199 1.432-3.703 3.58-3.703a3.914 3.914 0 013.034 1.377l1.859-1.644c-1.211-1.47-3.176-2.229-5.042-2.229-3.652 0-6.24 2.517-6.24 6.22 0 1.831.643 3.374 1.728 4.463s2.631 1.728 4.415 1.728c2.317 0 4.166-.94 5.203-2.122l-1.898-1.674zM38.727 3.428h2.766V20.34h-2.766V3.428zM54.818 15.283c.046-.368.07-.74.076-1.11 0-3.507-2.296-6.047-5.847-6.047a5.738 5.738 0 00-4.215 1.725c-1.038 1.089-1.66 2.631-1.66 4.47 0 3.749 2.642 6.216 6.146 6.216 2.35 0 4.043-.951 5.058-2.242l-1.812-1.605-.09-.076a3.749 3.749 0 01-3.008 1.406c-1.778 0-3.061-1.037-3.427-2.737h8.779zm-8.733-2.22a3.365 3.365 0 01.737-1.449 3.082 3.082 0 012.368-.996c1.58 0 2.57.988 2.911 2.445h-6.016zM63.445 8.09v3.084a13.36 13.36 0 00-.838-.05c-2.094 0-3.282 1.505-3.282 3.479v5.736h-2.763V8.261h2.763v1.83h.025c.938-1.283 2.284-1.997 3.75-1.997l.345-.004zM69.887 15.281l-1.998 2.222v2.837h-2.764V3.428h2.764v10.374L72.822 8.3h3.283l-4.341 4.86 4.417 7.18h-3.11l-3.133-5.059h-.051z"
+        fill="#1F0256"
+      />
+      <path
+        d="M19.116 3.16l-2.88 2.881a.571.571 0 01-.701.084 6.854 6.854 0 00-10.39 5.647 6.867 6.867 0 00.979 3.764.571.571 0 01-.084.699l-2.88 2.88a.57.57 0 01-.865-.063A11.994 11.994 0 0119.051 2.295a.57.57 0 01.065.866z"
+        fill="url(#paint0_linear_26568_214324)"
+      />
+      <path
+        d="M19.113 20.829l-2.88-2.88a.571.571 0 00-.7-.085 6.854 6.854 0 01-7.081 0 .571.571 0 00-.7.084l-2.881 2.88a.57.57 0 00.062.877 11.994 11.994 0 0014.114 0 .571.571 0 00.066-.876zM11.997 15.422a3.427 3.427 0 100-6.854 3.427 3.427 0 000 6.854z"
+        fill="#1F0256"
+      />
+      <defs>
+        <linearGradient
+          id="paint0_linear_26568_214324"
+          x1={16.4087}
+          y1={-1.75881}
+          x2={-7.88473}
+          y2={22.5365}
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#17CCFC" />
+          <stop offset={0.5} stopColor="#5D31FF" />
+          <stop offset={1} stopColor="#F35AFF" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/clerk-logo.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function ClerkLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      id="clerk"
+      height="24"
+      width="24"
+      className={cn("[&>path]:fill-foreground", className)}
+      {...props}
+    >
+      <title>Clerk</title>
+      <path
+        d="m21.47 20.829 -2.881 -2.881a0.572 0.572 0 0 0 -0.7 -0.084 6.854 6.854 0 0 1 -7.081 0 0.576 0.576 0 0 0 -0.7 0.084l-2.881 2.881a0.576 0.576 0 0 0 -0.103 0.69 0.57 0.57 0 0 0 0.166 0.186 12 12 0 0 0 14.113 0 0.58 0.58 0 0 0 0.239 -0.423 0.576 0.576 0 0 0 -0.172 -0.453Zm0.002 -17.668 -2.88 2.88a0.569 0.569 0 0 1 -0.701 0.084A6.857 6.857 0 0 0 8.724 8.08a6.862 6.862 0 0 0 -1.222 3.692 6.86 6.86 0 0 0 0.978 3.764 0.573 0.573 0 0 1 -0.083 0.699l-2.881 2.88a0.567 0.567 0 0 1 -0.864 -0.063A11.993 11.993 0 0 1 6.771 2.7a11.99 11.99 0 0 1 14.637 -0.405 0.566 0.566 0 0 1 0.232 0.418 0.57 0.57 0 0 1 -0.168 0.448Zm-7.118 12.261a3.427 3.427 0 1 0 0 -6.854 3.427 3.427 0 0 0 0 6.854Z"
+        strokeWidth="1"
+      ></path>
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-dir.tsx", `import { type SVGProps } from "react";
+
+import { type Direction } from "@/context/direction-provider";
+import { cn } from "@/lib/utils";
+
+type IconDirProps = SVGProps<SVGSVGElement> & {
+  dir: Direction;
+};
+
+export function IconDir({ dir, className, ...props }: IconDirProps) {
+  return (
+    <svg
+      data-name={\`icon-dir-\${dir}\`}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      className={cn(dir === "rtl" && "rotate-y-180", className)}
+      {...props}
+    >
+      <path
+        d="M23.42.51h51.92c2.21 0 4 1.79 4 4v42.18c0 2.21-1.79 4-4 4H23.42s-.04-.02-.04-.04V.55s.02-.04.04-.04z"
+        opacity={0.15}
+      />
+      <path
+        fill="none"
+        opacity={0.72}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="2px"
+        d="M5.56 14.88L17.78 14.88"
+      />
+      <path
+        fill="none"
+        opacity={0.48}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="2px"
+        d="M5.56 22.09L16.08 22.09"
+      />
+      <path
+        fill="none"
+        opacity={0.55}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="2px"
+        d="M5.56 18.38L14.93 18.38"
+      />
+      <g strokeLinecap="round" strokeMiterlimit={10}>
+        <circle cx={7.51} cy={7.4} r={2.54} opacity={0.8} />
+        <path fill="none" opacity={0.8} strokeWidth="2px" d="M12.06 6.14L17.78 6.14" />
+        <path fill="none" opacity={0.6} d="M11.85 8.79L16.91 8.79" />
+      </g>
+      <path
+        fill="none"
+        opacity={0.62}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="3px"
+        d="M29.41 7.4L34.67 7.4"
+      />
+      <rect
+        x={28.76}
+        y={11.21}
+        width={26.03}
+        height={2.73}
+        rx={0.64}
+        ry={0.64}
+        opacity={0.44}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <rect
+        x={28.76}
+        y={17.01}
+        width={44.25}
+        height={13.48}
+        rx={0.64}
+        ry={0.64}
+        opacity={0.3}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <rect
+        x={28.76}
+        y={33.57}
+        width={44.25}
+        height={4.67}
+        rx={0.64}
+        ry={0.64}
+        opacity={0.21}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <rect
+        x={28.76}
+        y={41.32}
+        width={36.21}
+        height={4.67}
+        rx={0.64}
+        ry={0.64}
+        opacity={0.3}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-layout-compact.tsx", `import { type SVGProps } from "react";
+
+export function IconLayoutCompact(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-name="icon-layout-compact"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      {...props}
+    >
+      <rect
+        x={5.84}
+        y={5.2}
+        width={4}
+        height={40}
+        rx={2}
+        ry={2}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <g stroke="#fff" strokeLinecap="round" strokeMiterlimit={10}>
+        <path fill="none" opacity={0.66} strokeWidth="2px" d="M7.26 11.56L8.37 11.56" />
+        <path fill="none" opacity={0.51} strokeWidth="2px" d="M7.26 14.49L8.37 14.49" />
+        <path fill="none" opacity={0.52} strokeWidth="2px" d="M7.26 17.39L8.37 17.39" />
+        <circle cx={7.81} cy={7.25} r={1.16} fill="#fff" opacity={0.8} />
+      </g>
+      <path
+        fill="none"
+        opacity={0.75}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="3px"
+        d="M15.81 14.49L22.89 14.49"
+      />
+      <rect
+        x={14.93}
+        y={18.39}
+        width={22.19}
+        height={2.73}
+        rx={0.64}
+        ry={0.64}
+        opacity={0.5}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <rect
+        x={14.93}
+        y={5.89}
+        width={59.16}
+        height={2.73}
+        rx={0.64}
+        ry={0.64}
+        opacity={0.9}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <rect
+        x={14.93}
+        y={24.22}
+        width={32.68}
+        height={19.95}
+        rx={2.11}
+        ry={2.11}
+        opacity={0.4}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <g strokeLinecap="round" strokeMiterlimit={10}>
+        <rect x={59.05} y={38.15} width={2.01} height={3.42} rx={0.33} ry={0.33} opacity={0.32} />
+        <rect x={54.78} y={34.99} width={2.01} height={6.58} rx={0.33} ry={0.33} opacity={0.44} />
+        <rect x={63.17} y={32.86} width={2.01} height={8.7} rx={0.33} ry={0.33} opacity={0.53} />
+        <rect x={67.54} y={29.17} width={2.01} height={12.4} rx={0.33} ry={0.33} opacity={0.66} />
+      </g>
+      <g opacity={0.5}>
+        <circle cx={62.16} cy={18.63} r={7.5} />
+        <path d="M62.16 11.63c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.14-7-7 3.14-7 7-7m0-1c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z" />
+      </g>
+      <g opacity={0.74}>
+        <path d="M63.04 18.13l3.38-5.67c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
+        <path d="M66.57 13.19a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95a8.007 8.007 0 00-2.86-2.92z" />
+      </g>
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-layout-default.tsx", `import { type SVGProps } from "react";
+
+export function IconLayoutDefault(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-name="con-layout-default"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      {...props}
+    >
+      <path
+        d="M39.22 15.99h-8.16c-.79 0-1.43-.67-1.43-1.5s.64-1.5 1.43-1.5h8.16c.79 0 1.43.67 1.43 1.5s-.64 1.5-1.43 1.5z"
+        opacity={0.75}
+      />
+      <rect x={29.63} y={18.39} width={16.72} height={2.73} rx={1.36} ry={1.36} opacity={0.5} />
+      <path
+        d="M75.1 6.68v1.45c0 .63-.49 1.14-1.09 1.14H30.72c-.6 0-1.09-.51-1.09-1.14V6.68c0-.62.49-1.14 1.09-1.14h43.29c.6 0 1.09.52 1.09 1.14z"
+        opacity={0.9}
+      />
+      <rect x={29.63} y={24.22} width={21.8} height={19.95} rx={2.11} ry={2.11} opacity={0.4} />
+      <g strokeLinecap="round" strokeMiterlimit={10}>
+        <rect x={61.06} y={38.15} width={2.01} height={3.42} rx={0.33} ry={0.33} opacity={0.32} />
+        <rect x={56.78} y={34.99} width={2.01} height={6.58} rx={0.33} ry={0.33} opacity={0.44} />
+        <rect x={65.17} y={32.86} width={2.01} height={8.7} rx={0.33} ry={0.33} opacity={0.53} />
+        <rect x={69.55} y={29.17} width={2.01} height={12.4} rx={0.33} ry={0.33} opacity={0.66} />
+      </g>
+      <g opacity={0.5}>
+        <circle cx={63.17} cy={18.63} r={7.5} />
+        <path d="M63.17 11.63c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.14-7-7 3.14-7 7-7m0-1c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z" />
+      </g>
+      <g opacity={0.74}>
+        <path d="M64.05 18.13l3.38-5.67c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
+        <path d="M67.57 13.19a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95a8.007 8.007 0 00-2.86-2.92z" />
+      </g>
+      <g strokeLinecap="round" strokeMiterlimit={10}>
+        <rect x={5.84} y={5.02} width={19.14} height={40} rx={2} ry={2} opacity={0.8} />
+        <g stroke="#fff">
+          <path fill="none" opacity={0.72} strokeWidth="2px" d="M9.02 17.39L21.25 17.39" />
+          <path fill="none" opacity={0.48} strokeWidth="2px" d="M9.02 24.6L19.54 24.6" />
+          <path fill="none" opacity={0.55} strokeWidth="2px" d="M9.02 20.88L18.4 20.88" />
+          <circle cx={10.98} cy={9.91} r={2.54} fill="#fff" opacity={0.8} />
+          <path fill="none" opacity={0.8} strokeWidth="2px" d="M15.53 8.65L21.25 8.65" />
+          <path fill="none" opacity={0.6} d="M15.32 11.3L20.38 11.3" />
+        </g>
+      </g>
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-layout-full.tsx", `import { type SVGProps } from "react";
+
+export function IconLayoutFull(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-name="icon-layout-full"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      {...props}
+    >
+      <path
+        fill="none"
+        opacity={0.75}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="3px"
+        d="M6.85 14.49L15.02 14.49"
+      />
+      <rect
+        x={5.84}
+        y={18.39}
+        width={25.6}
+        height={2.73}
+        rx={0.64}
+        ry={0.64}
+        opacity={0.5}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <rect
+        x={5.84}
+        y={5.89}
+        width={68.26}
+        height={2.73}
+        rx={0.64}
+        ry={0.64}
+        opacity={0.9}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <rect
+        x={5.84}
+        y={24.22}
+        width={37.71}
+        height={19.95}
+        rx={2.11}
+        ry={2.11}
+        opacity={0.4}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <g strokeLinecap="round" strokeMiterlimit={10}>
+        <rect x={59.05} y={38.15} width={2.01} height={3.42} rx={0.33} ry={0.33} opacity={0.32} />
+        <rect x={54.78} y={34.99} width={2.01} height={6.58} rx={0.33} ry={0.33} opacity={0.44} />
+        <rect x={63.17} y={32.86} width={2.01} height={8.7} rx={0.33} ry={0.33} opacity={0.53} />
+        <rect x={67.54} y={29.17} width={2.01} height={12.4} rx={0.33} ry={0.33} opacity={0.66} />
+      </g>
+      <g opacity={0.5}>
+        <circle cx={62.16} cy={18.63} r={7.5} />
+        <path d="M62.16 11.63c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.14-7-7 3.14-7 7-7m0-1c-4.42 0-8 3.58-8 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z" />
+      </g>
+      <g opacity={0.74}>
+        <path d="M63.04 18.13l3.38-5.67c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
+        <path d="M66.57 13.19a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95a8.007 8.007 0 00-2.86-2.92z" />
+      </g>
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-sidebar-floating.tsx", `import { type SVGProps } from "react";
+
+export function IconSidebarFloating(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-name="icon-sidebar-floating"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      {...props}
+    >
+      <rect
+        x={5.89}
+        y={5.15}
+        width={19.74}
+        height={40}
+        rx={2}
+        ry={2}
+        opacity={0.8}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <g stroke="#fff" strokeLinecap="round" strokeMiterlimit={10}>
+        <path fill="none" opacity={0.72} strokeWidth="2px" d="M9.81 18.36L22.04 18.36" />
+        <path fill="none" opacity={0.48} strokeWidth="2px" d="M9.81 25.57L20.33 25.57" />
+        <path fill="none" opacity={0.55} strokeWidth="2px" d="M9.81 21.85L19.18 21.85" />
+        <circle cx={11.76} cy={10.88} r={2.54} fill="#fff" opacity={0.8} />
+        <path fill="none" opacity={0.8} strokeWidth="2px" d="M16.31 9.62L22.04 9.62" />
+        <path fill="none" opacity={0.6} d="M16.1 12.27L21.16 12.27" />
+      </g>
+      <path
+        fill="none"
+        opacity={0.62}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="3px"
+        d="M30.59 9.62L35.85 9.62"
+      />
+      <rect
+        x={29.94}
+        y={13.42}
+        width={26.03}
+        height={2.73}
+        rx={0.64}
+        ry={0.64}
+        opacity={0.44}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <rect
+        x={29.94}
+        y={19.28}
+        width={43.11}
+        height={25.87}
+        rx={2}
+        ry={2}
+        opacity={0.3}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-sidebar-inset.tsx", `import { type SVGProps } from "react";
+
+export function IconSidebarInset(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-name="icon-sidebar-inset"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      {...props}
+    >
+      <rect
+        x={23.39}
+        y={5.57}
+        width={50.22}
+        height={40}
+        rx={2}
+        ry={2}
+        opacity={0.2}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <path
+        fill="none"
+        opacity={0.72}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="2px"
+        d="M5.08 17.05L17.31 17.05"
+      />
+      <path
+        fill="none"
+        opacity={0.48}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="2px"
+        d="M5.08 24.25L15.6 24.25"
+      />
+      <path
+        fill="none"
+        opacity={0.55}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="2px"
+        d="M5.08 20.54L14.46 20.54"
+      />
+      <g strokeLinecap="round" strokeMiterlimit={10}>
+        <circle cx={7.04} cy={9.57} r={2.54} opacity={0.8} />
+        <path fill="none" opacity={0.8} strokeWidth="2px" d="M11.59 8.3L17.31 8.3" />
+        <path fill="none" opacity={0.6} d="M11.38 10.95L16.44 10.95" />
+      </g>
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-sidebar-sidebar.tsx", `import { type SVGProps } from "react";
+
+export function IconSidebarSidebar(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-name="icon-sidebar-sidebar"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      {...props}
+    >
+      <path
+        d="M23.42.51h51.99c2.21 0 4 1.79 4 4v42.18c0 2.21-1.79 4-4 4H23.42s-.04-.02-.04-.04V.55s.02-.04.04-.04z"
+        opacity={0.2}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <path
+        fill="none"
+        opacity={0.72}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="2px"
+        d="M5.56 14.88L17.78 14.88"
+      />
+      <path
+        fill="none"
+        opacity={0.48}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="2px"
+        d="M5.56 22.09L16.08 22.09"
+      />
+      <path
+        fill="none"
+        opacity={0.55}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+        strokeWidth="2px"
+        d="M5.56 18.38L14.93 18.38"
+      />
+      <g strokeLinecap="round" strokeMiterlimit={10}>
+        <circle cx={7.51} cy={7.4} r={2.54} opacity={0.8} />
+        <path fill="none" opacity={0.8} strokeWidth="2px" d="M12.06 6.14L17.78 6.14" />
+        <path fill="none" opacity={0.6} d="M11.85 8.79L16.91 8.79" />
+      </g>
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-theme-dark.tsx", `import { type SVGProps } from "react";
+
+export function IconThemeDark(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-name="icon-theme-dark"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      {...props}
+    >
+      <g fill="#1d2b3f">
+        <rect x={0.53} y={0.5} width={78.83} height={50.14} rx={3.5} ry={3.5} />
+        <path d="M75.86 1c1.65 0 3 1.35 3 3v43.14c0 1.65-1.35 3-3 3H4.03c-1.65 0-3-1.35-3-3V4c0-1.65 1.35-3 3-3h71.83m0-1H4.03c-2.21 0-4 1.79-4 4v43.14c0 2.21 1.79 4 4 4h71.83c2.21 0 4-1.79 4-4V4c0-2.21-1.79-4-4-4z" />
+      </g>
+      <path d="M22.88 0h52.97c2.21 0 4 1.79 4 4v43.14c0 2.21-1.79 4-4 4H22.88V0z" fill="#0d1628" />
+      <circle cx={6.7} cy={7.04} r={3.54} fill="#426187" />
+      <path
+        d="M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1zM18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05zM15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91zM16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z"
+        fill="#426187"
+      />
+      <g fill="#2a62bc">
+        <rect x={33.36} y={19.73} width={2.75} height={3.42} rx={0.33} ry={0.33} opacity={0.32} />
+        <rect x={29.64} y={16.57} width={2.75} height={6.58} rx={0.33} ry={0.33} opacity={0.44} />
+        <rect x={37.16} y={14.44} width={2.75} height={8.7} rx={0.33} ry={0.33} opacity={0.53} />
+        <rect x={41.19} y={10.75} width={2.75} height={12.4} rx={0.33} ry={0.33} opacity={0.53} />
+      </g>
+      <circle cx={62.74} cy={16.32} r={8} fill="#2f5491" opacity={0.5} />
+      <path
+        d="M62.74 16.32l4.1-6.87c1.19.71 2.18 1.72 2.86 2.92s1.04 2.57 1.04 3.95h-8z"
+        fill="#2f5491"
+        opacity={0.74}
+      />
+      <rect x={29.64} y={27.75} width={41.62} height={18.62} rx={1.69} ry={1.69} fill="#17273f" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-theme-light.tsx", `import { type SVGProps } from "react";
+
+export function IconThemeLight(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-name="icon-theme-light"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      {...props}
+    >
+      <g fill="#d9d9d9">
+        <rect x={0.53} y={0.5} width={78.83} height={50.14} rx={3.5} ry={3.5} />
+        <path d="M75.86 1c1.65 0 3 1.35 3 3v43.14c0 1.65-1.35 3-3 3H4.03c-1.65 0-3-1.35-3-3V4c0-1.65 1.35-3 3-3h71.83m0-1H4.03c-2.21 0-4 1.79-4 4v43.14c0 2.21 1.79 4 4 4h71.83c2.21 0 4-1.79 4-4V4c0-2.21-1.79-4-4-4z" />
+      </g>
+      <path d="M22.88 0h52.97c2.21 0 4 1.79 4 4v43.14c0 2.21-1.79 4-4 4H22.88V0z" fill="#ecedef" />
+      <circle cx={6.7} cy={7.04} r={3.54} fill="#fff" />
+      <path
+        d="M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1zM18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05zM15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91zM16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z"
+        fill="#fff"
+      />
+      <g fill="#c0c4c4">
+        <rect x={33.36} y={19.73} width={2.75} height={3.42} rx={0.33} ry={0.33} opacity={0.32} />
+        <rect x={29.64} y={16.57} width={2.75} height={6.58} rx={0.33} ry={0.33} opacity={0.44} />
+        <rect x={37.16} y={14.44} width={2.75} height={8.7} rx={0.33} ry={0.33} opacity={0.53} />
+        <rect x={41.19} y={10.75} width={2.75} height={12.4} rx={0.33} ry={0.33} opacity={0.53} />
+      </g>
+      <circle cx={62.74} cy={16.32} r={8} fill="#fff" />
+      <g fill="#d9d9d9">
+        <path d="M63.62 15.82L67 10.15c.93.64 1.7 1.48 2.26 2.47.56.98.89 2.08.96 3.21h-6.6z" />
+        <path d="M67.14 10.88a6.977 6.977 0 012.52 4.44h-5.17l2.65-4.44m-.31-1.43l-4.1 6.87h8c0-1.39-.36-2.75-1.04-3.95s-1.67-2.21-2.86-2.92z" />
+      </g>
+      <rect x={29.64} y={27.75} width={41.62} height={18.62} rx={1.69} ry={1.69} fill="#fff" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/custom/icon-theme-system.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function IconThemeSystem({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      data-name="icon-theme-system"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 79.86 51.14"
+      className={cn(
+        "overflow-hidden rounded-[6px]",
+        "fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground",
+        className,
+      )}
+      {...props}
+    >
+      <path opacity={0.2} d="M0 0.03H22.88V51.17H0z" />
+      <circle
+        cx={6.7}
+        cy={7.04}
+        r={3.54}
+        fill="#fff"
+        opacity={0.8}
+        stroke="#fff"
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+      <path
+        d="M18.12 6.39h-5.87c-.6 0-1.09-.45-1.09-1s.49-1 1.09-1h5.87c.6 0 1.09.45 1.09 1s-.49 1-1.09 1zM16.55 9.77h-4.24c-.55 0-1-.45-1-1s.45-1 1-1h4.24c.55 0 1 .45 1 1s-.45 1-1 1z"
+        fill="#fff"
+        stroke="none"
+        opacity={0.75}
+      />
+      <path
+        d="M18.32 17.37H4.59c-.69 0-1.25-.47-1.25-1.05s.56-1.05 1.25-1.05h13.73c.69 0 1.25.47 1.25 1.05s-.56 1.05-1.25 1.05z"
+        fill="#fff"
+        stroke="none"
+        opacity={0.72}
+      />
+      <path
+        d="M15.34 21.26h-11c-.55 0-1-.41-1-.91s.45-.91 1-.91h11c.55 0 1 .41 1 .91s-.45.91-1 .91z"
+        fill="#fff"
+        stroke="none"
+        opacity={0.55}
+      />
+      <path
+        d="M16.46 25.57H4.43c-.6 0-1.09-.44-1.09-.98s.49-.98 1.09-.98h12.03c.6 0 1.09.44 1.09.98s-.49.98-1.09.98z"
+        fill="#fff"
+        stroke="none"
+        opacity={0.67}
+      />
+      <rect
+        x={33.36}
+        y={19.73}
+        width={2.75}
+        height={3.42}
+        rx={0.33}
+        ry={0.33}
+        opacity={0.31}
+        stroke="none"
+      />
+      <rect
+        x={29.64}
+        y={16.57}
+        width={2.75}
+        height={6.58}
+        rx={0.33}
+        ry={0.33}
+        opacity={0.4}
+        stroke="none"
+      />
+      <rect
+        x={37.16}
+        y={14.44}
+        width={2.75}
+        height={8.7}
+        rx={0.33}
+        ry={0.33}
+        opacity={0.26}
+        stroke="none"
+      />
+      <rect
+        x={41.19}
+        y={10.75}
+        width={2.75}
+        height={12.4}
+        rx={0.33}
+        ry={0.33}
+        opacity={0.37}
+        stroke="none"
+      />
+      <g>
+        <circle cx={62.74} cy={16.32} r={8} opacity={0.25} />
+        <path
+          d="M62.74 16.32l4.1-6.87c1.19.71 2.18 1.72 2.86 2.92s1.04 2.57 1.04 3.95h-8z"
+          opacity={0.45}
+        />
+      </g>
+      <rect
+        x={29.64}
+        y={27.75}
+        width={41.62}
+        height={18.62}
+        rx={1.69}
+        ry={1.69}
+        opacity={0.3}
+        stroke="none"
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/assets/logo.tsx", `import { type SVGProps } from "react";
+
+import { cn } from "@/lib/utils";
+
+export function Logo({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      id="shadcn-admin-logo"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      height="24"
+      width="24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn("size-6", className)}
+      {...props}
+    >
+      <title>Shadcn-Admin</title>
+      <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
+    </svg>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/business-data-table.tsx", `import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { type ChangeEvent, useCallback, useMemo, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+export interface BusinessColumn<Row> {
+  className?: string;
+  header: string;
+  render: (row: Row) => React.ReactNode;
+}
+
+interface BusinessDataTableProps<Row> {
+  columns: BusinessColumn<Row>[];
+  data: Row[];
+  empty: string;
+  filter: (row: Row, query: string) => boolean;
+  getRowId: (row: Row) => string;
+  placeholder: string;
+}
+
+const PAGE_SIZE = 10;
+
+export function BusinessDataTable<Row>({
+  columns,
+  data,
+  empty,
+  filter,
+  getRowId,
+  placeholder,
+}: BusinessDataTableProps<Row>) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const handleQueryChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setQuery(event.target.value);
+    setPage(0);
+  }, []);
+  const previousPage = useCallback(() => setPage((value) => Math.max(0, value - 1)), []);
+  const filtered = useMemo(
+    () => data.filter((row) => filter(row, query.trim().toLowerCase())),
+    [data, filter, query],
+  );
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const nextPage = useCallback(
+    () => setPage((value) => Math.min(pageCount - 1, value + 1)),
+    [pageCount],
+  );
+  const safePage = Math.min(page, pageCount - 1);
+  const rows = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
+  return (
+    <div className="flex flex-1 flex-col gap-4">
+      <div className="relative w-full max-w-sm">
+        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          className="pl-9"
+          onChange={handleQueryChange}
+          placeholder={placeholder}
+          value={query}
+        />
+      </div>
+      <div className="overflow-hidden rounded-md border">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {columns.map((column) => (
+                  <TableHead className={column.className} key={column.header}>
+                    {column.header}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={getRowId(row)}>
+                  {columns.map((column) => (
+                    <TableCell className={column.className} key={column.header}>
+                      {column.render(row)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        {rows.length === 0 ? (
+          <div className="grid min-h-32 place-items-center text-muted-foreground text-sm">
+            {empty}
+          </div>
+        ) : null}
+      </div>
+      <div className="flex items-center justify-between text-muted-foreground text-sm">
+        <span>{filtered.length} row(s)</span>
+        <div className="flex items-center gap-2">
+          <span>
+            Page {safePage + 1} of {pageCount}
+          </span>
+          <Button disabled={safePage === 0} onClick={previousPage} size="icon" variant="outline">
+            <ChevronLeft />
+          </Button>
+          <Button
+            disabled={safePage + 1 >= pageCount}
+            onClick={nextPage}
+            size="icon"
+            variant="outline"
+          >
+            <ChevronRight />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/coming-soon.tsx", `import { Telescope } from "lucide-react";
+
+export function ComingSoon() {
+  return (
+    <div className="h-svh">
+      <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
+        <Telescope size={72} />
+        <h1 className="text-4xl leading-tight font-bold">Coming Soon!</h1>
+        <p className="text-center text-muted-foreground">
+          This page has not been created yet. <br />
+          Stay tuned though!
+        </p>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/command-menu.tsx", `import { useNavigate } from "@tanstack/react-router";
+import { ArrowRight, ChevronRight, Laptop, Moon, Sun } from "lucide-react";
+import React from "react";
+
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
+import { useSearch } from "@/context/search-provider";
+import { useTheme } from "@/context/theme-provider";
+
+import { sidebarData } from "./layout/data/sidebar-data";
+import { ScrollArea } from "./ui/scroll-area";
+
+export function CommandMenu() {
+  const navigate = useNavigate();
+  const { setTheme } = useTheme();
+  const { open, setOpen } = useSearch();
+
+  const runCommand = React.useCallback(
+    (command: () => unknown) => {
+      setOpen(false);
+      command();
+    },
+    [setOpen],
+  );
+
+  return (
+    <CommandDialog modal open={open} onOpenChange={setOpen}>
+      <CommandInput placeholder="Type a command or search..." />
+      <CommandList>
+        <ScrollArea type="hover" className="h-72 pe-1">
+          <CommandEmpty>No results found.</CommandEmpty>
+          {sidebarData.navGroups.map((group) => (
+            <CommandGroup key={group.title} heading={group.title}>
+              {group.items.map((navItem, i) => {
+                if (navItem.url)
+                  return (
+                    <CommandItem
+                      key={\`\${navItem.url}-\${i}\`}
+                      value={navItem.title}
+                      onSelect={() => {
+                        runCommand(() => navigate({ to: navItem.url }));
+                      }}
+                    >
+                      <div className="flex size-4 items-center justify-center">
+                        <ArrowRight className="size-2 text-muted-foreground/80" />
+                      </div>
+                      {navItem.title}
+                    </CommandItem>
+                  );
+
+                return navItem.items?.map((subItem, i) => (
+                  <CommandItem
+                    key={\`\${navItem.title}-\${subItem.url}-\${i}\`}
+                    value={\`\${navItem.title}-\${subItem.url}\`}
+                    onSelect={() => {
+                      runCommand(() => navigate({ to: subItem.url }));
+                    }}
+                  >
+                    <div className="flex size-4 items-center justify-center">
+                      <ArrowRight className="size-2 text-muted-foreground/80" />
+                    </div>
+                    {navItem.title} <ChevronRight /> {subItem.title}
+                  </CommandItem>
+                ));
+              })}
+            </CommandGroup>
+          ))}
+          <CommandSeparator />
+          <CommandGroup heading="Theme">
+            <CommandItem onSelect={() => runCommand(() => setTheme("light"))}>
+              <Sun /> <span>Light</span>
+            </CommandItem>
+            <CommandItem onSelect={() => runCommand(() => setTheme("dark"))}>
+              <Moon className="scale-90" />
+              <span>Dark</span>
+            </CommandItem>
+            <CommandItem onSelect={() => runCommand(() => setTheme("system"))}>
+              <Laptop />
+              <span>System</span>
+            </CommandItem>
+          </CommandGroup>
+        </ScrollArea>
+      </CommandList>
+    </CommandDialog>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/config-drawer.test.tsx", `import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, type RenderResult } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { DirectionProvider } from "@/context/direction-provider";
+import { LayoutProvider } from "@/context/layout-provider";
+import { ThemeProvider } from "@/context/theme-provider";
+import { getCookie, setCookie } from "@/lib/cookies";
+import { clearCookies } from "@/test-utils/cookies";
+
+import { ConfigDrawer } from "./config-drawer";
+
+async function renderConfigDrawer({
+  sidebarDefaultOpen = true,
+}: {
+  sidebarDefaultOpen?: boolean;
+} = {}) {
+  return await render(
+    <DirectionProvider>
+      <ThemeProvider>
+        <LayoutProvider>
+          <SidebarProvider defaultOpen={sidebarDefaultOpen}>
+            <ConfigDrawer />
+          </SidebarProvider>
+        </LayoutProvider>
+      </ThemeProvider>
+    </DirectionProvider>,
+  );
+}
+
+async function openDrawer(screen: RenderResult) {
+  await userEvent.click(screen.getByRole("button", { name: /^Open theme settings$/i }));
+  await expect.element(screen.getByText(/^Theme Settings$/i)).toBeInTheDocument();
+}
+
+describe("ConfigDrawer (integration)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    clearCookies();
+
+    document.documentElement.classList.remove("light", "dark");
+    document.documentElement.removeAttribute("dir");
+  });
+
+  it("opens the drawer and renders the sections", async () => {
+    const screen = await renderConfigDrawer();
+
+    await openDrawer(screen);
+
+    const drawer = screen.getByRole("dialog", { name: /theme settings/i });
+
+    await expect.element(drawer).toBeInTheDocument();
+
+    await expect.element(drawer.getByText(/^Theme$/i)).toBeInTheDocument();
+    await expect.element(drawer.getByText(/^Layout$/i)).toBeInTheDocument();
+    await expect.element(drawer.getByText(/^Sidebar$/i).first()).toBeInTheDocument();
+    await expect.element(drawer.getByText(/^Direction$/i)).toBeInTheDocument();
+    await expect
+      .element(
+        screen.getByRole("button", {
+          name: /reset all settings to default values/i,
+        }),
+      )
+      .toBeInTheDocument();
+  });
+
+  describe("theme preference", () => {
+    it("applies light theme to <html> and cookie", async () => {
+      const screen = await renderConfigDrawer();
+      await openDrawer(screen);
+      await userEvent.click(screen.getByRole("radio", { name: /select light/i }));
+      await vi.waitFor(() =>
+        expect(document.documentElement.classList.contains("light")).toBe(true),
+      );
+      expect(getCookie("vite-ui-theme")).toBe("light");
+    });
+
+    it("applies dark theme to <html> and cookie", async () => {
+      const screen = await renderConfigDrawer();
+      await openDrawer(screen);
+      await userEvent.click(screen.getByRole("radio", { name: /select dark/i }));
+      await vi.waitFor(() =>
+        expect(document.documentElement.classList.contains("dark")).toBe(true),
+      );
+      expect(getCookie("vite-ui-theme")).toBe("dark");
+    });
+
+    it("applies system theme: stores cookie and applies a resolved light or dark class", async () => {
+      // Pre-seed light so mounted theme is not system; re-selecting System alone would not fire setTheme.
+      setCookie("vite-ui-theme", "light");
+
+      const screen = await renderConfigDrawer();
+      await openDrawer(screen);
+
+      await userEvent.click(screen.getByRole("radio", { name: /select system/i }));
+      await vi.waitFor(() => expect(getCookie("vite-ui-theme")).toBe("system"));
+      await vi.waitFor(() => {
+        const root = document.documentElement;
+        const hasLight = root.classList.contains("light");
+        const hasDark = root.classList.contains("dark");
+        expect(hasLight !== hasDark).toBe(true);
+      });
+    });
+  });
+
+  describe("sidebar variant", () => {
+    it("selecting floating updates layout_variant cookie", async () => {
+      const screen = await renderConfigDrawer();
+      await openDrawer(screen);
+
+      await userEvent.click(screen.getByRole("radio", { name: /select floating/i }));
+      await vi.waitFor(() => expect(getCookie("layout_variant")).toBe("floating"));
+    });
+
+    it("selecting sidebar updates layout_variant cookie", async () => {
+      const screen = await renderConfigDrawer();
+      await openDrawer(screen);
+
+      await userEvent.click(screen.getByRole("radio", { name: /^select sidebar$/i }));
+      await vi.waitFor(() => expect(getCookie("layout_variant")).toBe("sidebar"));
+    });
+
+    it("selecting inset updates layout_variant cookie after another variant", async () => {
+      const screen = await renderConfigDrawer();
+      await openDrawer(screen);
+
+      await userEvent.click(screen.getByRole("radio", { name: /select floating/i }));
+      await vi.waitFor(() => expect(getCookie("layout_variant")).toBe("floating"));
+
+      await userEvent.click(screen.getByRole("radio", { name: /select inset/i }));
+      await vi.waitFor(() => expect(getCookie("layout_variant")).toBe("inset"));
+    });
+  });
+
+  it("selecting full layout sets collapsible to offcanvas and closes sidebar", async () => {
+    const screen = await renderConfigDrawer({ sidebarDefaultOpen: true });
+    await openDrawer(screen);
+
+    await userEvent.click(screen.getByRole("radio", { name: /select full layout/i }));
+    await vi.waitFor(() => expect(getCookie("layout_collapsible")).toBe("offcanvas"));
+    await vi.waitFor(() => expect(getCookie("sidebar_state")).toBe("false"));
+  });
+
+  describe("section reset buttons", () => {
+    it("resets theme via section control after choosing dark", async () => {
+      const screen = await renderConfigDrawer();
+      await openDrawer(screen);
+
+      await userEvent.click(screen.getByRole("radio", { name: /select dark/i }));
+      await vi.waitFor(() => expect(getCookie("vite-ui-theme")).toBe("dark"));
+
+      await userEvent.click(
+        screen.getByRole("button", {
+          name: /reset theme preference to default/i,
+        }),
+      );
+      await vi.waitFor(() => expect(getCookie("vite-ui-theme")).toBe("system"));
+    });
+
+    it("resets direction via section control after choosing RTL", async () => {
+      const screen = await renderConfigDrawer();
+      await openDrawer(screen);
+
+      await userEvent.click(screen.getByRole("radio", { name: /select right to left/i }));
+      await vi.waitFor(() => expect(document.documentElement.getAttribute("dir")).toBe("rtl"));
+
+      await userEvent.click(
+        screen.getByRole("button", {
+          name: /reset text direction to default/i,
+        }),
+      );
+      await vi.waitFor(() => expect(document.documentElement.getAttribute("dir")).toBe("ltr"));
+      expect(getCookie("dir")).toBe("ltr");
+    });
+
+    it("resets sidebar style via section control after choosing floating", async () => {
+      const screen = await renderConfigDrawer();
+      await openDrawer(screen);
+
+      await userEvent.click(screen.getByRole("radio", { name: /select floating/i }));
+      await vi.waitFor(() => expect(getCookie("layout_variant")).toBe("floating"));
+
+      await userEvent.click(
+        screen.getByRole("button", {
+          name: /reset sidebar style to default/i,
+        }),
+      );
+      await vi.waitFor(() => expect(getCookie("layout_variant")).toBe("inset"));
+    });
+
+    it("resets layout via section control after choosing compact", async () => {
+      const screen = await renderConfigDrawer({ sidebarDefaultOpen: true });
+      await openDrawer(screen);
+
+      await userEvent.click(screen.getByRole("radio", { name: /select compact/i }));
+      await vi.waitFor(() => expect(getCookie("sidebar_state")).toBe("false"));
+
+      await userEvent.click(
+        screen.getByRole("button", {
+          name: /reset layout options to default/i,
+        }),
+      );
+      await vi.waitFor(() => expect(getCookie("sidebar_state")).toBe("true"));
+      await vi.waitFor(() => expect(getCookie("layout_collapsible")).toBe("icon"));
+    });
+  });
+
+  it("changes direction and applies it to <html dir>", async () => {
+    const screen = await renderConfigDrawer();
+
+    await openDrawer(screen);
+
+    await userEvent.click(screen.getByRole("radio", { name: /select right to left/i }));
+    await vi.waitFor(() => expect(document.documentElement.getAttribute("dir")).toBe("rtl"));
+    expect(getCookie("dir")).toBe("rtl");
+  });
+
+  it("updates layout: selecting non-default closes sidebar and changes layout cookie", async () => {
+    const screen = await renderConfigDrawer({ sidebarDefaultOpen: true });
+
+    await openDrawer(screen);
+
+    await expect
+      .element(screen.getByRole("radio", { name: /select default/i }))
+      .toHaveAttribute("data-state", "checked");
+
+    await userEvent.click(screen.getByRole("radio", { name: /select compact/i }));
+
+    await vi.waitFor(() => expect(getCookie("sidebar_state")).toBe("false"));
+    await vi.waitFor(() => expect(getCookie("layout_collapsible")).toBe("icon"));
+  });
+
+  it("reset restores defaults across sidebar/theme/layout/direction", async () => {
+    const screen = await renderConfigDrawer({ sidebarDefaultOpen: true });
+
+    await openDrawer(screen);
+
+    await userEvent.click(screen.getByRole("radio", { name: /select dark/i }));
+    await userEvent.click(screen.getByRole("radio", { name: /select right to left/i }));
+    await userEvent.click(screen.getByRole("radio", { name: /select floating/i }));
+    await userEvent.click(screen.getByRole("radio", { name: /select full layout/i }));
+
+    await vi.waitFor(() => expect(getCookie("vite-ui-theme")).toBe("dark"));
+    await vi.waitFor(() => expect(getCookie("dir")).toBe("rtl"));
+    await vi.waitFor(() => expect(getCookie("layout_variant")).toBe("floating"));
+    await vi.waitFor(() => expect(getCookie("layout_collapsible")).toBe("offcanvas"));
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: /reset all settings to default values/i,
+      }),
+    );
+
+    await vi.waitFor(() => expect(getCookie("sidebar_state")).toBe("true"));
+    await vi.waitFor(() => expect(getCookie("dir")).toBeUndefined());
+    await vi.waitFor(() => expect(getCookie("vite-ui-theme")).toBeUndefined());
+    await vi.waitFor(() => expect(getCookie("layout_variant")).toBe("inset"));
+    await vi.waitFor(() => expect(getCookie("layout_collapsible")).toBe("icon"));
+    await vi.waitFor(() => expect(document.documentElement.getAttribute("dir")).toBe("ltr"));
+  });
+});
+`],
+  ["addons/admin/apps/web/src/components/config-drawer.tsx", `import { Root as Radio, Item } from "@radix-ui/react-radio-group";
+import { CircleCheck, RotateCcw, Settings } from "lucide-react";
+import { type SVGProps } from "react";
+
+import { IconDir } from "@/assets/custom/icon-dir";
+import { IconLayoutCompact } from "@/assets/custom/icon-layout-compact";
+import { IconLayoutDefault } from "@/assets/custom/icon-layout-default";
+import { IconLayoutFull } from "@/assets/custom/icon-layout-full";
+import { IconSidebarFloating } from "@/assets/custom/icon-sidebar-floating";
+import { IconSidebarInset } from "@/assets/custom/icon-sidebar-inset";
+import { IconSidebarSidebar } from "@/assets/custom/icon-sidebar-sidebar";
+import { IconThemeDark } from "@/assets/custom/icon-theme-dark";
+import { IconThemeLight } from "@/assets/custom/icon-theme-light";
+import { IconThemeSystem } from "@/assets/custom/icon-theme-system";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { useDirection } from "@/context/direction-provider";
+import { type Collapsible, useLayout } from "@/context/layout-provider";
+import { useTheme } from "@/context/theme-provider";
+import { cn } from "@/lib/utils";
+
+import { useSidebar } from "./ui/sidebar";
+
+export function ConfigDrawer() {
+  const { setOpen } = useSidebar();
+  const { resetDir } = useDirection();
+  const { resetTheme } = useTheme();
+  const { resetLayout } = useLayout();
+
+  const handleReset = () => {
+    setOpen(true);
+    resetDir();
+    resetTheme();
+    resetLayout();
+  };
+
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Open theme settings"
+          className="rounded-full"
+        >
+          <Settings aria-hidden="true" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="flex flex-col">
+        <SheetHeader className="pb-0 text-start">
+          <SheetTitle>Theme Settings</SheetTitle>
+          <SheetDescription>
+            Adjust the appearance and layout to suit your preferences.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="space-y-6 overflow-y-auto px-4">
+          <ThemeConfig />
+          <SidebarConfig />
+          <LayoutConfig />
+          <DirConfig />
+        </div>
+        <SheetFooter className="gap-2">
+          <Button
+            variant="destructive"
+            onClick={handleReset}
+            aria-label="Reset all settings to default values"
+          >
+            Reset
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function SectionTitle({
+  title,
+  showReset = false,
+  onReset,
+  resetAriaLabel,
+  className,
+}: {
+  title: string;
+  showReset?: boolean;
+  onReset?: () => void;
+  /** Shown on the small per-section reset (RotateCcw) for accessibility and tests. */
+  resetAriaLabel?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground",
+        className,
+      )}
+    >
+      {title}
+      {showReset && onReset && (
+        <Button
+          type="button"
+          size="icon"
+          variant="secondary"
+          className="size-4 rounded-full"
+          onClick={onReset}
+          aria-label={resetAriaLabel}
+        >
+          <RotateCcw className="size-3" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function RadioGroupItem({
+  item,
+  isTheme = false,
+}: {
+  item: {
+    value: string;
+    label: string;
+    icon: (props: SVGProps<SVGSVGElement>) => React.ReactElement;
+  };
+  isTheme?: boolean;
+}) {
+  return (
+    <Item
+      value={item.value}
+      className={cn("group outline-none", "transition duration-200 ease-in")}
+      aria-label={\`Select \${item.label.toLowerCase()}\`}
+      aria-describedby={\`\${item.value}-description\`}
+    >
+      <div
+        className={cn(
+          "relative rounded-[6px] ring-[1px] ring-border",
+          "group-data-[state=checked]:shadow-2xl group-data-[state=checked]:ring-primary",
+          "group-focus-visible:ring-2",
+        )}
+        role="img"
+        aria-hidden="false"
+        aria-label={\`\${item.label} option preview\`}
+      >
+        <CircleCheck
+          className={cn(
+            "size-6 fill-primary stroke-white",
+            "group-data-[state=unchecked]:hidden",
+            "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2",
+          )}
+          aria-hidden="true"
+        />
+        <item.icon
+          className={cn(
+            !isTheme &&
+              "fill-primary stroke-primary group-data-[state=unchecked]:fill-muted-foreground group-data-[state=unchecked]:stroke-muted-foreground",
+          )}
+          aria-hidden="true"
+        />
+      </div>
+      <div className="mt-1 text-xs" id={\`\${item.value}-description\`} aria-live="polite">
+        {item.label}
+      </div>
+    </Item>
+  );
+}
+
+function ThemeConfig() {
+  const { defaultTheme, theme, setTheme } = useTheme();
+  return (
+    <div>
+      <SectionTitle
+        title="Theme"
+        showReset={theme !== defaultTheme}
+        onReset={() => setTheme(defaultTheme)}
+        resetAriaLabel="Reset theme preference to default"
+      />
+      <Radio
+        value={theme}
+        onValueChange={setTheme}
+        className="grid w-full max-w-md grid-cols-3 gap-4"
+        aria-label="Select theme preference"
+        aria-describedby="theme-description"
+      >
+        {[
+          {
+            value: "system",
+            label: "System",
+            icon: IconThemeSystem,
+          },
+          {
+            value: "light",
+            label: "Light",
+            icon: IconThemeLight,
+          },
+          {
+            value: "dark",
+            label: "Dark",
+            icon: IconThemeDark,
+          },
+        ].map((item) => (
+          <RadioGroupItem key={item.value} item={item} isTheme />
+        ))}
+      </Radio>
+      <div id="theme-description" className="sr-only">
+        Choose between system preference, light mode, or dark mode
+      </div>
+    </div>
+  );
+}
+
+function SidebarConfig() {
+  const { defaultVariant, variant, setVariant } = useLayout();
+  return (
+    <div className="max-md:hidden">
+      <SectionTitle
+        title="Sidebar"
+        showReset={defaultVariant !== variant}
+        onReset={() => setVariant(defaultVariant)}
+        resetAriaLabel="Reset sidebar style to default"
+      />
+      <Radio
+        value={variant}
+        onValueChange={setVariant}
+        className="grid w-full max-w-md grid-cols-3 gap-4"
+        aria-label="Select sidebar style"
+        aria-describedby="sidebar-description"
+      >
+        {[
+          {
+            value: "inset",
+            label: "Inset",
+            icon: IconSidebarInset,
+          },
+          {
+            value: "floating",
+            label: "Floating",
+            icon: IconSidebarFloating,
+          },
+          {
+            value: "sidebar",
+            label: "Sidebar",
+            icon: IconSidebarSidebar,
+          },
+        ].map((item) => (
+          <RadioGroupItem key={item.value} item={item} />
+        ))}
+      </Radio>
+      <div id="sidebar-description" className="sr-only">
+        Choose between inset, floating, or standard sidebar layout
+      </div>
+    </div>
+  );
+}
+
+function LayoutConfig() {
+  const { open, setOpen } = useSidebar();
+  const { defaultCollapsible, collapsible, setCollapsible } = useLayout();
+
+  const radioState = open ? "default" : collapsible;
+
+  return (
+    <div className="max-md:hidden">
+      <SectionTitle
+        title="Layout"
+        showReset={radioState !== "default"}
+        onReset={() => {
+          setOpen(true);
+          setCollapsible(defaultCollapsible);
+        }}
+        resetAriaLabel="Reset layout options to default"
+      />
+      <Radio
+        value={radioState}
+        onValueChange={(v) => {
+          if (v === "default") {
+            setOpen(true);
+            return;
+          }
+          setOpen(false);
+          setCollapsible(v as Collapsible);
+        }}
+        className="grid w-full max-w-md grid-cols-3 gap-4"
+        aria-label="Select layout style"
+        aria-describedby="layout-description"
+      >
+        {[
+          {
+            value: "default",
+            label: "Default",
+            icon: IconLayoutDefault,
+          },
+          {
+            value: "icon",
+            label: "Compact",
+            icon: IconLayoutCompact,
+          },
+          {
+            value: "offcanvas",
+            label: "Full layout",
+            icon: IconLayoutFull,
+          },
+        ].map((item) => (
+          <RadioGroupItem key={item.value} item={item} />
+        ))}
+      </Radio>
+      <div id="layout-description" className="sr-only">
+        Choose between default expanded, compact icon-only, or full layout mode
+      </div>
+    </div>
+  );
+}
+
+function DirConfig() {
+  const { defaultDir, dir, setDir } = useDirection();
+  return (
+    <div>
+      <SectionTitle
+        title="Direction"
+        showReset={defaultDir !== dir}
+        onReset={() => setDir(defaultDir)}
+        resetAriaLabel="Reset text direction to default"
+      />
+      <Radio
+        value={dir}
+        onValueChange={setDir}
+        className="grid w-full max-w-md grid-cols-3 gap-4"
+        aria-label="Select site direction"
+        aria-describedby="direction-description"
+      >
+        {[
+          {
+            value: "ltr",
+            label: "Left to Right",
+            icon: (props: SVGProps<SVGSVGElement>) => <IconDir dir="ltr" {...props} />,
+          },
+          {
+            value: "rtl",
+            label: "Right to Left",
+            icon: (props: SVGProps<SVGSVGElement>) => <IconDir dir="rtl" {...props} />,
+          },
+        ].map((item) => (
+          <RadioGroupItem key={item.value} item={item} />
+        ))}
+      </Radio>
+      <div id="direction-description" className="sr-only">
+        Choose between left-to-right or right-to-left site direction
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/confirm-dialog.test.tsx", `import type { SubmitEvent } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { ConfirmDialog } from "./confirm-dialog";
+
+describe("ConfirmDialog", () => {
+  it("renders title, description, and default buttons", async () => {
+    const { getByRole, getByText } = await render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Delete item"
+        desc="This action cannot be undone."
+        handleConfirm={vi.fn()}
+      />,
+    );
+
+    await expect.element(getByRole("heading", { name: "Delete item" })).toBeInTheDocument();
+    await expect.element(getByText("This action cannot be undone.")).toBeInTheDocument();
+    await expect.element(getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    await expect.element(getByRole("button", { name: "Continue" })).toBeInTheDocument();
+  });
+
+  it("calls handleConfirm when the confirm button is clicked", async () => {
+    const handleConfirm = vi.fn();
+    const { getByRole } = await render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Sign out"
+        desc="Are you sure?"
+        confirmText="Sign out"
+        handleConfirm={handleConfirm}
+      />,
+    );
+
+    await userEvent.click(getByRole("button", { name: "Sign out" }));
+    expect(handleConfirm).toHaveBeenCalledOnce();
+  });
+
+  it("disables confirm when disabled is true", async () => {
+    const handleConfirm = vi.fn();
+    const { getByRole } = await render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Danger"
+        desc="..."
+        disabled
+        handleConfirm={handleConfirm}
+      />,
+    );
+
+    const confirm = getByRole("button", { name: "Continue" });
+    await expect.element(confirm).toBeDisabled();
+    expect(handleConfirm).not.toHaveBeenCalled();
+  });
+
+  it("when isLoading is true, disables cancel and confirm", async () => {
+    const handleConfirm = vi.fn();
+    const { getByRole } = await render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Loading"
+        desc="..."
+        isLoading
+        handleConfirm={handleConfirm}
+      />,
+    );
+
+    await expect.element(getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await expect.element(getByRole("button", { name: "Continue" })).toBeDisabled();
+  });
+
+  it("supports custom button texts", async () => {
+    const { getByRole } = await render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Delete"
+        desc="..."
+        cancelBtnText="No"
+        confirmText="Yes"
+        handleConfirm={vi.fn()}
+      />,
+    );
+
+    await expect.element(getByRole("button", { name: "No" })).toBeInTheDocument();
+    await expect.element(getByRole("button", { name: "Yes" })).toBeInTheDocument();
+  });
+
+  it("renders confirm as submit button linked to desc form when \`form\` is set", async () => {
+    const { getByRole } = await render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Delete tasks"
+        form="tasks-multi-delete-form"
+        desc={
+          <form id="tasks-multi-delete-form" className="space-y-4">
+            <p>Type DELETE to confirm.</p>
+          </form>
+        }
+        confirmText="Delete"
+        destructive
+      />,
+    );
+
+    const deleteBtn = getByRole("button", { name: "Delete" });
+    await expect.element(deleteBtn).toHaveAttribute("type", "submit");
+    await expect.element(deleteBtn).toHaveAttribute("form", "tasks-multi-delete-form");
+  });
+
+  it("submits the desc form when confirm is clicked (form prop, no handleConfirm)", async () => {
+    const handleFormSubmit = vi.fn((e: SubmitEvent<HTMLFormElement>) => {
+      e.preventDefault();
+    });
+
+    const { getByRole } = await render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Delete"
+        form="users-delete-form"
+        desc={
+          <form id="users-delete-form" onSubmit={handleFormSubmit} className="space-y-4">
+            <p>Confirm deletion.</p>
+          </form>
+        }
+        confirmText="Delete"
+        destructive
+      />,
+    );
+
+    await userEvent.click(getByRole("button", { name: "Delete" }));
+
+    expect(handleFormSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("submits the form when Enter key is pressed", async () => {
+    const handleFormSubmit = vi.fn((e: SubmitEvent<HTMLFormElement>) => {
+      e.preventDefault();
+    });
+
+    const { getByPlaceholder } = await render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Delete"
+        form="users-delete-form"
+        desc={
+          <form id="users-delete-form" onSubmit={handleFormSubmit} className="space-y-4">
+            <input type="text" name="username" placeholder="username" />
+          </form>
+        }
+        confirmText="Delete"
+        destructive
+      />,
+    );
+
+    await userEvent.fill(getByPlaceholder("username"), "test");
+    await userEvent.keyboard("{Enter}");
+    expect(handleFormSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("does not submit the form when confirm is disabled (typed confirmation mismatch)", async () => {
+    const handleFormSubmit = vi.fn((e: SubmitEvent<HTMLFormElement>) => {
+      e.preventDefault();
+    });
+
+    const { getByRole } = await render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Delete"
+        form="users-delete-form"
+        disabled
+        desc={
+          <form id="users-delete-form" onSubmit={handleFormSubmit}>
+            <p>Enter username to enable Delete.</p>
+          </form>
+        }
+        confirmText="Delete"
+        destructive
+      />,
+    );
+
+    const deleteBtn = getByRole("button", { name: "Delete" });
+    await expect.element(deleteBtn).toBeDisabled();
+    expect(handleFormSubmit).not.toHaveBeenCalled();
+  });
+});
+`],
+  ["addons/admin/apps/web/src/components/confirm-dialog.tsx", `import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+type ConfirmDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: React.ReactNode;
+  disabled?: boolean;
+  desc: React.JSX.Element | string;
+  cancelBtnText?: string;
+  confirmText?: React.ReactNode;
+  destructive?: boolean;
+  isLoading?: boolean;
+  className?: string;
+  children?: React.ReactNode;
+} & ({ form: string; handleConfirm?: undefined } | { form?: undefined; handleConfirm: () => void });
+
+export function ConfirmDialog(props: ConfirmDialogProps) {
+  const {
+    title,
+    desc,
+    children,
+    className,
+    confirmText,
+    cancelBtnText,
+    destructive,
+    isLoading,
+    disabled = false,
+    form,
+    handleConfirm,
+    ...actions
+  } = props;
+  return (
+    <AlertDialog {...actions}>
+      <AlertDialogContent className={cn(className && className)}>
+        <AlertDialogHeader className="text-start">
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div>{desc}</div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {children}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isLoading}>{cancelBtnText ?? "Cancel"}</AlertDialogCancel>
+          <Button
+            type={form ? "submit" : "button"}
+            form={form}
+            onClick={handleConfirm}
+            variant={destructive ? "destructive" : "default"}
+            disabled={disabled || isLoading}
+          >
+            {confirmText ?? "Continue"}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/data-table/bulk-actions.tsx", `import { type Table } from "@tanstack/react-table";
+import { X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+
+type DataTableBulkActionsProps<TData> = {
+  table: Table<TData>;
+  entityName: string;
+  children: React.ReactNode;
+};
+
+/**
+ * A modular toolbar for displaying bulk actions when table rows are selected.
+ *
+ * @template TData The type of data in the table.
+ * @param {object} props The component props.
+ * @param {Table<TData>} props.table The react-table instance.
+ * @param {string} props.entityName The name of the entity being acted upon (e.g., "task", "user").
+ * @param {React.ReactNode} props.children The action buttons to be rendered inside the toolbar.
+ * @returns {React.ReactNode | null} The rendered component or null if no rows are selected.
+ */
+export function DataTableBulkActions<TData>({
+  table,
+  entityName,
+  children,
+}: DataTableBulkActionsProps<TData>): React.ReactNode | null {
+  const selectedRows = table.getFilteredSelectedRowModel().rows;
+  const selectedCount = selectedRows.length;
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [announcement, setAnnouncement] = useState("");
+
+  // Announce selection changes to screen readers
+  useEffect(() => {
+    if (selectedCount > 0) {
+      const message = \`\${selectedCount} \${entityName}\${selectedCount > 1 ? "s" : ""} selected. Bulk actions toolbar is available.\`;
+
+      // Use queueMicrotask to defer state update and avoid cascading renders
+      queueMicrotask(() => {
+        setAnnouncement(message);
+      });
+
+      // Clear announcement after a delay
+      const timer = setTimeout(() => setAnnouncement(""), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedCount, entityName]);
+
+  const handleClearSelection = () => {
+    table.resetRowSelection();
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    const buttons = toolbarRef.current?.querySelectorAll("button");
+    if (!buttons) return;
+
+    const currentIndex = Array.from(buttons).findIndex(
+      (button) => button === document.activeElement,
+    );
+
+    switch (event.key) {
+      case "ArrowRight": {
+        event.preventDefault();
+        const nextIndex = (currentIndex + 1) % buttons.length;
+        buttons[nextIndex]?.focus();
+        break;
+      }
+      case "ArrowLeft": {
+        event.preventDefault();
+        const prevIndex = currentIndex === 0 ? buttons.length - 1 : currentIndex - 1;
+        buttons[prevIndex]?.focus();
+        break;
+      }
+      case "Home":
+        event.preventDefault();
+        buttons[0]?.focus();
+        break;
+      case "End":
+        event.preventDefault();
+        buttons[buttons.length - 1]?.focus();
+        break;
+      case "Escape": {
+        // Check if the Escape key came from a dropdown trigger or content
+        // We can't check dropdown state because Radix UI closes it before our handler runs
+        const target = event.target as HTMLElement;
+        const activeElement = document.activeElement as HTMLElement;
+
+        // Check if the event target or currently focused element is a dropdown trigger
+        const isFromDropdownTrigger =
+          target?.getAttribute("data-slot") === "dropdown-menu-trigger" ||
+          activeElement?.getAttribute("data-slot") === "dropdown-menu-trigger" ||
+          target?.closest('[data-slot="dropdown-menu-trigger"]') ||
+          activeElement?.closest('[data-slot="dropdown-menu-trigger"]');
+
+        // Check if the focused element is inside dropdown content (which is portaled)
+        const isFromDropdownContent =
+          activeElement?.closest('[data-slot="dropdown-menu-content"]') ||
+          target?.closest('[data-slot="dropdown-menu-content"]');
+
+        if (isFromDropdownTrigger || isFromDropdownContent) {
+          // Escape was meant for the dropdown - don't clear selection
+          return;
+        }
+
+        // Escape was meant for the toolbar - clear selection
+        event.preventDefault();
+        handleClearSelection();
+        break;
+      }
+    }
+  };
+
+  if (selectedCount === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {/* Live region for screen reader announcements */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only" role="status">
+        {announcement}
+      </div>
+
+      <div
+        ref={toolbarRef}
+        role="toolbar"
+        aria-label={\`Bulk actions for \${selectedCount} selected \${entityName}\${selectedCount > 1 ? "s" : ""}\`}
+        aria-describedby="bulk-actions-description"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className={cn(
+          "fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl",
+          "transition-all delay-100 duration-300 ease-out hover:scale-105",
+          "focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
+        )}
+      >
+        <div
+          className={cn(
+            "p-2 shadow-xl",
+            "rounded-xl border",
+            "bg-background/95 backdrop-blur-lg supports-backdrop-filter:bg-background/60",
+            "flex items-center gap-x-2",
+          )}
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleClearSelection}
+                className="size-6 rounded-full"
+                aria-label="Clear selection"
+                title="Clear selection (Escape)"
+              >
+                <X />
+                <span className="sr-only">Clear selection</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Clear selection (Escape)</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Separator className="h-5" orientation="vertical" aria-hidden="true" />
+
+          <div className="flex items-center gap-x-1 text-sm" id="bulk-actions-description">
+            <Badge
+              variant="default"
+              className="min-w-8 rounded-lg"
+              aria-label={\`\${selectedCount} selected\`}
+            >
+              {selectedCount}
+            </Badge>{" "}
+            <span className="hidden sm:inline">
+              {entityName}
+              {selectedCount > 1 ? "s" : ""}
+            </span>{" "}
+            selected
+          </div>
+
+          <Separator className="h-5" orientation="vertical" aria-hidden="true" />
+
+          {children}
+        </div>
+      </div>
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/data-table/column-header.tsx", `import { ArrowDownIcon, ArrowUpIcon, CaretSortIcon, EyeNoneIcon } from "@radix-ui/react-icons";
+import { type Column } from "@tanstack/react-table";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+
+type DataTableColumnHeaderProps<TData, TValue> = React.HTMLAttributes<HTMLDivElement> & {
+  column: Column<TData, TValue>;
+  title: string;
+};
+
+export function DataTableColumnHeader<TData, TValue>({
+  column,
+  title,
+  className,
+}: DataTableColumnHeaderProps<TData, TValue>) {
+  if (!column.getCanSort()) {
+    return <div className={cn(className)}>{title}</div>;
+  }
+
+  return (
+    <div className={cn("flex items-center space-x-2", className)}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-8 data-[state=open]:bg-accent">
+            <span>{title}</span>
+            {column.getIsSorted() === "desc" ? (
+              <ArrowDownIcon className="ms-2 h-4 w-4" />
+            ) : column.getIsSorted() === "asc" ? (
+              <ArrowUpIcon className="ms-2 h-4 w-4" />
+            ) : (
+              <CaretSortIcon className="ms-2 h-4 w-4" />
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onClick={() => column.toggleSorting(false)}>
+            <ArrowUpIcon className="size-3.5 text-muted-foreground/70" />
+            Asc
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => column.toggleSorting(true)}>
+            <ArrowDownIcon className="size-3.5 text-muted-foreground/70" />
+            Desc
+          </DropdownMenuItem>
+          {column.getCanHide() && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => column.toggleVisibility(false)}>
+                <EyeNoneIcon className="size-3.5 text-muted-foreground/70" />
+                Hide
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/data-table/faceted-filter.tsx", `import { CheckIcon, PlusCircledIcon } from "@radix-ui/react-icons";
+import { type Column } from "@tanstack/react-table";
+import * as React from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+
+type DataTableFacetedFilterProps<TData, TValue> = {
+  column?: Column<TData, TValue>;
+  title?: string;
+  options: {
+    label: string;
+    value: string;
+    icon?: React.ComponentType<{ className?: string }>;
+  }[];
+};
+
+export function DataTableFacetedFilter<TData, TValue>({
+  column,
+  title,
+  options,
+}: DataTableFacetedFilterProps<TData, TValue>) {
+  const facets = column?.getFacetedUniqueValues();
+  const selectedValues = new Set(column?.getFilterValue() as string[]);
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 border-dashed">
+          <PlusCircledIcon className="size-4" />
+          {title}
+          {selectedValues?.size > 0 && (
+            <>
+              <Separator orientation="vertical" className="mx-2 h-4" />
+              <Badge variant="secondary" className="rounded-sm px-1 font-normal lg:hidden">
+                {selectedValues.size}
+              </Badge>
+              <div className="hidden space-x-1 lg:flex">
+                {selectedValues.size > 2 ? (
+                  <Badge variant="secondary" className="rounded-sm px-1 font-normal">
+                    {selectedValues.size} selected
+                  </Badge>
+                ) : (
+                  options
+                    .filter((option) => selectedValues.has(option.value))
+                    .map((option) => (
+                      <Badge
+                        variant="secondary"
+                        key={option.value}
+                        className="rounded-sm px-1 font-normal"
+                      >
+                        {option.label}
+                      </Badge>
+                    ))
+                )}
+              </div>
+            </>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-50 p-0" align="start">
+        <Command>
+          <CommandInput placeholder={title} />
+          <CommandList>
+            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => {
+                const isSelected = selectedValues.has(option.value);
+                return (
+                  <CommandItem
+                    key={option.value}
+                    onSelect={() => {
+                      if (isSelected) {
+                        selectedValues.delete(option.value);
+                      } else {
+                        selectedValues.add(option.value);
+                      }
+                      const filterValues = Array.from(selectedValues);
+                      column?.setFilterValue(filterValues.length ? filterValues : undefined);
+                    }}
+                  >
+                    <div
+                      className={cn(
+                        "flex size-4 items-center justify-center rounded-sm border border-primary",
+                        isSelected
+                          ? "bg-primary text-primary-foreground"
+                          : "opacity-50 [&_svg]:invisible",
+                      )}
+                    >
+                      <CheckIcon className={cn("h-4 w-4 text-background")} />
+                    </div>
+                    {option.icon && <option.icon className="size-4 text-muted-foreground" />}
+                    <span>{option.label}</span>
+                    {facets?.get(option.value) && (
+                      <span className="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs">
+                        {facets.get(option.value)}
+                      </span>
+                    )}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+            {selectedValues.size > 0 && (
+              <>
+                <CommandSeparator />
+                <CommandGroup>
+                  <CommandItem
+                    onSelect={() => column?.setFilterValue(undefined)}
+                    className="justify-center text-center"
+                  >
+                    Clear filters
+                  </CommandItem>
+                </CommandGroup>
+              </>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/data-table/index.ts", `export { DataTablePagination } from "./pagination";
+export { DataTableColumnHeader } from "./column-header";
+export { DataTableToolbar } from "./toolbar";
+export { DataTableBulkActions } from "./bulk-actions";
+`],
+  ["addons/admin/apps/web/src/components/data-table/pagination.tsx", `import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  DoubleArrowLeftIcon,
+  DoubleArrowRightIcon,
+} from "@radix-ui/react-icons";
+import { type Table } from "@tanstack/react-table";
+
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn, getPageNumbers } from "@/lib/utils";
+
+type DataTablePaginationProps<TData> = {
+  table: Table<TData>;
+  className?: string;
+};
+
+export function DataTablePagination<TData>({ table, className }: DataTablePaginationProps<TData>) {
+  const currentPage = table.getState().pagination.pageIndex + 1;
+  const totalPages = table.getPageCount();
+  const pageNumbers = getPageNumbers(currentPage, totalPages);
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between overflow-clip px-2",
+        "@max-2xl/content:flex-col-reverse @max-2xl/content:gap-4",
+        className,
+      )}
+      style={{ overflowClipMargin: 1 }}
+    >
+      <div className="flex w-full items-center justify-between">
+        <div className="flex w-25 items-center justify-center text-sm font-medium @2xl/content:hidden">
+          Page {currentPage} of {totalPages}
+        </div>
+        <div className="flex items-center gap-2 @max-2xl/content:flex-row-reverse">
+          <Select
+            value={\`\${table.getState().pagination.pageSize}\`}
+            onValueChange={(value) => {
+              table.setPageSize(Number(value));
+            }}
+          >
+            <SelectTrigger className="h-8 w-17.5">
+              <SelectValue placeholder={table.getState().pagination.pageSize} />
+            </SelectTrigger>
+            <SelectContent side="top">
+              {[10, 20, 30, 40, 50].map((pageSize) => (
+                <SelectItem key={pageSize} value={\`\${pageSize}\`}>
+                  {pageSize}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="hidden text-sm font-medium sm:block">Rows per page</p>
+        </div>
+      </div>
+
+      <div className="flex items-center sm:space-x-6 lg:space-x-8">
+        <div className="flex w-25 items-center justify-center text-sm font-medium @max-3xl/content:hidden">
+          Page {currentPage} of {totalPages}
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            className="size-8 p-0 @max-md/content:hidden"
+            onClick={() => table.setPageIndex(0)}
+            disabled={!table.getCanPreviousPage()}
+          >
+            <span className="sr-only">Go to first page</span>
+            <DoubleArrowLeftIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            className="size-8 p-0"
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+          >
+            <span className="sr-only">Go to previous page</span>
+            <ChevronLeftIcon className="h-4 w-4" />
+          </Button>
+
+          {/* Page number buttons */}
+          {pageNumbers.map((pageNumber, index) => (
+            <div key={\`\${pageNumber}-\${index}\`} className="flex items-center">
+              {pageNumber === "..." ? (
+                <span className="px-1 text-sm text-muted-foreground">...</span>
+              ) : (
+                <Button
+                  variant={currentPage === pageNumber ? "default" : "outline"}
+                  className="h-8 min-w-8 px-2"
+                  onClick={() => table.setPageIndex((pageNumber as number) - 1)}
+                >
+                  <span className="sr-only">Go to page {pageNumber}</span>
+                  {pageNumber}
+                </Button>
+              )}
+            </div>
+          ))}
+
+          <Button
+            variant="outline"
+            className="size-8 p-0"
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+          >
+            <span className="sr-only">Go to next page</span>
+            <ChevronRightIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            className="size-8 p-0 @max-md/content:hidden"
+            onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+            disabled={!table.getCanNextPage()}
+          >
+            <span className="sr-only">Go to last page</span>
+            <DoubleArrowRightIcon className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/data-table/toolbar.tsx", `import { Cross2Icon } from "@radix-ui/react-icons";
+import { type Table } from "@tanstack/react-table";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+import { DataTableFacetedFilter } from "./faceted-filter";
+import { DataTableViewOptions } from "./view-options";
+
+type DataTableToolbarProps<TData> = {
+  table: Table<TData>;
+  searchPlaceholder?: string;
+  searchKey?: string;
+  filters?: {
+    columnId: string;
+    title: string;
+    options: {
+      label: string;
+      value: string;
+      icon?: React.ComponentType<{ className?: string }>;
+    }[];
+  }[];
+};
+
+export function DataTableToolbar<TData>({
+  table,
+  searchPlaceholder = "Filter...",
+  searchKey,
+  filters = [],
+}: DataTableToolbarProps<TData>) {
+  const isFiltered = table.getState().columnFilters.length > 0 || table.getState().globalFilter;
+
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex flex-1 flex-col-reverse items-start gap-y-2 sm:flex-row sm:items-center sm:space-x-2">
+        {searchKey ? (
+          <Input
+            placeholder={searchPlaceholder}
+            value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
+            onChange={(event) => table.getColumn(searchKey)?.setFilterValue(event.target.value)}
+            className="h-8 w-37.5 lg:w-62.5"
+          />
+        ) : (
+          <Input
+            placeholder={searchPlaceholder}
+            value={table.getState().globalFilter ?? ""}
+            onChange={(event) => table.setGlobalFilter(event.target.value)}
+            className="h-8 w-37.5 lg:w-62.5"
+          />
+        )}
+        <div className="flex gap-x-2">
+          {filters.map((filter) => {
+            const column = table.getColumn(filter.columnId);
+            if (!column) return null;
+            return (
+              <DataTableFacetedFilter
+                key={filter.columnId}
+                column={column}
+                title={filter.title}
+                options={filter.options}
+              />
+            );
+          })}
+        </div>
+        {isFiltered && (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              table.resetColumnFilters();
+              table.setGlobalFilter("");
+            }}
+            className="h-8 px-2 lg:px-3"
+          >
+            Reset
+            <Cross2Icon className="ms-2 h-4 w-4" />
+          </Button>
+        )}
+      </div>
+      <DataTableViewOptions table={table} />
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/data-table/view-options.tsx", `import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu";
+import { MixerHorizontalIcon } from "@radix-ui/react-icons";
+import { type Table } from "@tanstack/react-table";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+
+type DataTableViewOptionsProps<TData> = {
+  table: Table<TData>;
+};
+
+export function DataTableViewOptions<TData>({ table }: DataTableViewOptionsProps<TData>) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="ms-auto hidden h-8 lg:flex">
+          <MixerHorizontalIcon className="size-4" />
+          View
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-37.5">
+        <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {table
+          .getAllColumns()
+          .filter((column) => typeof column.accessorFn !== "undefined" && column.getCanHide())
+          .map((column) => {
+            return (
+              <DropdownMenuCheckboxItem
+                key={column.id}
+                className="capitalize"
+                checked={column.getIsVisible()}
+                onCheckedChange={(value) => column.toggleVisibility(!!value)}
+              >
+                {column.id}
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/date-picker.tsx", `import { format } from "date-fns";
+import { Calendar as CalendarIcon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+type DatePickerProps = {
+  selected: Date | undefined;
+  onSelect: (date: Date | undefined) => void;
+  placeholder?: string;
+};
+
+export function DatePicker({ selected, onSelect, placeholder = "Pick a date" }: DatePickerProps) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          data-empty={!selected}
+          className="w-60 justify-start text-start font-normal data-[empty=true]:text-muted-foreground"
+        >
+          {selected ? format(selected, "MMM d, yyyy") : <span>{placeholder}</span>}
+          <CalendarIcon className="ms-auto h-4 w-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0">
+        <Calendar
+          mode="single"
+          captionLayout="dropdown"
+          selected={selected}
+          onSelect={onSelect}
+          disabled={(date: Date) => date > new Date() || date < new Date("1900-01-01")}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/language-switch.tsx.hbs", `import { supportedLanguages, useTranslation } from "@{{projectName}}/i18n/react";
+import { Check, Languages } from "lucide-react";
+import { useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+
+export function LanguageSwitch() {
+  const { i18n } = useTranslation();
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label="Switch language"
+          className="scale-95 rounded-full"
+          size="icon"
+          variant="ghost"
+        >
+          <Languages className="size-[1.2rem]" />
+          <span className="sr-only">Switch language</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {supportedLanguages.map((language) => (
+          <LanguageItem
+            active={i18n.resolvedLanguage === language.value}
+            key={language.value}
+            label={language.label}
+            onChange={i18n.changeLanguage}
+            value={language.value}
+          />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function LanguageItem({
+  active,
+  label,
+  onChange,
+  value,
+}: {
+  active: boolean;
+  label: string;
+  onChange: (language: string) => Promise<unknown>;
+  value: string;
+}) {
+  const selectLanguage = useCallback(() => onChange(value), [onChange, value]);
+  return (
+    <DropdownMenuItem onClick={selectLanguage}>
+      {label}
+      <Check className={cn("ms-auto", !active && "hidden")} size={14} />
+    </DropdownMenuItem>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/app-sidebar.tsx", `import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarRail,
+} from "@/components/ui/sidebar";
+import { useLayout } from "@/context/layout-provider";
+import { authClient } from "@/lib/auth-client";
+
+// import { AppTitle } from './app-title'
+import { sidebarData } from "./data/sidebar-data";
+import { NavGroup } from "./nav-group";
+import { NavUser } from "./nav-user";
+import { TeamSwitcher } from "./team-switcher";
+
+export function AppSidebar() {
+  const { collapsible, variant } = useLayout();
+  const { data: session } = authClient.useSession();
+  return (
+    <Sidebar collapsible={collapsible} variant={variant}>
+      <SidebarHeader>
+        <TeamSwitcher teams={sidebarData.teams} />
+
+        {/* Replace <TeamSwitch /> with the following <AppTitle />
+         /* if you want to use the normal app title instead of TeamSwitch dropdown */}
+        {/* <AppTitle /> */}
+      </SidebarHeader>
+      <SidebarContent>
+        {sidebarData.navGroups.map((props) => (
+          <NavGroup key={props.title} {...props} />
+        ))}
+      </SidebarContent>
+      <SidebarFooter>
+        <NavUser
+          user={{
+            avatar: session?.user.image ?? "",
+            email: session?.user.email ?? "",
+            name: session?.user.name ?? "User",
+          }}
+        />
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/app-title.tsx", `import { Link } from "@tanstack/react-router";
+import { Menu, X } from "lucide-react";
+
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
+
+import { Button } from "../ui/button";
+
+export function AppTitle() {
+  const { setOpenMobile } = useSidebar();
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          size="lg"
+          className="gap-0 py-0 hover:bg-transparent active:bg-transparent"
+          asChild
+        >
+          <div>
+            <Link
+              to="/"
+              onClick={() => setOpenMobile(false)}
+              className="grid flex-1 text-start text-sm leading-tight"
+            >
+              <span className="truncate font-bold">Shadcn-Admin</span>
+              <span className="truncate text-xs">Vite + ShadcnUI</span>
+            </Link>
+            <ToggleSidebar />
+          </div>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
+function ToggleSidebar({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
+  const { toggleSidebar } = useSidebar();
+
+  return (
+    <Button
+      data-sidebar="trigger"
+      data-slot="sidebar-trigger"
+      variant="ghost"
+      size="icon"
+      className={cn("aspect-square size-8 max-md:scale-125", className)}
+      onClick={(event) => {
+        onClick?.(event);
+        toggleSidebar();
+      }}
+      {...props}
+    >
+      <X className="md:hidden" />
+      <Menu className="max-md:hidden" />
+      <span className="sr-only">Toggle Sidebar</span>
+    </Button>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/authenticated-layout.tsx", `import { Outlet } from "@tanstack/react-router";
+
+import { AppSidebar } from "@/components/layout/app-sidebar";
+import { SkipToMain } from "@/components/skip-to-main";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { LayoutProvider } from "@/context/layout-provider";
+import { SearchProvider } from "@/context/search-provider";
+import { getCookie } from "@/lib/cookies";
+import { cn } from "@/lib/utils";
+
+type AuthenticatedLayoutProps = {
+  children?: React.ReactNode;
+};
+
+export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
+  const defaultOpen = getCookie("sidebar_state") !== "false";
+  return (
+    <SearchProvider>
+      <LayoutProvider>
+        <SidebarProvider defaultOpen={defaultOpen}>
+          <SkipToMain />
+          <AppSidebar />
+          <SidebarInset
+            className={cn(
+              // Set content container, so we can use container queries
+              "@container/content",
+
+              // If layout is fixed, set the height
+              // to 100svh to prevent overflow
+              "has-data-[layout=fixed]:h-svh",
+
+              // If layout is fixed and sidebar is inset,
+              // set the height to 100svh - spacing (total margins) to prevent overflow
+              "peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-(var(--spacing)*4))]",
+            )}
+          >
+            {children ?? <Outlet />}
+          </SidebarInset>
+        </SidebarProvider>
+      </LayoutProvider>
+    </SearchProvider>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/data/sidebar-data.ts.hbs", `import {
+  Activity,
+  AudioWaveform,
+  Command,
+  GalleryVerticalEnd,
+  LayoutDashboard,
+  ScrollText,
+  Settings,
+  ShieldCheck,
+  UserCog,
+  Users,
+} from "lucide-react";
+import type { SidebarData } from "../types";
+
+export const sidebarData: SidebarData = {
+  navGroups: [
+    {
+      items: [
+        {
+          icon: LayoutDashboard,
+          title: "Dashboard",
+          url: "/",
+        },
+      ],
+      title: "Workspace",
+    },
+    {
+      items: [
+        {
+          icon: ShieldCheck,
+          items: [
+            {
+              icon: Users,
+              title: "Users",
+              url: "/users",
+            },
+            {
+              icon: UserCog,
+              title: "Roles & permissions",
+              url: "/tasks",
+            },
+            {
+              icon: ScrollText,
+              title: "Audit log",
+              url: "/apps",
+            },
+          ],
+          title: "System management",
+        },
+      ],
+      title: "Administration",
+    },
+    {
+      items: [
+        {
+          icon: Settings,
+          items: [
+            {
+              icon: UserCog,
+              title: "Profile",
+              url: "/settings",
+            },
+            {
+              icon: Activity,
+              title: "Account security",
+              url: "/settings/account",
+            },
+          ],
+          title: "Settings",
+        },
+      ],
+      title: "Account",
+    },
+  ],
+  teams: [
+    {
+      logo: Command,
+      name: "{{projectName}}",
+      plan: "Vite + ShadcnUI",
+    },
+    {
+      logo: GalleryVerticalEnd,
+      name: "Acme Inc",
+      plan: "Enterprise",
+    },
+    {
+      logo: AudioWaveform,
+      name: "Acme Corp.",
+      plan: "Startup",
+    },
+  ],
+  user: {
+    avatar: "",
+    email: "",
+    name: "",
+  },
+};
+`],
+  ["addons/admin/apps/web/src/components/layout/header.tsx", `import { useEffect, useState } from "react";
+
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
+
+type HeaderProps = React.HTMLAttributes<HTMLElement> & {
+  fixed?: boolean;
+  ref?: React.Ref<HTMLElement>;
+};
+
+export function Header({ className, fixed, children, ...props }: HeaderProps) {
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    const onScroll = () => {
+      setOffset(document.body.scrollTop || document.documentElement.scrollTop);
+    };
+
+    // Add scroll listener to the body
+    document.addEventListener("scroll", onScroll, { passive: true });
+
+    // Clean up the event listener on unmount
+    return () => document.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <header
+      className={cn(
+        "z-50 h-16",
+        fixed && "header-fixed peer/header sticky top-0 w-[inherit]",
+        offset > 10 && fixed ? "shadow" : "shadow-none",
+        className,
+      )}
+      {...props}
+    >
+      <div
+        className={cn(
+          "relative flex h-full items-center gap-3 p-4 sm:gap-4",
+          offset > 10 &&
+            fixed &&
+            "after:absolute after:inset-0 after:-z-10 after:bg-background/20 after:backdrop-blur-lg",
+        )}
+      >
+        <SidebarTrigger variant="outline" className="max-md:scale-125" />
+        <Separator orientation="vertical" className="h-6" />
+        {children}
+      </div>
+    </header>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/main.tsx", `import { cn } from "@/lib/utils";
+
+type MainProps = React.HTMLAttributes<HTMLElement> & {
+  fixed?: boolean;
+  fluid?: boolean;
+  ref?: React.Ref<HTMLElement>;
+};
+
+export function Main({ fixed, className, fluid, ...props }: MainProps) {
+  return (
+    <main
+      data-layout={fixed ? "fixed" : "auto"}
+      className={cn(
+        "px-4 py-6",
+
+        // If layout is fixed, make the main container flex and grow
+        fixed && "flex grow flex-col overflow-hidden",
+
+        // If layout is not fluid, set the max-width
+        !fluid && "@7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/nav-group.tsx", `import { Link, useLocation } from "@tanstack/react-router";
+import { ChevronRight } from "lucide-react";
+import { type ReactNode } from "react";
+
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
+
+import { Badge } from "../ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import {
+  type NavCollapsible,
+  type NavItem,
+  type NavLink,
+  type NavGroup as NavGroupProps,
+} from "./types";
+
+export function NavGroup({ title, items }: NavGroupProps) {
+  const { state, isMobile } = useSidebar();
+  const href = useLocation({ select: (location) => location.href });
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>{title}</SidebarGroupLabel>
+      <SidebarMenu>
+        {items.map((item) => {
+          const key = \`\${item.title}-\${item.url}\`;
+
+          if (!item.items) return <SidebarMenuLink key={key} item={item} href={href} />;
+
+          if (state === "collapsed" && !isMobile)
+            return <SidebarMenuCollapsedDropdown key={key} item={item} href={href} />;
+
+          return <SidebarMenuCollapsible key={key} item={item} href={href} />;
+        })}
+      </SidebarMenu>
+    </SidebarGroup>
+  );
+}
+
+function NavBadge({ children }: { children: ReactNode }) {
+  return <Badge className="rounded-full px-1 py-0 text-xs">{children}</Badge>;
+}
+
+function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
+  const { setOpenMobile } = useSidebar();
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={checkIsActive(href, item)} tooltip={item.title}>
+        <Link to={item.url} onClick={() => setOpenMobile(false)}>
+          {item.icon && <item.icon />}
+          <span>{item.title}</span>
+          {item.badge && <NavBadge>{item.badge}</NavBadge>}
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+function SidebarMenuCollapsible({ item, href }: { item: NavCollapsible; href: string }) {
+  const { setOpenMobile } = useSidebar();
+  return (
+    <Collapsible
+      asChild
+      defaultOpen={checkIsActive(href, item, true)}
+      className="group/collapsible"
+    >
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton tooltip={item.title}>
+            {item.icon && <item.icon />}
+            <span>{item.title}</span>
+            {item.badge && <NavBadge>{item.badge}</NavBadge>}
+            <ChevronRight className="ms-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 rtl:rotate-180" />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="CollapsibleContent">
+          <SidebarMenuSub>
+            {item.items.map((subItem) => (
+              <SidebarMenuSubItem key={subItem.title}>
+                <SidebarMenuSubButton asChild isActive={checkIsActive(href, subItem)}>
+                  <Link to={subItem.url} onClick={() => setOpenMobile(false)}>
+                    {subItem.icon && <subItem.icon />}
+                    <span>{subItem.title}</span>
+                    {subItem.badge && <NavBadge>{subItem.badge}</NavBadge>}
+                  </Link>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            ))}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
+  );
+}
+
+function SidebarMenuCollapsedDropdown({ item, href }: { item: NavCollapsible; href: string }) {
+  return (
+    <SidebarMenuItem>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <SidebarMenuButton tooltip={item.title} isActive={checkIsActive(href, item)}>
+            {item.icon && <item.icon />}
+            <span>{item.title}</span>
+            {item.badge && <NavBadge>{item.badge}</NavBadge>}
+            <ChevronRight className="ms-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+          </SidebarMenuButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="right" align="start" sideOffset={4}>
+          <DropdownMenuLabel>
+            {item.title} {item.badge ? \`(\${item.badge})\` : ""}
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {item.items.map((sub) => (
+            <DropdownMenuItem key={\`\${sub.title}-\${sub.url}\`} asChild>
+              <Link to={sub.url} className={\`\${checkIsActive(href, sub) ? "bg-secondary" : ""}\`}>
+                {sub.icon && <sub.icon />}
+                <span className="max-w-52 text-wrap">{sub.title}</span>
+                {sub.badge && <span className="ms-auto text-xs">{sub.badge}</span>}
+              </Link>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SidebarMenuItem>
+  );
+}
+
+function checkIsActive(href: string, item: NavItem, mainNav = false) {
+  return (
+    href === item.url || // /endpint?search=param
+    href.split("?")[0] === item.url || // endpoint
+    !!item?.items?.filter((i) => i.url === href).length || // if child nav is active
+    (mainNav && href.split("/")[1] !== "" && href.split("/")[1] === item?.url?.split("/")[1])
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/nav-user.tsx", `import { Link } from "@tanstack/react-router";
+import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Sparkles } from "lucide-react";
+
+import { SignOutDialog } from "@/components/sign-out-dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
+import useDialogState from "@/hooks/use-dialog-state";
+
+type NavUserProps = {
+  user: {
+    name: string;
+    email: string;
+    avatar: string;
+  };
+};
+
+export function NavUser({ user }: NavUserProps) {
+  const { isMobile } = useSidebar();
+  const [open, setOpen] = useDialogState();
+
+  return (
+    <>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <SidebarMenuButton
+                size="lg"
+                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              >
+                <Avatar className="h-8 w-8 rounded-lg">
+                  <AvatarImage src={user.avatar} alt={user.name} />
+                  <AvatarFallback className="rounded-lg">SN</AvatarFallback>
+                </Avatar>
+                <div className="grid flex-1 text-start text-sm leading-tight">
+                  <span className="truncate font-semibold">{user.name}</span>
+                  <span className="truncate text-xs">{user.email}</span>
+                </div>
+                <ChevronsUpDown className="ms-auto size-4" />
+              </SidebarMenuButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+              side={isMobile ? "bottom" : "right"}
+              align="end"
+              sideOffset={4}
+            >
+              <DropdownMenuLabel className="p-0 font-normal">
+                <div className="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarImage src={user.avatar} alt={user.name} />
+                    <AvatarFallback className="rounded-lg">SN</AvatarFallback>
+                  </Avatar>
+                  <div className="grid flex-1 text-start text-sm leading-tight">
+                    <span className="truncate font-semibold">{user.name}</span>
+                    <span className="truncate text-xs">{user.email}</span>
+                  </div>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <Sparkles />
+                  Upgrade to Pro
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem asChild>
+                  <Link to="/settings/account">
+                    <BadgeCheck />
+                    Account
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/settings">
+                    <CreditCard />
+                    Billing
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/settings/notifications">
+                    <Bell />
+                    Notifications
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => setOpen(true)}>
+                <LogOut />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarMenuItem>
+      </SidebarMenu>
+
+      <SignOutDialog open={!!open} onOpenChange={setOpen} />
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/team-switcher.tsx", `import { ChevronsUpDown, Plus } from "lucide-react";
+import * as React from "react";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
+
+type TeamSwitcherProps = {
+  teams: {
+    name: string;
+    logo: React.ElementType;
+    plan: string;
+  }[];
+};
+
+export function TeamSwitcher({ teams }: TeamSwitcherProps) {
+  const { isMobile } = useSidebar();
+  const [activeTeam, setActiveTeam] = React.useState(teams[0]);
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                <activeTeam.logo className="size-4" />
+              </div>
+              <div className="grid flex-1 text-start text-sm leading-tight">
+                <span className="truncate font-semibold">{activeTeam.name}</span>
+                <span className="truncate text-xs">{activeTeam.plan}</span>
+              </div>
+              <ChevronsUpDown className="ms-auto" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+            align="start"
+            side={isMobile ? "bottom" : "right"}
+            sideOffset={4}
+          >
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Teams</DropdownMenuLabel>
+            {teams.map((team, index) => (
+              <DropdownMenuItem
+                key={team.name}
+                onClick={() => setActiveTeam(team)}
+                className="gap-2 p-2"
+              >
+                <div className="flex size-6 items-center justify-center rounded-sm border">
+                  <team.logo className="size-4 shrink-0" />
+                </div>
+                {team.name}
+                <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="gap-2 p-2">
+              <div className="flex size-6 items-center justify-center rounded-md border bg-background">
+                <Plus className="size-4" />
+              </div>
+              <div className="font-medium text-muted-foreground">Add team</div>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/top-nav.tsx", `import { Link } from "@tanstack/react-router";
+import { Menu } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+
+type TopNavProps = React.HTMLAttributes<HTMLElement> & {
+  links: {
+    title: string;
+    href: string;
+    isActive: boolean;
+    disabled?: boolean;
+  }[];
+};
+
+export function TopNav({ className, links, ...props }: TopNavProps) {
+  return (
+    <>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button size="icon" variant="outline" className={cn("md:size-7 lg:hidden", className)}>
+            <Menu />
+            <span className="sr-only">Toggle navigation menu</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="bottom" align="start">
+          {links.map(({ title, href, isActive, disabled }) => (
+            <DropdownMenuItem key={\`\${title}-\${href}\`} asChild>
+              <Link
+                to={href}
+                className={!isActive ? "text-muted-foreground" : ""}
+                disabled={disabled}
+              >
+                {title}
+              </Link>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <nav
+        className={cn("hidden items-center space-x-4 lg:flex lg:space-x-4 xl:space-x-6", className)}
+        {...props}
+      >
+        {links.map(({ title, href, isActive, disabled }) => (
+          <Link
+            key={\`\${title}-\${href}\`}
+            to={href}
+            disabled={disabled}
+            className={\`text-sm font-medium transition-colors hover:text-primary \${isActive ? "" : "text-muted-foreground"}\`}
+          >
+            {title}
+          </Link>
+        ))}
+      </nav>
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/layout/types.ts", `import { type LinkProps } from "@tanstack/react-router";
+
+type User = {
+  name: string;
+  email: string;
+  avatar: string;
+};
+
+type Team = {
+  name: string;
+  logo: React.ElementType;
+  plan: string;
+};
+
+type BaseNavItem = {
+  title: string;
+  badge?: string;
+  icon?: React.ElementType;
+};
+
+type NavLink = BaseNavItem & {
+  url: LinkProps["to"] | (string & {});
+  items?: never;
+};
+
+type NavCollapsible = BaseNavItem & {
+  items: (BaseNavItem & { url: LinkProps["to"] | (string & {}) })[];
+  url?: never;
+};
+
+type NavItem = NavCollapsible | NavLink;
+
+type NavGroup = {
+  title: string;
+  items: NavItem[];
+};
+
+type SidebarData = {
+  user: User;
+  teams: Team[];
+  navGroups: NavGroup[];
+};
+
+export type { SidebarData, NavGroup, NavItem, NavCollapsible, NavLink };
+`],
+  ["addons/admin/apps/web/src/components/learn-more.tsx", `import { type Root, type Content, type Trigger } from "@radix-ui/react-popover";
+import { CircleQuestionMark } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+
+type LearnMoreProps = React.ComponentProps<typeof Root> & {
+  contentProps?: React.ComponentProps<typeof Content>;
+  triggerProps?: React.ComponentProps<typeof Trigger>;
+};
+
+export function LearnMore({ children, contentProps, triggerProps, ...props }: LearnMoreProps) {
+  return (
+    <Popover {...props}>
+      <PopoverTrigger
+        asChild
+        {...triggerProps}
+        className={cn("size-5 rounded-full", triggerProps?.className)}
+      >
+        <Button variant="outline" size="icon">
+          <span className="sr-only">Learn more</span>
+          <CircleQuestionMark className="size-4 [&>circle]:hidden" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        {...contentProps}
+        className={cn("text-sm text-muted-foreground", contentProps?.className)}
+      >
+        {children}
+      </PopoverContent>
+    </Popover>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/long-text.tsx", `import { useRef, useState } from "react";
+
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+
+type LongTextProps = {
+  children: React.ReactNode;
+  className?: string;
+  contentClassName?: string;
+};
+
+export function LongText({ children, className = "", contentClassName = "" }: LongTextProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isOverflown, setIsOverflown] = useState(false);
+
+  // Use ref callback to check overflow when element is mounted
+  const refCallback = (node: HTMLDivElement | null) => {
+    ref.current = node;
+    if (node && checkOverflow(node)) {
+      queueMicrotask(() => setIsOverflown(true));
+    }
+  };
+
+  if (!isOverflown)
+    return (
+      <div ref={refCallback} className={cn("truncate", className)}>
+        {children}
+      </div>
+    );
+
+  return (
+    <>
+      <div className="hidden sm:block">
+        <TooltipProvider delayDuration={0}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div ref={refCallback} className={cn("truncate", className)}>
+                {children}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className={contentClassName}>{children}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <div className="sm:hidden">
+        <Popover>
+          <PopoverTrigger asChild>
+            <div ref={refCallback} className={cn("truncate", className)}>
+              {children}
+            </div>
+          </PopoverTrigger>
+          <PopoverContent className={cn("w-fit", contentClassName)}>
+            <p>{children}</p>
+          </PopoverContent>
+        </Popover>
+      </div>
+    </>
+  );
+}
+
+const checkOverflow = (textContainer: HTMLDivElement | null) => {
+  if (textContainer) {
+    return (
+      textContainer.offsetHeight < textContainer.scrollHeight ||
+      textContainer.offsetWidth < textContainer.scrollWidth
+    );
+  }
+  return false;
+};
+`],
+  ["addons/admin/apps/web/src/components/navigation-progress.tsx", `import { useRouterState } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
+import LoadingBar, { type LoadingBarRef } from "react-top-loading-bar";
+
+export function NavigationProgress() {
+  const ref = useRef<LoadingBarRef>(null);
+  const state = useRouterState();
+
+  useEffect(() => {
+    if (state.status === "pending") {
+      ref.current?.continuousStart();
+    } else {
+      ref.current?.complete();
+    }
+  }, [state.status]);
+
+  return <LoadingBar color="var(--muted-foreground)" ref={ref} shadow={true} height={2} />;
+}
+`],
+  ["addons/admin/apps/web/src/components/password-input.test.tsx", `import { useForm } from "react-hook-form";
+import { describe, expect, it } from "vitest";
+import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+
+import { PasswordInput } from "./password-input";
+
+describe("PasswordInput", () => {
+  it("renders the password input correctly", async () => {
+    const { getByPlaceholder, getByRole } = await render(<PasswordInput placeholder="password" />);
+
+    const passwordInput = getByPlaceholder("password");
+    const showPasswordButton = getByRole("button", { name: /show password/i });
+
+    await expect.element(passwordInput).toBeInTheDocument();
+    await expect.element(passwordInput).toHaveAttribute("type", "password");
+    await expect.element(showPasswordButton).toBeVisible();
+  });
+
+  it("toggles the password visibility when the show password button is clicked", async () => {
+    const { getByPlaceholder, getByRole } = await render(<PasswordInput placeholder="password" />);
+
+    const passwordInput = getByPlaceholder("password");
+    const showPasswordButton = getByRole("button", { name: /show password/i });
+
+    await expect.element(passwordInput).toHaveAttribute("type", "password");
+    await expect.element(showPasswordButton).toBeInTheDocument();
+
+    await userEvent.click(showPasswordButton);
+
+    await expect.element(passwordInput).toHaveAttribute("type", "text");
+    const hidePasswordButton = getByRole("button", { name: /hide password/i });
+    await expect.element(hidePasswordButton).toBeInTheDocument();
+
+    await userEvent.click(hidePasswordButton);
+
+    await expect.element(passwordInput).toHaveAttribute("type", "password");
+    await expect.element(getByRole("button", { name: /show password/i })).toBeInTheDocument();
+  });
+
+  it("disables the show password button when the password input is disabled", async () => {
+    const { getByPlaceholder, getByRole } = await render(
+      <PasswordInput placeholder="password" disabled />,
+    );
+
+    const passwordInput = getByPlaceholder("password");
+    const showPasswordButton = getByRole("button", { name: /show password/i });
+    await expect.element(showPasswordButton).toBeDisabled();
+    await expect.element(passwordInput).toBeDisabled();
+  });
+
+  it("works with FormLabel and react-hook-form field spread", async () => {
+    function PasswordInLabeledForm() {
+      const form = useForm<{ password: string }>({
+        defaultValues: { password: "" },
+      });
+
+      return (
+        <Form {...form}>
+          <form>
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <PasswordInput {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+      );
+    }
+
+    const { getByLabelText } = await render(<PasswordInLabeledForm />);
+
+    const password = getByLabelText(/^Password$/i);
+    await expect.element(password).toHaveAttribute("type", "password");
+
+    await userEvent.type(password, "secret-value");
+
+    await expect.element(password).toHaveValue("secret-value");
+  });
+});
+`],
+  ["addons/admin/apps/web/src/components/password-input.tsx", `import { Eye, EyeOff } from "lucide-react";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+import { Button } from "./ui/button";
+
+type PasswordInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  ref?: React.Ref<HTMLInputElement>;
+};
+
+export function PasswordInput({ className, disabled, ref, ...props }: PasswordInputProps) {
+  const [showPassword, setShowPassword] = React.useState(false);
+
+  return (
+    <div className={cn("relative rounded-md", className)}>
+      <input
+        type={showPassword ? "text" : "password"}
+        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
+        ref={ref}
+        disabled={disabled}
+        {...props}
+      />
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        disabled={disabled}
+        className="absolute inset-e-1 top-1/2 h-6 w-6 -translate-y-1/2 rounded-md text-muted-foreground"
+        onClick={() => setShowPassword((prev) => !prev)}
+      >
+        {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
+        <span className="sr-only">{showPassword ? "Hide password" : "Show password"}</span>
+      </Button>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/profile-dropdown.tsx", `import { Link } from "@tanstack/react-router";
+import { useCallback } from "react";
+
+import { SignOutDialog } from "@/components/sign-out-dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import useDialogState from "@/hooks/use-dialog-state";
+import { authClient } from "@/lib/auth-client";
+
+export function ProfileDropdown() {
+  const [open, setOpen] = useDialogState();
+  const { data: session } = authClient.useSession();
+  const openSignOut = useCallback(() => setOpen(true), [setOpen]);
+
+  return (
+    <>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button className="relative h-8 w-8 rounded-full" variant="ghost">
+            <Avatar className="h-8 w-8">
+              <AvatarImage
+                alt={session?.user.name ?? "User"}
+                src={session?.user.image ?? undefined}
+              />
+              <AvatarFallback>
+                {(session?.user.name ?? "U").slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56" forceMount>
+          <DropdownMenuLabel className="font-normal">
+            <div className="flex flex-col gap-1.5">
+              <p className="font-medium text-sm leading-none">{session?.user.name ?? "User"}</p>
+              <p className="text-muted-foreground text-xs leading-none">
+                {session?.user.email ?? ""}
+              </p>
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem asChild>
+              <Link to="/settings">
+                Profile
+                <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/settings">
+                Billing
+                <DropdownMenuShortcut>⌘B</DropdownMenuShortcut>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/settings">
+                Settings
+                <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem>New Team</DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={openSignOut} variant="destructive">
+            Sign out
+            <DropdownMenuShortcut className="text-current">⇧⌘Q</DropdownMenuShortcut>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <SignOutDialog onOpenChange={setOpen} open={!!open} />
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/search.tsx", `import { SearchIcon } from "lucide-react";
+
+import { useSearch } from "@/context/search-provider";
+import { cn } from "@/lib/utils";
+
+import { Button } from "./ui/button";
+
+export function Search({
+  className = "",
+  placeholder = "Search",
+  ...props
+}: React.ComponentProps<"button"> & { placeholder?: string }) {
+  const { setOpen } = useSearch();
+  return (
+    <Button
+      {...props}
+      variant="outline"
+      className={cn(
+        "group relative h-8 w-full flex-1 justify-start rounded-md bg-muted/25 text-sm font-normal text-muted-foreground shadow-none hover:bg-accent sm:w-40 sm:pe-12 md:flex-none lg:w-52 xl:w-64",
+        className,
+      )}
+      aria-keyshortcuts="Meta+K Control+K"
+      onClick={() => setOpen(true)}
+    >
+      <SearchIcon
+        aria-hidden="true"
+        className="absolute inset-s-1.5 top-1/2 -translate-y-1/2"
+        size={16}
+      />
+      <span className="ms-4">{placeholder}</span>
+      <kbd className="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
+        <span className="text-xs">⌘</span>K
+      </kbd>
+    </Button>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/select-dropdown.tsx", `import { Loader } from "lucide-react";
+
+import { FormControl } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+type SelectDropdownProps = {
+  onValueChange?: (value: string) => void;
+  defaultValue: string | undefined;
+  placeholder?: string;
+  isPending?: boolean;
+  items: { label: string; value: string }[] | undefined;
+  disabled?: boolean;
+  className?: string;
+  isControlled?: boolean;
+};
+
+export function SelectDropdown({
+  defaultValue,
+  onValueChange,
+  isPending,
+  items,
+  placeholder,
+  disabled,
+  className = "",
+  isControlled = false,
+}: SelectDropdownProps) {
+  const defaultState = isControlled
+    ? { value: defaultValue, onValueChange }
+    : { defaultValue, onValueChange };
+  return (
+    <Select {...defaultState}>
+      <FormControl>
+        <SelectTrigger disabled={disabled} className={cn(className)}>
+          <SelectValue placeholder={placeholder ?? "Select"} />
+        </SelectTrigger>
+      </FormControl>
+      <SelectContent>
+        {isPending ? (
+          <SelectItem disabled value="loading" className="h-14">
+            <div className="flex items-center justify-center gap-2">
+              <Loader className="h-5 w-5 animate-spin" />
+              {"  "}
+              Loading...
+            </div>
+          </SelectItem>
+        ) : (
+          items?.map(({ label, value }) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/sign-out-dialog.test.tsx", `import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { SignOutDialog } from "./sign-out-dialog";
+
+const navigate = vi.fn();
+const reset = vi.fn();
+
+const MOCK_HREF = "https://app.test/dashboard?tab=1";
+
+vi.mock("@/stores/auth-store", () => ({
+  useAuthStore: () => ({
+    auth: { reset },
+  }),
+}));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    useNavigate: () => navigate,
+    useLocation: () => ({ href: MOCK_HREF }),
+  };
+});
+
+describe("SignOutDialog", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls auth.reset and navigates to sign-in with current location as redirect", async () => {
+    const { getByRole } = await render(<SignOutDialog open onOpenChange={vi.fn()} />);
+
+    await userEvent.click(getByRole("button", { name: /^Sign out$/i }));
+
+    expect(reset).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith({
+      to: "/sign-in",
+      search: { redirect: MOCK_HREF },
+      replace: true,
+    });
+  });
+
+  it("does not call reset or navigate when Cancel is clicked", async () => {
+    const { getByRole } = await render(<SignOutDialog open onOpenChange={vi.fn()} />);
+
+    await userEvent.click(getByRole("button", { name: /^Cancel$/i }));
+
+    expect(reset).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+});
+`],
+  ["addons/admin/apps/web/src/components/sign-out-dialog.tsx", `import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useCallback } from "react";
+
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { authClient } from "@/lib/auth-client";
+
+interface SignOutDialogProps {
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}
+
+export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const handleSignOut = useCallback(async () => {
+    await authClient.signOut();
+    const currentPath = location.href;
+    await navigate({
+      replace: true,
+      search: { redirect: currentPath },
+      to: "/sign-in",
+    });
+  }, [location.href, navigate]);
+
+  return (
+    <ConfirmDialog
+      className="sm:max-w-sm"
+      confirmText="Sign out"
+      desc="Are you sure you want to sign out? You will need to sign in again to access your account."
+      destructive
+      handleConfirm={handleSignOut}
+      onOpenChange={onOpenChange}
+      open={open}
+      title="Sign out"
+    />
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/skip-to-main.tsx", `export function SkipToMain() {
+  return (
+    <a
+      className={\`fixed inset-s-44 z-999 -translate-y-52 bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground opacity-95 shadow-sm transition hover:bg-primary/90 focus:translate-y-3 focus:transform focus-visible:ring-1 focus-visible:ring-ring\`}
+      href="#content"
+    >
+      Skip to Main
+    </a>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/theme-switch.tsx", `import { Check, Moon, Sun } from "lucide-react";
+import { useCallback, useEffect } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useTheme } from "@/context/theme-provider";
+import { cn } from "@/lib/utils";
+
+export function ThemeSwitch() {
+  const { theme, setTheme } = useTheme();
+  const selectLight = useCallback(() => setTheme("light"), [setTheme]);
+  const selectDark = useCallback(() => setTheme("dark"), [setTheme]);
+  const selectSystem = useCallback(() => setTheme("system"), [setTheme]);
+
+  /* Update theme-color meta tag
+   * when theme is updated */
+  useEffect(() => {
+    const themeColor = theme === "dark" ? "#171717" : "#fff";
+    const metaThemeColor = document.querySelector("meta[name='theme-color']");
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute("content", themeColor);
+    }
+  }, [theme]);
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button className="scale-95 rounded-full" size="icon" variant="ghost">
+          <Sun className="size-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute size-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Toggle theme</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={selectLight}>
+          Light <Check className={cn("ms-auto", theme !== "light" && "hidden")} size={14} />
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={selectDark}>
+          Dark
+          <Check className={cn("ms-auto", theme !== "dark" && "hidden")} size={14} />
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={selectSystem}>
+          System
+          <Check className={cn("ms-auto", theme !== "system" && "hidden")} size={14} />
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/ui/alert-dialog.tsx", `import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
+import * as React from "react";
+
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />;
+}
+
+function AlertDialogTrigger({
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
+  return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />;
+}
+
+function AlertDialogPortal({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
+  return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />;
+}
+
+function AlertDialogOverlay({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
+  return (
+    <AlertDialogPrimitive.Overlay
+      data-slot="alert-dialog-overlay"
+      className={cn(
+        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function AlertDialogContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  return (
+    <AlertDialogPortal>
+      <AlertDialogOverlay />
+      <AlertDialogPrimitive.Content
+        data-slot="alert-dialog-content"
+        className={cn(
+          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
+          className,
+        )}
+        {...props}
+      />
+    </AlertDialogPortal>
+  );
+}
+
+function AlertDialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-dialog-header"
+      className={cn("flex flex-col gap-2 text-center sm:text-start", className)}
+      {...props}
+    />
+  );
+}
+
+function AlertDialogFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-dialog-footer"
+      className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+      {...props}
+    />
+  );
+}
+
+function AlertDialogTitle({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Title>) {
+  return (
+    <AlertDialogPrimitive.Title
+      data-slot="alert-dialog-title"
+      className={cn("text-lg font-semibold", className)}
+      {...props}
+    />
+  );
+}
+
+function AlertDialogDescription({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Description>) {
+  return (
+    <AlertDialogPrimitive.Description
+      data-slot="alert-dialog-description"
+      className={cn("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+function AlertDialogAction({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
+  return <AlertDialogPrimitive.Action className={cn(buttonVariants(), className)} {...props} />;
+}
+
+function AlertDialogCancel({
+  className,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Cancel>) {
+  return (
+    <AlertDialogPrimitive.Cancel
+      className={cn(buttonVariants({ variant: "outline" }), className)}
+      {...props}
+    />
+  );
+}
+
+export {
+  AlertDialog,
+  AlertDialogPortal,
+  AlertDialogOverlay,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+};
+`],
+  ["addons/admin/apps/web/src/components/ui/alert.tsx", `import { cva, type VariantProps } from "class-variance-authority";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+const alertVariants = cva(
+  "relative w-full rounded-lg border px-4 py-3 text-sm grid has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] grid-cols-[0_1fr] has-[>svg]:gap-x-3 gap-y-0.5 items-start [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current",
+  {
+    variants: {
+      variant: {
+        default: "bg-card text-card-foreground",
+        destructive:
+          "text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  },
+);
+
+function Alert({
+  className,
+  variant,
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
+  return (
+    <div
+      data-slot="alert"
+      role="alert"
+      className={cn(alertVariants({ variant }), className)}
+      {...props}
+    />
+  );
+}
+
+function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-title"
+      className={cn("col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight", className)}
+      {...props}
+    />
+  );
+}
+
+function AlertDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-description"
+      className={cn(
+        "col-start-2 grid justify-items-start gap-1 text-sm text-muted-foreground [&_p]:leading-relaxed",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Alert, AlertTitle, AlertDescription };
+`],
+  ["addons/admin/apps/web/src/components/ui/avatar.tsx", `import * as AvatarPrimitive from "@radix-ui/react-avatar";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Avatar({ className, ...props }: React.ComponentProps<typeof AvatarPrimitive.Root>) {
+  return (
+    <AvatarPrimitive.Root
+      data-slot="avatar"
+      className={cn("relative flex size-8 shrink-0 overflow-hidden rounded-full", className)}
+      {...props}
+    />
+  );
+}
+
+function AvatarImage({ className, ...props }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+  return (
+    <AvatarPrimitive.Image
+      data-slot="avatar-image"
+      className={cn("aspect-square size-full", className)}
+      {...props}
+    />
+  );
+}
+
+function AvatarFallback({
+  className,
+  ...props
+}: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
+  return (
+    <AvatarPrimitive.Fallback
+      data-slot="avatar-fallback"
+      className={cn("flex size-full items-center justify-center rounded-full bg-muted", className)}
+      {...props}
+    />
+  );
+}
+
+export { Avatar, AvatarImage, AvatarFallback };
+`],
+  ["addons/admin/apps/web/src/components/ui/badge.tsx", `import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+const badgeVariants = cva(
+  "inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden",
+  {
+    variants: {
+      variant: {
+        default: "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
+        secondary:
+          "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
+        destructive:
+          "border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+        outline: "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  },
+);
+
+function Badge({
+  className,
+  variant,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"span"> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : "span";
+
+  return (
+    <Comp data-slot="badge" className={cn(badgeVariants({ variant }), className)} {...props} />
+  );
+}
+
+export { Badge, badgeVariants };
+`],
+  ["addons/admin/apps/web/src/components/ui/button.tsx", `import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+        outline:
+          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+        secondary: "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-9 px-4 py-2 has-[>svg]:px-3",
+        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
+        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-9",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
+
+function Button({
+  className,
+  variant,
+  size,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+  }) {
+  const Comp = asChild ? Slot : "button";
+
+  return (
+    <Comp
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  );
+}
+
+export { Button, buttonVariants };
+`],
+  ["addons/admin/apps/web/src/components/ui/calendar.tsx", `import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import * as React from "react";
+import { DayButton, DayPicker, getDefaultClassNames } from "react-day-picker";
+
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+function Calendar({
+  className,
+  classNames,
+  showOutsideDays = true,
+  captionLayout = "label",
+  buttonVariant = "ghost",
+  formatters,
+  components,
+  ...props
+}: React.ComponentProps<typeof DayPicker> & {
+  buttonVariant?: React.ComponentProps<typeof Button>["variant"];
+}) {
+  const defaultClassNames = getDefaultClassNames();
+
+  return (
+    <DayPicker
+      showOutsideDays={showOutsideDays}
+      className={cn(
+        "group/calendar bg-background p-3 [--cell-size:--spacing(8)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
+        String.raw\`rtl:**:[.rdp-button\\_next>svg]:rotate-180\`,
+        String.raw\`rtl:**:[.rdp-button\\_previous>svg]:rotate-180\`,
+        className,
+      )}
+      captionLayout={captionLayout}
+      formatters={{
+        formatMonthDropdown: (date) => date.toLocaleString("default", { month: "short" }),
+        ...formatters,
+      }}
+      classNames={{
+        root: cn("w-fit", defaultClassNames.root),
+        months: cn("relative flex flex-col gap-4 md:flex-row", defaultClassNames.months),
+        month: cn("flex w-full flex-col gap-4", defaultClassNames.month),
+        nav: cn(
+          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1",
+          defaultClassNames.nav,
+        ),
+        button_previous: cn(
+          buttonVariants({ variant: buttonVariant }),
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
+          defaultClassNames.button_previous,
+        ),
+        button_next: cn(
+          buttonVariants({ variant: buttonVariant }),
+          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
+          defaultClassNames.button_next,
+        ),
+        month_caption: cn(
+          "flex h-(--cell-size) w-full items-center justify-center px-(--cell-size)",
+          defaultClassNames.month_caption,
+        ),
+        dropdowns: cn(
+          "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium",
+          defaultClassNames.dropdowns,
+        ),
+        dropdown_root: cn(
+          "relative rounded-md border border-input shadow-xs has-focus:border-ring has-focus:ring-[3px] has-focus:ring-ring/50",
+          defaultClassNames.dropdown_root,
+        ),
+        dropdown: cn("absolute inset-0 bg-popover opacity-0", defaultClassNames.dropdown),
+        caption_label: cn(
+          "font-medium select-none",
+          captionLayout === "label"
+            ? "text-sm"
+            : "flex h-8 items-center gap-1 rounded-md ps-2 pe-1 text-sm [&>svg]:size-3.5 [&>svg]:text-muted-foreground",
+          defaultClassNames.caption_label,
+        ),
+        table: "w-full border-collapse",
+        weekdays: cn("flex", defaultClassNames.weekdays),
+        weekday: cn(
+          "flex-1 rounded-md text-[0.8rem] font-normal text-muted-foreground select-none",
+          defaultClassNames.weekday,
+        ),
+        week: cn("mt-2 flex w-full", defaultClassNames.week),
+        week_number_header: cn("w-(--cell-size) select-none", defaultClassNames.week_number_header),
+        week_number: cn(
+          "text-[0.8rem] text-muted-foreground select-none",
+          defaultClassNames.week_number,
+        ),
+        day: cn(
+          "group/day relative aspect-square h-full w-full p-0 text-center select-none [&:first-child[data-selected=true]_button]:rounded-l-md [&:last-child[data-selected=true]_button]:rounded-r-md",
+          defaultClassNames.day,
+        ),
+        range_start: cn("rounded-l-md bg-accent", defaultClassNames.range_start),
+        range_middle: cn("rounded-none", defaultClassNames.range_middle),
+        range_end: cn("rounded-r-md bg-accent", defaultClassNames.range_end),
+        today: cn(
+          "rounded-md bg-accent text-accent-foreground data-[selected=true]:rounded-none",
+          defaultClassNames.today,
+        ),
+        outside: cn(
+          "text-muted-foreground aria-selected:text-muted-foreground",
+          defaultClassNames.outside,
+        ),
+        disabled: cn("text-muted-foreground opacity-50", defaultClassNames.disabled),
+        hidden: cn("invisible", defaultClassNames.hidden),
+        ...classNames,
+      }}
+      components={{
+        Root: ({ className, rootRef, ...props }) => {
+          return <div data-slot="calendar" ref={rootRef} className={cn(className)} {...props} />;
+        },
+        Chevron: ({ className, orientation, ...props }) => {
+          if (orientation === "left") {
+            return <ChevronLeftIcon className={cn("size-4", className)} {...props} />;
+          }
+
+          if (orientation === "right") {
+            return <ChevronRightIcon className={cn("size-4", className)} {...props} />;
+          }
+
+          return <ChevronDownIcon className={cn("size-4", className)} {...props} />;
+        },
+        DayButton: CalendarDayButton,
+        WeekNumber: ({ children, ...props }) => {
+          return (
+            <td {...props}>
+              <div className="flex size-(--cell-size) items-center justify-center text-center">
+                {children}
+              </div>
+            </td>
+          );
+        },
+        ...components,
+      }}
+      {...props}
+    />
+  );
+}
+
+function CalendarDayButton({
+  className,
+  day,
+  modifiers,
+  ...props
+}: React.ComponentProps<typeof DayButton>) {
+  const defaultClassNames = getDefaultClassNames();
+
+  const ref = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (modifiers.focused) ref.current?.focus();
+  }, [modifiers.focused]);
+
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      size="icon"
+      data-day={day.date.toLocaleDateString()}
+      data-selected-single={
+        modifiers.selected &&
+        !modifiers.range_start &&
+        !modifiers.range_end &&
+        !modifiers.range_middle
+      }
+      data-range-start={modifiers.range_start}
+      data-range-end={modifiers.range_end}
+      data-range-middle={modifiers.range_middle}
+      className={cn(
+        "flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-[3px] group-data-[focused=true]/day:ring-ring/50 data-[range-end=true]:rounded-md data-[range-end=true]:rounded-r-md data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:rounded-md data-[range-start=true]:rounded-l-md data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground dark:hover:text-accent-foreground [&>span]:text-xs [&>span]:opacity-70",
+        defaultClassNames.day,
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Calendar, CalendarDayButton };
+`],
+  ["addons/admin/apps/web/src/components/ui/card.tsx", `import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Card({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card"
+      className={cn(
+        "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-header"
+      className={cn(
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-title"
+      className={cn("leading-none font-semibold", className)}
+      {...props}
+    />
+  );
+}
+
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-description"
+      className={cn("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+function CardAction({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-action"
+      className={cn("col-start-2 row-span-2 row-start-1 self-start justify-self-end", className)}
+      {...props}
+    />
+  );
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card-content" className={cn("px-6", className)} {...props} />;
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-footer"
+      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
+      {...props}
+    />
+  );
+}
+
+export { Card, CardHeader, CardFooter, CardTitle, CardAction, CardDescription, CardContent };
+`],
+  ["addons/admin/apps/web/src/components/ui/checkbox.tsx", `import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
+import { CheckIcon } from "lucide-react";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+  return (
+    <CheckboxPrimitive.Root
+      data-slot="checkbox"
+      className={cn(
+        "peer size-4 shrink-0 rounded-lg border border-input shadow-xs transition-shadow outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:bg-input/30 dark:aria-invalid:ring-destructive/40 dark:data-[state=checked]:bg-primary",
+        className,
+      )}
+      {...props}
+    >
+      <CheckboxPrimitive.Indicator
+        data-slot="checkbox-indicator"
+        className="flex items-center justify-center text-current transition-none"
+      >
+        <CheckIcon className="size-3.5" />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
+  );
+}
+
+export { Checkbox };
+`],
+  ["addons/admin/apps/web/src/components/ui/collapsible.tsx", `import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
+
+function Collapsible({ ...props }: React.ComponentProps<typeof CollapsiblePrimitive.Root>) {
+  return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />;
+}
+
+function CollapsibleTrigger({
+  ...props
+}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleTrigger>) {
+  return <CollapsiblePrimitive.CollapsibleTrigger data-slot="collapsible-trigger" {...props} />;
+}
+
+function CollapsibleContent({
+  ...props
+}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent>) {
+  return <CollapsiblePrimitive.CollapsibleContent data-slot="collapsible-content" {...props} />;
+}
+
+export { Collapsible, CollapsibleTrigger, CollapsibleContent };
+`],
+  ["addons/admin/apps/web/src/components/ui/command.tsx", `import { Command as CommandPrimitive } from "cmdk";
+import { SearchIcon } from "lucide-react";
+import * as React from "react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+
+function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {
+  return (
+    <CommandPrimitive
+      data-slot="command"
+      className={cn(
+        "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function CommandDialog({
+  title = "Command Palette",
+  description = "Search for a command to run...",
+  children,
+  className,
+  showCloseButton = true,
+  ...props
+}: React.ComponentProps<typeof Dialog> & {
+  title?: string;
+  description?: string;
+  className?: string;
+  showCloseButton?: boolean;
+}) {
+  return (
+    <Dialog {...props}>
+      <DialogHeader className="sr-only">
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>{description}</DialogDescription>
+      </DialogHeader>
+      <DialogContent
+        className={cn("overflow-hidden p-0", className)}
+        showCloseButton={showCloseButton}
+      >
+        <Command className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground **:[[cmdk-group]]:px-2 **:[[cmdk-input]]:h-12 **:[[cmdk-item]]:px-2 **:[[cmdk-item]]:py-3">
+          {children}
+        </Command>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CommandInput({
+  className,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+  return (
+    <div data-slot="command-input-wrapper" className="flex h-9 items-center gap-2 border-b px-3">
+      <SearchIcon className="size-4 shrink-0 opacity-50" />
+      <CommandPrimitive.Input
+        data-slot="command-input"
+        className={cn(
+          "flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+          className,
+        )}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>) {
+  return (
+    <CommandPrimitive.List
+      data-slot="command-list"
+      className={cn("max-h-75 scroll-py-1 overflow-x-hidden overflow-y-auto", className)}
+      {...props}
+    />
+  );
+}
+
+function CommandEmpty({ ...props }: React.ComponentProps<typeof CommandPrimitive.Empty>) {
+  return (
+    <CommandPrimitive.Empty
+      data-slot="command-empty"
+      className="py-6 text-center text-sm"
+      {...props}
+    />
+  );
+}
+
+function CommandGroup({
+  className,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.Group>) {
+  return (
+    <CommandPrimitive.Group
+      data-slot="command-group"
+      className={cn(
+        "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function CommandSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.Separator>) {
+  return (
+    <CommandPrimitive.Separator
+      data-slot="command-separator"
+      className={cn("-mx-1 h-px bg-border", className)}
+      {...props}
+    />
+  );
+}
+
+function CommandItem({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Item>) {
+  return (
+    <CommandPrimitive.Item
+      data-slot="command-item"
+      className={cn(
+        "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function CommandShortcut({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="command-shortcut"
+      className={cn("ms-auto text-xs tracking-widest text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+export {
+  Command,
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandShortcut,
+  CommandSeparator,
+};
+`],
+  ["addons/admin/apps/web/src/components/ui/dialog.tsx", `"use client";
+
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { XIcon } from "lucide-react";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+}
+
+function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
+}
+
+function DialogPortal({ ...props }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
+  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
+}
+
+function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.Close>) {
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
+}
+
+function DialogOverlay({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+  return (
+    <DialogPrimitive.Overlay
+      data-slot="dialog-overlay"
+      className={cn(
+        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function DialogContent({
+  className,
+  children,
+  showCloseButton = true,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  showCloseButton?: boolean;
+}) {
+  return (
+    <DialogPortal data-slot="dialog-portal">
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        data-slot="dialog-content"
+        className={cn(
+          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton && (
+          <DialogPrimitive.Close
+            data-slot="dialog-close"
+            className="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+          >
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  );
+}
+
+function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-header"
+      className={cn("flex flex-col gap-2 text-center sm:text-start", className)}
+      {...props}
+    />
+  );
+}
+
+function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-footer"
+      className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+      {...props}
+    />
+  );
+}
+
+function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
+  return (
+    <DialogPrimitive.Title
+      data-slot="dialog-title"
+      className={cn("text-lg leading-none font-semibold", className)}
+      {...props}
+    />
+  );
+}
+
+function DialogDescription({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Description>) {
+  return (
+    <DialogPrimitive.Description
+      data-slot="dialog-description"
+      className={cn("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
+};
+`],
+  ["addons/admin/apps/web/src/components/ui/dropdown-menu.tsx", `import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function DropdownMenu({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
+  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
+}
+
+function DropdownMenuPortal({
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
+  return <DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />;
+}
+
+function DropdownMenuTrigger({
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
+  return <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />;
+}
+
+function DropdownMenuContent({
+  className,
+  sideOffset = 4,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.Content
+        data-slot="dropdown-menu-content"
+        sideOffset={sideOffset}
+        className={cn(
+          "z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          className,
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
+  );
+}
+
+function DropdownMenuGroup({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Group>) {
+  return <DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />;
+}
+
+function DropdownMenuItem({
+  className,
+  inset,
+  variant = "default",
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Item> & {
+  inset?: boolean;
+  variant?: "default" | "destructive";
+}) {
+  return (
+    <DropdownMenuPrimitive.Item
+      data-slot="dropdown-menu-item"
+      data-inset={inset}
+      data-variant={variant}
+      className={cn(
+        "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 data-inset:ps-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:*:[svg]:text-destructive!",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuCheckboxItem({
+  className,
+  children,
+  checked,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+  return (
+    <DropdownMenuPrimitive.CheckboxItem
+      data-slot="dropdown-menu-checkbox-item"
+      className={cn(
+        "relative flex cursor-default items-center gap-2 rounded-sm py-1.5 ps-8 pe-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      checked={checked}
+      {...props}
+    >
+      <span className="pointer-events-none absolute inset-s-2 flex size-3.5 items-center justify-center">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <CheckIcon className="size-4" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </DropdownMenuPrimitive.CheckboxItem>
+  );
+}
+
+function DropdownMenuRadioGroup({
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.RadioGroup>) {
+  return <DropdownMenuPrimitive.RadioGroup data-slot="dropdown-menu-radio-group" {...props} />;
+}
+
+function DropdownMenuRadioItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) {
+  return (
+    <DropdownMenuPrimitive.RadioItem
+      data-slot="dropdown-menu-radio-item"
+      className={cn(
+        "relative flex cursor-default items-center gap-2 rounded-sm py-1.5 ps-8 pe-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    >
+      <span className="pointer-events-none absolute inset-s-2 flex size-3.5 items-center justify-center">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <CircleIcon className="size-2 fill-current" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </DropdownMenuPrimitive.RadioItem>
+  );
+}
+
+function DropdownMenuLabel({
+  className,
+  inset,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Label> & {
+  inset?: boolean;
+}) {
+  return (
+    <DropdownMenuPrimitive.Label
+      data-slot="dropdown-menu-label"
+      data-inset={inset}
+      className={cn("px-2 py-1.5 text-sm font-medium data-inset:ps-8", className)}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
+  return (
+    <DropdownMenuPrimitive.Separator
+      data-slot="dropdown-menu-separator"
+      className={cn("-mx-1 my-1 h-px bg-border", className)}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="dropdown-menu-shortcut"
+      className={cn("ms-auto text-xs tracking-widest text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuSub({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Sub>) {
+  return <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {...props} />;
+}
+
+function DropdownMenuSubTrigger({
+  className,
+  inset,
+  children,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger> & {
+  inset?: boolean;
+}) {
+  return (
+    <DropdownMenuPrimitive.SubTrigger
+      data-slot="dropdown-menu-sub-trigger"
+      data-inset={inset}
+      className={cn(
+        "flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:ps-8 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRightIcon className="ms-auto size-4" />
+    </DropdownMenuPrimitive.SubTrigger>
+  );
+}
+
+function DropdownMenuSubContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
+  return (
+    <DropdownMenuPrimitive.SubContent
+      data-slot="dropdown-menu-sub-content"
+      className={cn(
+        "z-50 min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export {
+  DropdownMenu,
+  DropdownMenuPortal,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+};
+`],
+  ["addons/admin/apps/web/src/components/ui/form.tsx", `import * as LabelPrimitive from "@radix-ui/react-label";
+import { Slot } from "@radix-ui/react-slot";
+import * as React from "react";
+import {
+  Controller,
+  FormProvider,
+  useFormContext,
+  useFormState,
+  type ControllerProps,
+  type FieldPath,
+  type FieldValues,
+} from "react-hook-form";
+
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+
+const Form = FormProvider;
+
+type FormFieldContextValue<
+  TFieldValues extends FieldValues = FieldValues,
+  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
+> = {
+  name: TName;
+};
+
+const FormFieldContext = React.createContext<FormFieldContextValue>({} as FormFieldContextValue);
+
+const FormField = <
+  TFieldValues extends FieldValues = FieldValues,
+  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
+>({
+  ...props
+}: ControllerProps<TFieldValues, TName>) => {
+  return (
+    <FormFieldContext.Provider value={{ name: props.name }}>
+      <Controller {...props} />
+    </FormFieldContext.Provider>
+  );
+};
+
+const useFormField = () => {
+  const fieldContext = React.useContext(FormFieldContext);
+  const itemContext = React.useContext(FormItemContext);
+  const { getFieldState } = useFormContext();
+  const formState = useFormState({ name: fieldContext.name });
+  const fieldState = getFieldState(fieldContext.name, formState);
+
+  if (!fieldContext) {
+    throw new Error("useFormField should be used within <FormField>");
+  }
+
+  const { id } = itemContext;
+
+  return {
+    id,
+    name: fieldContext.name,
+    formItemId: \`\${id}-form-item\`,
+    formDescriptionId: \`\${id}-form-item-description\`,
+    formMessageId: \`\${id}-form-item-message\`,
+    ...fieldState,
+  };
+};
+
+type FormItemContextValue = {
+  id: string;
+};
+
+const FormItemContext = React.createContext<FormItemContextValue>({} as FormItemContextValue);
+
+function FormItem({ className, ...props }: React.ComponentProps<"div">) {
+  const id = React.useId();
+
+  return (
+    <FormItemContext.Provider value={{ id }}>
+      <div data-slot="form-item" className={cn("grid gap-2", className)} {...props} />
+    </FormItemContext.Provider>
+  );
+}
+
+function FormLabel({ className, ...props }: React.ComponentProps<typeof LabelPrimitive.Root>) {
+  const { error, formItemId } = useFormField();
+
+  return (
+    <Label
+      data-slot="form-label"
+      data-error={!!error}
+      className={cn("data-[error=true]:text-destructive", className)}
+      htmlFor={formItemId}
+      {...props}
+    />
+  );
+}
+
+function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
+  const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
+
+  return (
+    <Slot
+      data-slot="form-control"
+      id={formItemId}
+      aria-describedby={!error ? \`\${formDescriptionId}\` : \`\${formDescriptionId} \${formMessageId}\`}
+      aria-invalid={!!error}
+      {...props}
+    />
+  );
+}
+
+function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
+  const { formDescriptionId } = useFormField();
+
+  return (
+    <p
+      data-slot="form-description"
+      id={formDescriptionId}
+      className={cn("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+function FormMessage({ className, ...props }: React.ComponentProps<"p">) {
+  const { error, formMessageId } = useFormField();
+  const body = error ? String(error?.message ?? "") : props.children;
+
+  if (!body) {
+    return null;
+  }
+
+  return (
+    <p
+      data-slot="form-message"
+      id={formMessageId}
+      className={cn("text-sm text-destructive", className)}
+      {...props}
+    >
+      {body}
+    </p>
+  );
+}
+
+export {
+  useFormField,
+  Form,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormDescription,
+  FormMessage,
+  FormField,
+};
+`],
+  ["addons/admin/apps/web/src/components/ui/input-otp.tsx", `import { OTPInput, OTPInputContext } from "input-otp";
+import { MinusIcon } from "lucide-react";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function InputOTP({
+  className,
+  containerClassName,
+  ...props
+}: React.ComponentProps<typeof OTPInput> & {
+  containerClassName?: string;
+}) {
+  return (
+    <OTPInput
+      data-slot="input-otp"
+      containerClassName={cn("flex items-center gap-2 has-disabled:opacity-50", containerClassName)}
+      className={cn("disabled:cursor-not-allowed", className)}
+      {...props}
+    />
+  );
+}
+
+function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div data-slot="input-otp-group" className={cn("flex items-center", className)} {...props} />
+  );
+}
+
+function InputOTPSlot({
+  index,
+  className,
+  ...props
+}: React.ComponentProps<"div"> & {
+  index: number;
+}) {
+  const inputOTPContext = React.useContext(OTPInputContext);
+  const { char, hasFakeCaret, isActive } = inputOTPContext?.slots[index] ?? {};
+
+  return (
+    <div
+      data-slot="input-otp-slot"
+      data-active={isActive}
+      className={cn(
+        "relative flex h-9 w-9 items-center justify-center border-y border-r border-input text-sm shadow-xs transition-all outline-none first:rounded-l-md first:border-l last:rounded-r-md aria-invalid:border-destructive data-[active=true]:z-10 data-[active=true]:border-ring data-[active=true]:ring-[3px] data-[active=true]:ring-ring/50 data-[active=true]:aria-invalid:border-destructive data-[active=true]:aria-invalid:ring-destructive/20 dark:bg-input/30 dark:data-[active=true]:aria-invalid:ring-destructive/40",
+        className,
+      )}
+      {...props}
+    >
+      {char}
+      {hasFakeCaret && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="h-4 w-px animate-caret-blink bg-foreground duration-1000" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
+  return (
+    <div data-slot="input-otp-separator" role="separator" {...props}>
+      <MinusIcon />
+    </div>
+  );
+}
+
+export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator };
+`],
+  ["addons/admin/apps/web/src/components/ui/input.tsx", `import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+  return (
+    <input
+      type={type}
+      data-slot="input"
+      className={cn(
+        "flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30",
+        "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Input };
+`],
+  ["addons/admin/apps/web/src/components/ui/label.tsx", `"use client";
+
+import * as LabelPrimitive from "@radix-ui/react-label";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Label({ className, ...props }: React.ComponentProps<typeof LabelPrimitive.Root>) {
+  return (
+    <LabelPrimitive.Root
+      data-slot="label"
+      className={cn(
+        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Label };
+`],
+  ["addons/admin/apps/web/src/components/ui/popover.tsx", `import * as PopoverPrimitive from "@radix-ui/react-popover";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
+  return <PopoverPrimitive.Root data-slot="popover" {...props} />;
+}
+
+function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
+  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
+}
+
+function PopoverContent({
+  className,
+  align = "center",
+  sideOffset = 4,
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+  return (
+    <PopoverPrimitive.Portal>
+      <PopoverPrimitive.Content
+        data-slot="popover-content"
+        align={align}
+        sideOffset={sideOffset}
+        className={cn(
+          "z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          className,
+        )}
+        {...props}
+      />
+    </PopoverPrimitive.Portal>
+  );
+}
+
+function PopoverAnchor({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
+  return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />;
+}
+
+export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor };
+`],
+  ["addons/admin/apps/web/src/components/ui/radio-group.tsx", `import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
+import { CircleIcon } from "lucide-react";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function RadioGroup({
+  className,
+  ...props
+}: React.ComponentProps<typeof RadioGroupPrimitive.Root>) {
+  return (
+    <RadioGroupPrimitive.Root
+      data-slot="radio-group"
+      className={cn("grid gap-3", className)}
+      {...props}
+    />
+  );
+}
+
+function RadioGroupItem({
+  className,
+  ...props
+}: React.ComponentProps<typeof RadioGroupPrimitive.Item>) {
+  return (
+    <RadioGroupPrimitive.Item
+      data-slot="radio-group-item"
+      className={cn(
+        "aspect-square size-4 shrink-0 rounded-full border border-input text-primary shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:bg-input/30 dark:aria-invalid:ring-destructive/40",
+        className,
+      )}
+      {...props}
+    >
+      <RadioGroupPrimitive.Indicator
+        data-slot="radio-group-indicator"
+        className="relative flex items-center justify-center"
+      >
+        <CircleIcon className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 fill-primary" />
+      </RadioGroupPrimitive.Indicator>
+    </RadioGroupPrimitive.Item>
+  );
+}
+
+export { RadioGroup, RadioGroupItem };
+`],
+  ["addons/admin/apps/web/src/components/ui/scroll-area.tsx", `import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+interface ScrollAreaProps extends React.ComponentProps<typeof ScrollAreaPrimitive.Root> {
+  orientation?: "vertical" | "horizontal";
+}
+
+function ScrollArea({ className, children, orientation = "vertical", ...props }: ScrollAreaProps) {
+  return (
+    <ScrollAreaPrimitive.Root
+      data-slot="scroll-area"
+      className={cn("relative", className)}
+      {...props}
+    >
+      <ScrollAreaPrimitive.Viewport
+        data-slot="scroll-area-viewport"
+        className={cn(
+          "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+          orientation === "horizontal" && "overflow-x-auto!",
+        )}
+      >
+        {children}
+      </ScrollAreaPrimitive.Viewport>
+      <ScrollBar orientation={orientation} />
+      <ScrollAreaPrimitive.Corner />
+    </ScrollAreaPrimitive.Root>
+  );
+}
+
+function ScrollBar({
+  className,
+  orientation = "vertical",
+  ...props
+}: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
+  return (
+    <ScrollAreaPrimitive.ScrollAreaScrollbar
+      data-slot="scroll-area-scrollbar"
+      orientation={orientation}
+      className={cn(
+        "flex touch-none p-px transition-colors select-none",
+        orientation === "vertical" && "h-full w-2.5 border-l border-l-transparent",
+        orientation === "horizontal" && "h-2.5 flex-col border-t border-t-transparent",
+        className,
+      )}
+      {...props}
+    >
+      <ScrollAreaPrimitive.ScrollAreaThumb
+        data-slot="scroll-area-thumb"
+        className="relative flex-1 rounded-full bg-border"
+      />
+    </ScrollAreaPrimitive.ScrollAreaScrollbar>
+  );
+}
+
+export { ScrollArea, ScrollBar };
+`],
+  ["addons/admin/apps/web/src/components/ui/select.tsx", `import * as SelectPrimitive from "@radix-ui/react-select";
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
+  return <SelectPrimitive.Root data-slot="select" {...props} />;
+}
+
+function SelectGroup({ ...props }: React.ComponentProps<typeof SelectPrimitive.Group>) {
+  return <SelectPrimitive.Group data-slot="select-group" {...props} />;
+}
+
+function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.Value>) {
+  return <SelectPrimitive.Value data-slot="select-value" {...props} />;
+}
+
+function SelectTrigger({
+  className,
+  size = "default",
+  children,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
+  size?: "sm" | "default";
+}) {
+  return (
+    <SelectPrimitive.Trigger
+      data-slot="select-trigger"
+      data-size={size}
+      className={cn(
+        "flex w-fit items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <SelectPrimitive.Icon asChild>
+        <ChevronDownIcon className="size-4 opacity-50" />
+      </SelectPrimitive.Icon>
+    </SelectPrimitive.Trigger>
+  );
+}
+
+function SelectContent({
+  className,
+  children,
+  position = "popper",
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  return (
+    <SelectPrimitive.Portal>
+      <SelectPrimitive.Content
+        data-slot="select-content"
+        className={cn(
+          "relative z-50 max-h-(--radix-select-content-available-height) min-w-32 origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          position === "popper" &&
+            "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+          className,
+        )}
+        position={position}
+        {...props}
+      >
+        <SelectScrollUpButton />
+        <SelectPrimitive.Viewport
+          className={cn(
+            "p-1",
+            position === "popper" &&
+              "h-(--radix-select-trigger-height) w-full min-w-(--radix-select-trigger-width) scroll-my-1",
+          )}
+        >
+          {children}
+        </SelectPrimitive.Viewport>
+        <SelectScrollDownButton />
+      </SelectPrimitive.Content>
+    </SelectPrimitive.Portal>
+  );
+}
+
+function SelectLabel({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.Label>) {
+  return (
+    <SelectPrimitive.Label
+      data-slot="select-label"
+      className={cn("px-2 py-1.5 text-xs text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+function SelectItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Item>) {
+  return (
+    <SelectPrimitive.Item
+      data-slot="select-item"
+      className={cn(
+        "relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        className,
+      )}
+      {...props}
+    >
+      <span className="absolute inset-e-2 flex size-3.5 items-center justify-center">
+        <SelectPrimitive.ItemIndicator>
+          <CheckIcon className="size-4" />
+        </SelectPrimitive.ItemIndicator>
+      </span>
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    </SelectPrimitive.Item>
+  );
+}
+
+function SelectSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Separator>) {
+  return (
+    <SelectPrimitive.Separator
+      data-slot="select-separator"
+      className={cn("pointer-events-none -mx-1 my-1 h-px bg-border", className)}
+      {...props}
+    />
+  );
+}
+
+function SelectScrollUpButton({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.ScrollUpButton>) {
+  return (
+    <SelectPrimitive.ScrollUpButton
+      data-slot="select-scroll-up-button"
+      className={cn("flex cursor-default items-center justify-center py-1", className)}
+      {...props}
+    >
+      <ChevronUpIcon className="size-4" />
+    </SelectPrimitive.ScrollUpButton>
+  );
+}
+
+function SelectScrollDownButton({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.ScrollDownButton>) {
+  return (
+    <SelectPrimitive.ScrollDownButton
+      data-slot="select-scroll-down-button"
+      className={cn("flex cursor-default items-center justify-center py-1", className)}
+      {...props}
+    >
+      <ChevronDownIcon className="size-4" />
+    </SelectPrimitive.ScrollDownButton>
+  );
+}
+
+export {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectScrollDownButton,
+  SelectScrollUpButton,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+};
+`],
+  ["addons/admin/apps/web/src/components/ui/separator.tsx", `import * as SeparatorPrimitive from "@radix-ui/react-separator";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Separator({
+  className,
+  orientation = "horizontal",
+  decorative = true,
+  ...props
+}: React.ComponentProps<typeof SeparatorPrimitive.Root>) {
+  return (
+    <SeparatorPrimitive.Root
+      data-slot="separator"
+      decorative={decorative}
+      orientation={orientation}
+      className={cn(
+        "shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-px",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Separator };
+`],
+  ["addons/admin/apps/web/src/components/ui/sheet.tsx", `import * as SheetPrimitive from "@radix-ui/react-dialog";
+import { XIcon } from "lucide-react";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  return <SheetPrimitive.Root data-slot="sheet" {...props} />;
+}
+
+function SheetTrigger({ ...props }: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
+  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />;
+}
+
+function SheetClose({ ...props }: React.ComponentProps<typeof SheetPrimitive.Close>) {
+  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />;
+}
+
+function SheetPortal({ ...props }: React.ComponentProps<typeof SheetPrimitive.Portal>) {
+  return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
+}
+
+function SheetOverlay({
+  className,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
+  return (
+    <SheetPrimitive.Overlay
+      data-slot="sheet-overlay"
+      className={cn(
+        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SheetContent({
+  className,
+  children,
+  side = "right",
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Content> & {
+  side?: "top" | "right" | "bottom" | "left";
+}) {
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        data-slot="sheet-content"
+        className={cn(
+          "fixed z-50 flex flex-col gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
+          side === "right" &&
+            "inset-y-0 inset-e-0 h-full w-3/4 border-s data-[state=closed]:slide-out-to-end data-[state=open]:slide-in-from-end sm:max-w-sm",
+          side === "left" &&
+            "inset-y-0 inset-s-0 h-full w-3/4 border-e data-[state=closed]:slide-out-to-start data-[state=open]:slide-in-from-start sm:max-w-sm",
+          side === "top" &&
+            "inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+          side === "bottom" &&
+            "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        <SheetPrimitive.Close className="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <XIcon className="size-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  );
+}
+
+function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sheet-header"
+      className={cn("flex flex-col gap-1.5 p-4", className)}
+      {...props}
+    />
+  );
+}
+
+function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sheet-footer"
+      className={cn("mt-auto flex flex-col gap-2 p-4", className)}
+      {...props}
+    />
+  );
+}
+
+function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Title>) {
+  return (
+    <SheetPrimitive.Title
+      data-slot="sheet-title"
+      className={cn("font-semibold text-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+function SheetDescription({
+  className,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Description>) {
+  return (
+    <SheetPrimitive.Description
+      data-slot="sheet-description"
+      className={cn("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+export {
+  Sheet,
+  SheetTrigger,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+};
+`],
+  ["addons/admin/apps/web/src/components/ui/sidebar.tsx", `import { Slot } from "@radix-ui/react-slot";
+import { VariantProps, cva } from "class-variance-authority";
+import { PanelLeftIcon } from "lucide-react";
+import * as React from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
+
+const SIDEBAR_COOKIE_NAME = "sidebar_state";
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_WIDTH = "16rem";
+const SIDEBAR_WIDTH_MOBILE = "18rem";
+const SIDEBAR_WIDTH_ICON = "3rem";
+const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+
+type SidebarContextProps = {
+  state: "expanded" | "collapsed";
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  openMobile: boolean;
+  setOpenMobile: (open: boolean) => void;
+  isMobile: boolean;
+  toggleSidebar: () => void;
+};
+
+const SidebarContext = React.createContext<SidebarContextProps | null>(null);
+
+function useSidebar() {
+  const context = React.useContext(SidebarContext);
+  if (!context) {
+    throw new Error("useSidebar must be used within a SidebarProvider.");
+  }
+
+  return context;
+}
+
+function SidebarProvider({
+  defaultOpen = true,
+  open: openProp,
+  onOpenChange: setOpenProp,
+  className,
+  style,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & {
+  defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const isMobile = useIsMobile();
+  const [openMobile, setOpenMobile] = React.useState(false);
+
+  // This is the internal state of the sidebar.
+  // We use openProp and setOpenProp for control from outside the component.
+  const [_open, _setOpen] = React.useState(defaultOpen);
+  const open = openProp ?? _open;
+  const setOpen = React.useCallback(
+    (value: boolean | ((value: boolean) => boolean)) => {
+      const openState = typeof value === "function" ? value(open) : value;
+      if (setOpenProp) {
+        setOpenProp(openState);
+      } else {
+        _setOpen(openState);
+      }
+
+      // This sets the cookie to keep the sidebar state.
+      document.cookie = \`\${SIDEBAR_COOKIE_NAME}=\${openState}; path=/; max-age=\${SIDEBAR_COOKIE_MAX_AGE}\`;
+    },
+    [setOpenProp, open],
+  );
+
+  // Helper to toggle the sidebar.
+  const toggleSidebar = React.useCallback(() => {
+    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
+  }, [isMobile, setOpen, setOpenMobile]);
+
+  // Adds a keyboard shortcut to toggle the sidebar.
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        toggleSidebar();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleSidebar]);
+
+  // We add a state so that we can do data-state="expanded" or "collapsed".
+  // This makes it easier to style the sidebar with Tailwind classes.
+  const state = open ? "expanded" : "collapsed";
+
+  const contextValue = React.useMemo<SidebarContextProps>(
+    () => ({
+      state,
+      open,
+      setOpen,
+      isMobile,
+      openMobile,
+      setOpenMobile,
+      toggleSidebar,
+    }),
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+  );
+
+  return (
+    <SidebarContext.Provider value={contextValue}>
+      <TooltipProvider delayDuration={0}>
+        <div
+          data-slot="sidebar-wrapper"
+          style={
+            {
+              "--sidebar-width": SIDEBAR_WIDTH,
+              "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+              ...style,
+            } as React.CSSProperties
+          }
+          className={cn(
+            "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </div>
+      </TooltipProvider>
+    </SidebarContext.Provider>
+  );
+}
+
+function Sidebar({
+  side = "left",
+  variant = "sidebar",
+  collapsible = "offcanvas",
+  className,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & {
+  side?: "left" | "right";
+  variant?: "sidebar" | "floating" | "inset";
+  collapsible?: "offcanvas" | "icon" | "none";
+}) {
+  const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+
+  if (collapsible === "none") {
+    return (
+      <div
+        data-slot="sidebar"
+        className={cn(
+          "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+        <SheetContent
+          data-sidebar="sidebar"
+          data-slot="sidebar"
+          data-mobile="true"
+          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          style={
+            {
+              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+            } as React.CSSProperties
+          }
+          side={side}
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Sidebar</SheetTitle>
+            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+          </SheetHeader>
+          <div className="flex h-full w-full flex-col">{children}</div>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  return (
+    <div
+      className="group peer hidden text-sidebar-foreground md:block"
+      data-state={state}
+      data-collapsible={state === "collapsed" ? collapsible : ""}
+      data-variant={variant}
+      data-side={side}
+      data-slot="sidebar"
+    >
+      {/* This is what handles the sidebar gap on desktop */}
+      <div
+        data-slot="sidebar-gap"
+        className={cn(
+          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+          "group-data-[collapsible=offcanvas]:w-0",
+          "group-data-[side=right]:rotate-180",
+          variant === "floating" || variant === "inset"
+            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
+            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+        )}
+      />
+      <div
+        data-slot="sidebar-container"
+        className={cn(
+          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[inset-inline,width] duration-200 ease-linear md:flex",
+          side === "left"
+            ? "inset-s-0 group-data-[collapsible=offcanvas]:-inset-s-[calc(var(--sidebar-width))]"
+            : "inset-e-0 group-data-[collapsible=offcanvas]:-inset-e-[calc(var(--sidebar-width))]",
+          // Adjust the padding for floating and inset variants.
+          variant === "floating" || variant === "inset"
+            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
+            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-e group-data-[side=right]:border-s",
+          className,
+        )}
+        {...props}
+      >
+        <div
+          data-sidebar="sidebar"
+          data-slot="sidebar-inner"
+          className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
+        >
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
+  const { toggleSidebar } = useSidebar();
+
+  return (
+    <Button
+      data-sidebar="trigger"
+      data-slot="sidebar-trigger"
+      variant="ghost"
+      size="icon"
+      className={cn("size-7", className)}
+      onClick={(event) => {
+        onClick?.(event);
+        toggleSidebar();
+      }}
+      {...props}
+    >
+      <PanelLeftIcon />
+      <span className="sr-only">Toggle Sidebar</span>
+    </Button>
+  );
+}
+
+function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
+  const { toggleSidebar } = useSidebar();
+
+  return (
+    <button
+      data-sidebar="rail"
+      data-slot="sidebar-rail"
+      aria-label="Toggle Sidebar"
+      tabIndex={-1}
+      onClick={toggleSidebar}
+      title="Toggle Sidebar"
+      className={cn(
+        "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear group-data-[side=left]:-inset-e-4 group-data-[side=right]:inset-s-0 after:absolute after:inset-y-0 after:inset-s-1/2 after:w-0.5 hover:after:bg-sidebar-border sm:flex",
+        "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
+        "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
+        "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:start-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",
+        "[[data-side=left][data-collapsible=offcanvas]_&]:-inset-e-2",
+        "[[data-side=right][data-collapsible=offcanvas]_&]:-inset-s-2",
+
+        // RTL support
+        "rtl:translate-x-1/2",
+        "rtl:in-data-[side=left]:cursor-e-resize rtl:in-data-[side=right]:cursor-w-resize",
+        "rtl:[[data-side=left][data-state=collapsed]_&]:cursor-w-resize rtl:[[data-side=right][data-state=collapsed]_&]:cursor-e-resize",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SidebarInset({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-inset"
+      className={cn(
+        "relative flex w-full flex-1 flex-col bg-background",
+        "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ms-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ms-2",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input>) {
+  return (
+    <Input
+      data-slot="sidebar-input"
+      data-sidebar="input"
+      className={cn("h-8 w-full bg-background shadow-none", className)}
+      {...props}
+    />
+  );
+}
+
+function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-header"
+      data-sidebar="header"
+      className={cn("flex flex-col gap-2 p-2", className)}
+      {...props}
+    />
+  );
+}
+
+function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-footer"
+      data-sidebar="footer"
+      className={cn("flex flex-col gap-2 p-2", className)}
+      {...props}
+    />
+  );
+}
+
+function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof Separator>) {
+  return (
+    <Separator
+      data-slot="sidebar-separator"
+      data-sidebar="separator"
+      className={cn("mx-2 w-auto bg-sidebar-border", className)}
+      {...props}
+    />
+  );
+}
+
+function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-content"
+      data-sidebar="content"
+      className={cn(
+        "flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-group"
+      data-sidebar="group"
+      className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
+      {...props}
+    />
+  );
+}
+
+function SidebarGroupLabel({
+  className,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"div"> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : "div";
+
+  return (
+    <Comp
+      data-slot="sidebar-group-label"
+      data-sidebar="group-label"
+      className={cn(
+        "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+        "group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SidebarGroupAction({
+  className,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : "button";
+
+  return (
+    <Comp
+      data-slot="sidebar-group-action"
+      data-sidebar="group-action"
+      className={cn(
+        "absolute inset-e-3 top-3.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+        // Increases the hit area of the button on mobile.
+        "after:absolute after:-inset-2 md:after:hidden",
+        "group-data-[collapsible=icon]:hidden",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SidebarGroupContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-group-content"
+      data-sidebar="group-content"
+      className={cn("w-full text-sm", className)}
+      {...props}
+    />
+  );
+}
+
+function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
+  return (
+    <ul
+      data-slot="sidebar-menu"
+      data-sidebar="menu"
+      className={cn("flex w-full min-w-0 flex-col gap-1", className)}
+      {...props}
+    />
+  );
+}
+
+function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
+  return (
+    <li
+      data-slot="sidebar-menu-item"
+      data-sidebar="menu-item"
+      className={cn("group/menu-item relative", className)}
+      {...props}
+    />
+  );
+}
+
+const sidebarMenuButtonVariants = cva(
+  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
+  {
+    variants: {
+      variant: {
+        default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        outline:
+          "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
+      },
+      size: {
+        default: "h-8 text-sm",
+        sm: "h-7 text-xs",
+        lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
+
+function SidebarMenuButton({
+  asChild = false,
+  isActive = false,
+  variant = "default",
+  size = "default",
+  tooltip,
+  className,
+  ...props
+}: React.ComponentProps<"button"> & {
+  asChild?: boolean;
+  isActive?: boolean;
+  tooltip?: string | React.ComponentProps<typeof TooltipContent>;
+} & VariantProps<typeof sidebarMenuButtonVariants>) {
+  const Comp = asChild ? Slot : "button";
+  const { isMobile, state } = useSidebar();
+
+  const button = (
+    <Comp
+      data-slot="sidebar-menu-button"
+      data-sidebar="menu-button"
+      data-size={size}
+      data-active={isActive}
+      className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+      {...props}
+    />
+  );
+
+  if (!tooltip) {
+    return button;
+  }
+
+  if (typeof tooltip === "string") {
+    tooltip = {
+      children: tooltip,
+    };
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent
+        side="right"
+        align="center"
+        hidden={state !== "collapsed" || isMobile}
+        {...tooltip}
+      />
+    </Tooltip>
+  );
+}
+
+function SidebarMenuAction({
+  className,
+  asChild = false,
+  showOnHover = false,
+  ...props
+}: React.ComponentProps<"button"> & {
+  asChild?: boolean;
+  showOnHover?: boolean;
+}) {
+  const Comp = asChild ? Slot : "button";
+
+  return (
+    <Comp
+      data-slot="sidebar-menu-action"
+      data-sidebar="menu-action"
+      className={cn(
+        "absolute inset-e-1 top-1.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform peer-hover/menu-button:text-sidebar-accent-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+        // Increases the hit area of the button on mobile.
+        "after:absolute after:-inset-2 md:after:hidden",
+        "peer-data-[size=sm]/menu-button:top-1",
+        "peer-data-[size=default]/menu-button:top-1.5",
+        "peer-data-[size=lg]/menu-button:top-2.5",
+        "group-data-[collapsible=icon]:hidden",
+        showOnHover &&
+          "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground data-[state=open]:opacity-100 md:opacity-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-menu-badge"
+      data-sidebar="menu-badge"
+      className={cn(
+        "pointer-events-none absolute inset-e-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-xs font-medium text-sidebar-foreground tabular-nums select-none",
+        "peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[active=true]/menu-button:text-sidebar-accent-foreground",
+        "peer-data-[size=sm]/menu-button:top-1",
+        "peer-data-[size=default]/menu-button:top-1.5",
+        "peer-data-[size=lg]/menu-button:top-2.5",
+        "group-data-[collapsible=icon]:hidden",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SidebarMenuSkeleton({
+  className,
+  showIcon = false,
+  ...props
+}: React.ComponentProps<"div"> & {
+  showIcon?: boolean;
+}) {
+  // Random width between 50 to 90%.
+  const width = React.useMemo(() => {
+    return \`\${Math.floor(Math.random() * 40) + 50}%\`;
+  }, []);
+
+  return (
+    <div
+      data-slot="sidebar-menu-skeleton"
+      data-sidebar="menu-skeleton"
+      className={cn("flex h-8 items-center gap-2 rounded-md px-2", className)}
+      {...props}
+    >
+      {showIcon && <Skeleton className="size-4 rounded-md" data-sidebar="menu-skeleton-icon" />}
+      <Skeleton
+        className="h-4 max-w-(--skeleton-width) flex-1"
+        data-sidebar="menu-skeleton-text"
+        style={
+          {
+            "--skeleton-width": width,
+          } as React.CSSProperties
+        }
+      />
+    </div>
+  );
+}
+
+function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
+  return (
+    <ul
+      data-slot="sidebar-menu-sub"
+      data-sidebar="menu-sub"
+      className={cn(
+        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-s border-sidebar-border px-2.5 py-0.5",
+        "group-data-[collapsible=icon]:hidden",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function SidebarMenuSubItem({ className, ...props }: React.ComponentProps<"li">) {
+  return (
+    <li
+      data-slot="sidebar-menu-sub-item"
+      data-sidebar="menu-sub-item"
+      className={cn("group/menu-sub-item relative", className)}
+      {...props}
+    />
+  );
+}
+
+function SidebarMenuSubButton({
+  asChild = false,
+  size = "md",
+  isActive = false,
+  className,
+  ...props
+}: React.ComponentProps<"a"> & {
+  asChild?: boolean;
+  size?: "sm" | "md";
+  isActive?: boolean;
+}) {
+  const Comp = asChild ? Slot : "a";
+
+  return (
+    <Comp
+      data-slot="sidebar-menu-sub-button"
+      data-sidebar="menu-sub-button"
+      data-size={size}
+      data-active={isActive}
+      className={cn(
+        "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground ring-sidebar-ring outline-hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-inherit",
+        "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground",
+        size === "sm" && "text-xs",
+        size === "md" && "text-sm",
+        "group-data-[collapsible=icon]:hidden",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInput,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
+};
+`],
+  ["addons/admin/apps/web/src/components/ui/skeleton.tsx", `import { cn } from "@/lib/utils";
+
+function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="skeleton"
+      className={cn("animate-pulse rounded-md bg-accent", className)}
+      {...props}
+    />
+  );
+}
+
+export { Skeleton };
+`],
+  ["addons/admin/apps/web/src/components/ui/sonner.tsx", `import { Toaster as Sonner, ToasterProps } from "sonner";
+
+import { useTheme } from "@/context/theme-provider";
+
+export function Toaster({ ...props }: ToasterProps) {
+  const { theme = "system" } = useTheme();
+
+  return (
+    <Sonner
+      theme={theme as ToasterProps["theme"]}
+      className="toaster group [&_div[data-content]]:w-full"
+      style={
+        {
+          "--normal-bg": "var(--popover)",
+          "--normal-text": "var(--popover-foreground)",
+          "--normal-border": "var(--border)",
+        } as React.CSSProperties
+      }
+      {...props}
+    />
+  );
+}
+`],
+  ["addons/admin/apps/web/src/components/ui/switch.tsx", `import * as SwitchPrimitive from "@radix-ui/react-switch";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Switch({ className, ...props }: React.ComponentProps<typeof SwitchPrimitive.Root>) {
+  return (
+    <SwitchPrimitive.Root
+      data-slot="switch"
+      className={cn(
+        "peer inline-flex h-[1.15rem] w-8 shrink-0 items-center rounded-full border border-transparent shadow-xs transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input dark:data-[state=unchecked]:bg-input/80",
+        className,
+      )}
+      {...props}
+    >
+      <SwitchPrimitive.Thumb
+        data-slot="switch-thumb"
+        className={cn(
+          "pointer-events-none block size-4 rounded-full bg-background ring-0 transition-transform data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=unchecked]:translate-x-0 rtl:data-[state=checked]:-translate-x-[calc(100%-2px)] dark:data-[state=checked]:bg-primary-foreground dark:data-[state=unchecked]:bg-foreground",
+        )}
+      />
+    </SwitchPrimitive.Root>
+  );
+}
+
+export { Switch };
+`],
+  ["addons/admin/apps/web/src/components/ui/table.tsx", `import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Table({ className, ...props }: React.ComponentProps<"table">) {
+  return (
+    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+      <table
+        data-slot="table"
+        className={cn("w-full caption-bottom text-sm", className)}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+  return <thead data-slot="table-header" className={cn("[&_tr]:border-b", className)} {...props} />;
+}
+
+function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
+  return (
+    <tbody
+      data-slot="table-body"
+      className={cn("[&_tr:last-child]:border-0", className)}
+      {...props}
+    />
+  );
+}
+
+function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
+  return (
+    <tfoot
+      data-slot="table-footer"
+      className={cn("border-t bg-muted/50 font-medium [&>tr]:last:border-b-0", className)}
+      {...props}
+    />
+  );
+}
+
+function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+  return (
+    <tr
+      data-slot="table-row"
+      className={cn(
+        "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+  return (
+    <th
+      data-slot="table-head"
+      className={cn(
+        "h-10 px-2 text-start align-middle font-medium whitespace-nowrap text-foreground *:[[role=checkbox]]:translate-y-0.5",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+  return (
+    <td
+      data-slot="table-cell"
+      className={cn(
+        "p-2 align-middle whitespace-nowrap *:[[role=checkbox]]:translate-y-0.5",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function TableCaption({ className, ...props }: React.ComponentProps<"caption">) {
+  return (
+    <caption
+      data-slot="table-caption"
+      className={cn("mt-4 text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption };
+`],
+  ["addons/admin/apps/web/src/components/ui/tabs.tsx", `import * as TabsPrimitive from "@radix-ui/react-tabs";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Tabs({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Root>) {
+  return (
+    <TabsPrimitive.Root
+      data-slot="tabs"
+      className={cn("flex flex-col gap-2", className)}
+      {...props}
+    />
+  );
+}
+
+function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.List>) {
+  return (
+    <TabsPrimitive.List
+      data-slot="tabs-list"
+      className={cn(
+        "inline-flex h-9 w-fit items-center justify-center rounded-lg bg-muted p-0.75 text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  return (
+    <TabsPrimitive.Trigger
+      data-slot="tabs-trigger"
+      className={cn(
+        "inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:shadow-sm dark:text-muted-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 dark:data-[state=active]:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
+  return (
+    <TabsPrimitive.Content
+      data-slot="tabs-content"
+      className={cn("flex-1 outline-none", className)}
+      {...props}
+    />
+  );
+}
+
+export { Tabs, TabsList, TabsTrigger, TabsContent };
+`],
+  ["addons/admin/apps/web/src/components/ui/textarea.tsx", `import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
+  return (
+    <textarea
+      data-slot="textarea"
+      className={cn(
+        "flex field-sizing-content min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:ring-destructive/40",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Textarea };
+`],
+  ["addons/admin/apps/web/src/components/ui/tooltip.tsx", `"use client";
+
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function TooltipProvider({
+  delayDuration = 0,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  return (
+    <TooltipPrimitive.Provider
+      data-slot="tooltip-provider"
+      delayDuration={delayDuration}
+      {...props}
+    />
+  );
+}
+
+function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
+  return (
+    <TooltipProvider>
+      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+    </TooltipProvider>
+  );
+}
+
+function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+}
+
+function TooltipContent({
+  className,
+  sideOffset = 0,
+  children,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+  return (
+    <TooltipPrimitive.Portal>
+      <TooltipPrimitive.Content
+        data-slot="tooltip-content"
+        sideOffset={sideOffset}
+        className={cn(
+          "z-50 w-fit origin-(--radix-tooltip-content-transform-origin) animate-in rounded-md bg-primary px-3 py-1.5 text-xs text-balance text-primary-foreground fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%-2px)] rotate-45 rounded-[2px] bg-primary fill-primary" />
+      </TooltipPrimitive.Content>
+    </TooltipPrimitive.Portal>
+  );
+}
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
+`],
+  ["addons/admin/apps/web/src/config/fonts.ts", `/**
+ * List of available font names (visit the url \`/settings/appearance\`).
+ * This array is used to generate dynamic font classes (e.g., \`font-inter\`, \`font-manrope\`).
+ *
+ * 📝 How to Add a New Font (Tailwind v4+):
+ * 1. Add the font name here.
+ * 2. Update the \`<link>\` tag in 'index.html' to include the new font from Google Fonts (or any other source).
+ * 3. Add the new font family to 'index.css' using the \`@theme inline\` and \`font-family\` CSS variable.
+ *
+ * Example:
+ * fonts.ts           → Add 'roboto' to this array.
+ * index.html         → Add Google Fonts link for Roboto.
+ * index.css          → Add the new font in the CSS, e.g.:
+ *   @theme inline {
+ *      // ... other font families
+ *      --font-roboto: 'Roboto', var(--font-sans);
+ *   }
+ */
+export const fonts = ["inter", "manrope", "system"] as const;
+`],
+  ["addons/admin/apps/web/src/context/direction-provider.tsx", `import { DirectionProvider as RdxDirProvider } from "@radix-ui/react-direction";
+import { createContext, useContext, useEffect, useState } from "react";
+
+import { getCookie, setCookie, removeCookie } from "@/lib/cookies";
+
+export type Direction = "ltr" | "rtl";
+
+const DEFAULT_DIRECTION = "ltr";
+const DIRECTION_COOKIE_NAME = "dir";
+const DIRECTION_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+type DirectionContextType = {
+  defaultDir: Direction;
+  dir: Direction;
+  setDir: (dir: Direction) => void;
+  resetDir: () => void;
+};
+
+const DirectionContext = createContext<DirectionContextType | null>(null);
+
+export function DirectionProvider({ children }: { children: React.ReactNode }) {
+  const [dir, _setDir] = useState<Direction>(
+    () => (getCookie(DIRECTION_COOKIE_NAME) as Direction) || DEFAULT_DIRECTION,
+  );
+
+  useEffect(() => {
+    const htmlElement = document.documentElement;
+    htmlElement.setAttribute("dir", dir);
+  }, [dir]);
+
+  const setDir = (dir: Direction) => {
+    _setDir(dir);
+    setCookie(DIRECTION_COOKIE_NAME, dir, DIRECTION_COOKIE_MAX_AGE);
+  };
+
+  const resetDir = () => {
+    _setDir(DEFAULT_DIRECTION);
+    removeCookie(DIRECTION_COOKIE_NAME);
+  };
+
+  return (
+    <DirectionContext
+      value={{
+        defaultDir: DEFAULT_DIRECTION,
+        dir,
+        setDir,
+        resetDir,
+      }}
+    >
+      <RdxDirProvider dir={dir}>{children}</RdxDirProvider>
+    </DirectionContext>
+  );
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useDirection() {
+  const context = useContext(DirectionContext);
+  if (!context) {
+    throw new Error("useDirection must be used within a DirectionProvider");
+  }
+  return context;
+}
+`],
+  ["addons/admin/apps/web/src/context/font-provider.tsx", `import { createContext, useContext, useEffect, useState } from "react";
+
+import { fonts } from "@/config/fonts";
+import { getCookie, setCookie, removeCookie } from "@/lib/cookies";
+
+type Font = (typeof fonts)[number];
+
+const FONT_COOKIE_NAME = "font";
+const FONT_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+type FontContextType = {
+  font: Font;
+  setFont: (font: Font) => void;
+  resetFont: () => void;
+};
+
+const FontContext = createContext<FontContextType | null>(null);
+
+export function FontProvider({ children }: { children: React.ReactNode }) {
+  const [font, _setFont] = useState<Font>(() => {
+    const savedFont = getCookie(FONT_COOKIE_NAME);
+    return fonts.includes(savedFont as Font) ? (savedFont as Font) : fonts[0];
+  });
+
+  useEffect(() => {
+    const applyFont = (font: string) => {
+      const root = document.documentElement;
+      root.classList.forEach((cls) => {
+        if (cls.startsWith("font-")) root.classList.remove(cls);
+      });
+      root.classList.add(\`font-\${font}\`);
+    };
+
+    applyFont(font);
+  }, [font]);
+
+  const setFont = (font: Font) => {
+    setCookie(FONT_COOKIE_NAME, font, FONT_COOKIE_MAX_AGE);
+    _setFont(font);
+  };
+
+  const resetFont = () => {
+    removeCookie(FONT_COOKIE_NAME);
+    _setFont(fonts[0]);
+  };
+
+  return <FontContext value={{ font, setFont, resetFont }}>{children}</FontContext>;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const useFont = () => {
+  const context = useContext(FontContext);
+  if (!context) {
+    throw new Error("useFont must be used within a FontProvider");
+  }
+  return context;
+};
+`],
+  ["addons/admin/apps/web/src/context/layout-provider.tsx", `import { createContext, useContext, useState } from "react";
+
+import { getCookie, setCookie } from "@/lib/cookies";
+
+export type Collapsible = "offcanvas" | "icon" | "none";
+type Variant = "inset" | "sidebar" | "floating";
+
+// Cookie constants following the pattern from sidebar.tsx
+const LAYOUT_COLLAPSIBLE_COOKIE_NAME = "layout_collapsible";
+const LAYOUT_VARIANT_COOKIE_NAME = "layout_variant";
+const LAYOUT_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+
+// Default values
+const DEFAULT_VARIANT = "inset";
+const DEFAULT_COLLAPSIBLE = "icon";
+
+type LayoutContextType = {
+  resetLayout: () => void;
+
+  defaultCollapsible: Collapsible;
+  collapsible: Collapsible;
+  setCollapsible: (collapsible: Collapsible) => void;
+
+  defaultVariant: Variant;
+  variant: Variant;
+  setVariant: (variant: Variant) => void;
+};
+
+const LayoutContext = createContext<LayoutContextType | null>(null);
+
+type LayoutProviderProps = {
+  children: React.ReactNode;
+};
+
+export function LayoutProvider({ children }: LayoutProviderProps) {
+  const [collapsible, _setCollapsible] = useState<Collapsible>(() => {
+    const saved = getCookie(LAYOUT_COLLAPSIBLE_COOKIE_NAME);
+    return (saved as Collapsible) || DEFAULT_COLLAPSIBLE;
+  });
+
+  const [variant, _setVariant] = useState<Variant>(() => {
+    const saved = getCookie(LAYOUT_VARIANT_COOKIE_NAME);
+    return (saved as Variant) || DEFAULT_VARIANT;
+  });
+
+  const setCollapsible = (newCollapsible: Collapsible) => {
+    _setCollapsible(newCollapsible);
+    setCookie(LAYOUT_COLLAPSIBLE_COOKIE_NAME, newCollapsible, LAYOUT_COOKIE_MAX_AGE);
+  };
+
+  const setVariant = (newVariant: Variant) => {
+    _setVariant(newVariant);
+    setCookie(LAYOUT_VARIANT_COOKIE_NAME, newVariant, LAYOUT_COOKIE_MAX_AGE);
+  };
+
+  const resetLayout = () => {
+    setCollapsible(DEFAULT_COLLAPSIBLE);
+    setVariant(DEFAULT_VARIANT);
+  };
+
+  const contextValue: LayoutContextType = {
+    resetLayout,
+    defaultCollapsible: DEFAULT_COLLAPSIBLE,
+    collapsible,
+    setCollapsible,
+    defaultVariant: DEFAULT_VARIANT,
+    variant,
+    setVariant,
+  };
+
+  return <LayoutContext value={contextValue}>{children}</LayoutContext>;
+}
+
+// Define the hook for the provider
+// eslint-disable-next-line react-refresh/only-export-components
+export function useLayout() {
+  const context = useContext(LayoutContext);
+  if (!context) {
+    throw new Error("useLayout must be used within a LayoutProvider");
+  }
+  return context;
+}
+`],
+  ["addons/admin/apps/web/src/context/search-provider.test.tsx", `import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, type RenderResult } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { SearchProvider } from "@/context/search-provider";
+
+const COMMAND_MENU_PLACEHOLDER = "Type a command or search...";
+
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  setTheme: vi.fn(),
+}));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    useNavigate: () => mocks.navigate,
+  };
+});
+
+vi.mock("@/context/theme-provider", () => ({
+  useTheme: () => ({ setTheme: mocks.setTheme }),
+}));
+
+type ShortcutModifier = "Control" | "Meta";
+
+async function renderWithSearchProvider() {
+  return await render(<SearchProvider>{null}</SearchProvider>);
+}
+
+/**
+ * Open the palette by shortcut, retrying while the keydown listener may not be mounted yet.
+ * Waits between attempts so a successful toggle is not immediately undone by a second chord.
+ */
+async function openCommandPalette(screen: RenderResult, modifier: ShortcutModifier = "Control") {
+  await vi.waitFor(
+    async () => {
+      const isCommandPaletteOpen =
+        document.querySelector(\`[placeholder="\${COMMAND_MENU_PLACEHOLDER}"]\`) !== null;
+
+      if (!isCommandPaletteOpen) {
+        await userEvent.keyboard(\`{\${modifier}>}k{/\${modifier}}\`);
+      }
+
+      await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).toBeInTheDocument();
+    },
+    { interval: 50, timeout: 5000 },
+  );
+}
+
+describe("SearchProvider and CommandMenu", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders the command palette when the palette is open", async () => {
+    const screen = await renderWithSearchProvider();
+    const { getByPlaceholder, getByText } = screen;
+
+    await openCommandPalette(screen);
+
+    await expect.element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).toBeInTheDocument();
+    await expect.element(getByText("Theme")).toBeInTheDocument();
+    await expect.element(getByText("Light")).toBeInTheDocument();
+    await expect.element(getByText("Dark")).toBeInTheDocument();
+    await expect.element(getByText("System")).toBeInTheDocument();
+    await expect.element(getByText("Dashboard")).toBeInTheDocument();
+  });
+
+  it("does not show the dialog content when search is closed", async () => {
+    const { getByPlaceholder } = await renderWithSearchProvider();
+
+    await expect.element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["Ctrl", "Control"],
+    ["Cmd", "Meta"],
+  ] as const)("opens the command menu when %s + K is pressed", async (_label, modifier) => {
+    const screen = await renderWithSearchProvider();
+
+    await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
+
+    await openCommandPalette(screen, modifier);
+
+    await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).toBeInTheDocument();
+  });
+
+  it("navigates to a top-level route and closes the palette when a nav item is selected", async () => {
+    const screen = await renderWithSearchProvider();
+
+    await openCommandPalette(screen);
+
+    await userEvent.click(screen.getByText("Tasks"));
+
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/tasks" });
+    await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
+  });
+
+  it("navigates for nested sidebar items (group with sub-items)", async () => {
+    const screen = await renderWithSearchProvider();
+    const { getByPlaceholder, getByRole } = screen;
+
+    await openCommandPalette(screen);
+
+    await userEvent.click(getByRole("option", { name: "Settings Account" }));
+
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/settings/account" });
+    await expect.element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
+  });
+
+  it("applies theme and closes the palette when a theme command is chosen", async () => {
+    const screen = await renderWithSearchProvider();
+
+    await openCommandPalette(screen);
+
+    await userEvent.click(screen.getByText("Dark"));
+
+    expect(mocks.setTheme).toHaveBeenCalledWith("dark");
+    await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
+  });
+
+  it("shows empty state when the filter matches nothing", async () => {
+    const screen = await renderWithSearchProvider();
+
+    await openCommandPalette(screen);
+
+    await userEvent.fill(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER), "zzzz-no-match-xxxx");
+
+    await expect.element(screen.getByText("No results found.")).toBeInTheDocument();
+  });
+});
+`],
+  ["addons/admin/apps/web/src/context/search-provider.tsx", `import { createContext, useContext, useEffect, useState } from "react";
+
+import { CommandMenu } from "@/components/command-menu";
+
+type SearchContextType = {
+  open: boolean;
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
+const SearchContext = createContext<SearchContextType | null>(null);
+
+type SearchProviderProps = {
+  children: React.ReactNode;
+};
+
+export function SearchProvider({ children }: SearchProviderProps) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setOpen((open) => !open);
+      }
+    };
+    document.addEventListener("keydown", down);
+    return () => document.removeEventListener("keydown", down);
+  }, []);
+
+  return (
+    <SearchContext value={{ open, setOpen }}>
+      {children}
+      <CommandMenu />
+    </SearchContext>
+  );
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const useSearch = () => {
+  const searchContext = useContext(SearchContext);
+
+  if (!searchContext) {
+    throw new Error("useSearch has to be used within SearchProvider");
+  }
+
+  return searchContext;
+};
+`],
+  ["addons/admin/apps/web/src/context/theme-provider.tsx", `import { createContext, useContext, useEffect, useState, useMemo } from "react";
+
+import { getCookie, setCookie, removeCookie } from "@/lib/cookies";
+
+type Theme = "dark" | "light" | "system";
+type ResolvedTheme = Exclude<Theme, "system">;
+
+const DEFAULT_THEME = "system";
+const THEME_COOKIE_NAME = "vite-ui-theme";
+const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+type ThemeProviderProps = {
+  children: React.ReactNode;
+  defaultTheme?: Theme;
+  storageKey?: string;
+};
+
+type ThemeProviderState = {
+  defaultTheme: Theme;
+  resolvedTheme: ResolvedTheme;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  resetTheme: () => void;
+};
+
+const initialState: ThemeProviderState = {
+  defaultTheme: DEFAULT_THEME,
+  resolvedTheme: "light",
+  theme: DEFAULT_THEME,
+  setTheme: () => null,
+  resetTheme: () => null,
+};
+
+const ThemeContext = createContext<ThemeProviderState>(initialState);
+
+export function ThemeProvider({
+  children,
+  defaultTheme = DEFAULT_THEME,
+  storageKey = THEME_COOKIE_NAME,
+  ...props
+}: ThemeProviderProps) {
+  const [theme, _setTheme] = useState<Theme>(
+    () => (getCookie(storageKey) as Theme) || defaultTheme,
+  );
+
+  // Optimized: Memoize the resolved theme calculation to prevent unnecessary re-computations
+  const resolvedTheme = useMemo((): ResolvedTheme => {
+    if (theme === "system") {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    return theme as ResolvedTheme;
+  }, [theme]);
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    const applyTheme = (currentResolvedTheme: ResolvedTheme) => {
+      root.classList.remove("light", "dark"); // Remove existing theme classes
+      root.classList.add(currentResolvedTheme); // Add the new theme class
+    };
+
+    const handleChange = () => {
+      if (theme === "system") {
+        const systemTheme = mediaQuery.matches ? "dark" : "light";
+        applyTheme(systemTheme);
+      }
+    };
+
+    applyTheme(resolvedTheme);
+
+    mediaQuery.addEventListener("change", handleChange);
+
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [theme, resolvedTheme]);
+
+  const setTheme = (theme: Theme) => {
+    setCookie(storageKey, theme, THEME_COOKIE_MAX_AGE);
+    _setTheme(theme);
+  };
+
+  const resetTheme = () => {
+    removeCookie(storageKey);
+    _setTheme(DEFAULT_THEME);
+  };
+
+  const contextValue = {
+    defaultTheme,
+    resolvedTheme,
+    resetTheme,
+    theme,
+    setTheme,
+  };
+
+  return (
+    <ThemeContext value={contextValue} {...props}>
+      {children}
+    </ThemeContext>
+  );
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const useTheme = () => {
+  const context = useContext(ThemeContext);
+
+  if (!context) throw new Error("useTheme must be used within a ThemeProvider");
+
+  return context;
+};
+`],
+  ["addons/admin/apps/web/src/features/apps/data/apps.tsx", `import {
+  IconTelegram,
+  IconNotion,
+  IconFigma,
+  IconTrello,
+  IconSlack,
+  IconZoom,
+  IconStripe,
+  IconGmail,
+  IconMedium,
+  IconSkype,
+  IconDocker,
+  IconGithub,
+  IconGitlab,
+  IconDiscord,
+  IconWhatsapp,
+} from "@/assets/brand-icons";
+
+export const apps = [
+  {
+    name: "Telegram",
+    logo: <IconTelegram />,
+    connected: false,
+    desc: "Connect with Telegram for real-time communication.",
+  },
+  {
+    name: "Notion",
+    logo: <IconNotion />,
+    connected: true,
+    desc: "Effortlessly sync Notion pages for seamless collaboration.",
+  },
+  {
+    name: "Figma",
+    logo: <IconFigma />,
+    connected: true,
+    desc: "View and collaborate on Figma designs in one place.",
+  },
+  {
+    name: "Trello",
+    logo: <IconTrello />,
+    connected: false,
+    desc: "Sync Trello cards for streamlined project management.",
+  },
+  {
+    name: "Slack",
+    logo: <IconSlack />,
+    connected: false,
+    desc: "Integrate Slack for efficient team communication",
+  },
+  {
+    name: "Zoom",
+    logo: <IconZoom />,
+    connected: true,
+    desc: "Host Zoom meetings directly from the dashboard.",
+  },
+  {
+    name: "Stripe",
+    logo: <IconStripe />,
+    connected: false,
+    desc: "Easily manage Stripe transactions and payments.",
+  },
+  {
+    name: "Gmail",
+    logo: <IconGmail />,
+    connected: true,
+    desc: "Access and manage Gmail messages effortlessly.",
+  },
+  {
+    name: "Medium",
+    logo: <IconMedium />,
+    connected: false,
+    desc: "Explore and share Medium stories on your dashboard.",
+  },
+  {
+    name: "Skype",
+    logo: <IconSkype />,
+    connected: false,
+    desc: "Connect with Skype contacts seamlessly.",
+  },
+  {
+    name: "Docker",
+    logo: <IconDocker />,
+    connected: false,
+    desc: "Effortlessly manage Docker containers on your dashboard.",
+  },
+  {
+    name: "GitHub",
+    logo: <IconGithub />,
+    connected: false,
+    desc: "Streamline code management with GitHub integration.",
+  },
+  {
+    name: "GitLab",
+    logo: <IconGitlab />,
+    connected: false,
+    desc: "Efficiently manage code projects with GitLab integration.",
+  },
+  {
+    name: "Discord",
+    logo: <IconDiscord />,
+    connected: false,
+    desc: "Connect with Discord for seamless team communication.",
+  },
+  {
+    name: "WhatsApp",
+    logo: <IconWhatsapp />,
+    connected: false,
+    desc: "Easily integrate WhatsApp for direct messaging.",
+  },
+];
+`],
+  ["addons/admin/apps/web/src/features/apps/index.tsx", `import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+
+import { type BusinessColumn, BusinessDataTable } from "@/components/business-data-table";
+import { ConfigDrawer } from "@/components/config-drawer";
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { ProfileDropdown } from "@/components/profile-dropdown";
+import { Search } from "@/components/search";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Badge } from "@/components/ui/badge";
+import { useTRPC } from "@/lib/trpc";
+
+interface AuditItem {
+  action: string;
+  actorEmail: string | null;
+  actorName: string | null;
+  createdAt: Date | string;
+  id: string;
+  ipAddress: string | null;
+  targetType: string;
+  userAgent: string | null;
+}
+
+const filterAudit = (item: AuditItem, query: string) =>
+  !query ||
+  item.action.toLowerCase().includes(query) ||
+  item.actorName?.toLowerCase().includes(query) === true ||
+  item.actorEmail?.toLowerCase().includes(query) === true ||
+  item.targetType.toLowerCase().includes(query);
+const getAuditId = (item: AuditItem) => item.id;
+
+export function Apps() {
+  const trpc = useTRPC();
+  const logsQuery = useQuery(trpc.admin.auditLogs.queryOptions());
+  const logs = (logsQuery.data ?? []) as AuditItem[];
+  const columns = useMemo<BusinessColumn<AuditItem>[]>(
+    () => [
+      {
+        header: "Actor",
+        render: (item) => (
+          <div>
+            <div className="font-medium">{item.actorName ?? "System"}</div>
+            <div className="text-muted-foreground text-xs">
+              {item.actorEmail ?? "Automated action"}
+            </div>
+          </div>
+        ),
+      },
+      {
+        header: "Action",
+        render: (item) => <Badge variant="outline">{item.action}</Badge>,
+      },
+      {
+        header: "Resource",
+        render: (item) => <span className="capitalize">{item.targetType}</span>,
+      },
+      {
+        header: "Origin",
+        render: (item) => (
+          <div>
+            <div className="font-mono text-xs">{item.ipAddress ?? "Unknown"}</div>
+            <div className="max-w-52 truncate text-muted-foreground text-xs">
+              {item.userAgent ?? "—"}
+            </div>
+          </div>
+        ),
+      },
+      {
+        className: "whitespace-nowrap text-right",
+        header: "Timestamp",
+        render: (item) => new Date(item.createdAt).toLocaleString(),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <>
+      <Header fixed>
+        <Search className="me-auto" />
+        <ThemeSwitch />
+        <ConfigDrawer />
+        <ProfileDropdown />
+      </Header>
+      <Main className="flex flex-1 flex-col gap-4 sm:gap-6">
+        <div>
+          <h2 className="font-bold text-2xl tracking-tight">Audit log</h2>
+          <p className="text-muted-foreground">Review sensitive administrative activity.</p>
+        </div>
+        <BusinessDataTable
+          columns={columns}
+          data={logs}
+          empty="No audit events found."
+          filter={filterAudit}
+          getRowId={getAuditId}
+          placeholder="Filter audit events..."
+        />
+      </Main>
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/auth-layout.tsx.hbs", `import { Logo } from '@/assets/logo'
+
+type AuthLayoutProps = {
+  children: React.ReactNode
+}
+
+export function AuthLayout({ children }: AuthLayoutProps) {
+  return (
+    <div className='container grid h-svh max-w-none items-center justify-center'>
+      <div className='mx-auto flex w-full flex-col justify-center space-y-2 py-8 sm:p-8'>
+        <div className='mb-4 flex items-center justify-center'>
+          <Logo className='me-2' />
+          <h1 className='text-xl font-medium'>{{projectName}}</h1>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/forgot-password/components/forgot-password-form.test.tsx", `import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, type RenderResult } from "vitest-browser-react";
+import { userEvent, type Locator } from "vitest/browser";
+
+import { ForgotPasswordForm } from "./forgot-password-form";
+
+const navigateMock = vi.fn();
+
+vi.mock("@tanstack/react-router", async (orig) => {
+  const actual = await orig<typeof import("@tanstack/react-router")>();
+  return { ...actual, useNavigate: () => navigateMock };
+});
+
+vi.mock("@/lib/utils", async (orig) => ({
+  ...(await orig()),
+  sleep: vi.fn(() => Promise.resolve()),
+}));
+
+describe("ForgotPasswordForm", () => {
+  let screen: RenderResult;
+  let emailInput: Locator;
+  let continueButton: Locator;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    screen = await render(<ForgotPasswordForm />);
+    emailInput = screen.getByRole("textbox", { name: /^Email$/i });
+    continueButton = screen.getByRole("button", { name: /^Continue$/i });
+  });
+
+  it("renders email field and continue button", async () => {
+    await expect.element(emailInput).toBeInTheDocument();
+    await expect.element(continueButton).toBeInTheDocument();
+  });
+
+  it("shows validation when submitting empty form", async () => {
+    await userEvent.click(continueButton);
+    await expect.element(screen.getByText(/^Please enter your email\\.$/i)).toBeInTheDocument();
+  });
+
+  it("resets the form and navigates to /otp on success", async () => {
+    await userEvent.fill(emailInput, "a@b.com");
+    await userEvent.click(continueButton);
+
+    await vi.waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: "/otp" }));
+
+    // Form should reset on success
+    await expect.element(emailInput).toHaveValue("");
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/auth/forgot-password/components/forgot-password-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { useNavigate } from "@tanstack/react-router";
+import { ArrowRight, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
+import { z } from "zod";
+
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { sleep, cn } from "@/lib/utils";
+
+const formSchema = z.object({
+  email: z.email({
+    error: (iss) => (iss.input === "" ? "Please enter your email." : undefined),
+  }),
+});
+
+export function ForgotPasswordForm({ className, ...props }: React.HTMLAttributes<HTMLFormElement>) {
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { email: "" },
+  });
+
+  function onSubmit(data: z.infer<typeof formSchema>) {
+    setIsLoading(true);
+
+    toast.promise(sleep(2000), {
+      loading: "Sending email...",
+      success: () => {
+        setIsLoading(false);
+        form.reset();
+        navigate({ to: "/otp" });
+        return \`Email sent to \${data.email}\`;
+      },
+      error: "Error",
+    });
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className={cn("grid gap-2", className)}
+        {...props}
+      >
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input placeholder="name@example.com" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button className="mt-2" disabled={isLoading}>
+          Continue
+          {isLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />}
+        </Button>
+      </form>
+    </Form>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/forgot-password/index.tsx", `import { Link } from "@tanstack/react-router";
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+import { AuthLayout } from "../auth-layout";
+import { ForgotPasswordForm } from "./components/forgot-password-form";
+
+export function ForgotPassword() {
+  return (
+    <AuthLayout>
+      <Card className="max-w-sm gap-4 sm:min-w-sm">
+        <CardHeader>
+          <CardTitle className="text-lg tracking-tight">Forgot Password</CardTitle>
+          <CardDescription>
+            Enter your registered email and <br /> we will send you a link to reset your password.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ForgotPasswordForm />
+        </CardContent>
+        <CardFooter>
+          <p className="mx-auto px-8 text-center text-sm text-balance text-muted-foreground">
+            Don't have an account?{" "}
+            <Link to="/sign-up" className="underline underline-offset-4 hover:text-primary">
+              Sign up
+            </Link>
+            .
+          </p>
+        </CardFooter>
+      </Card>
+    </AuthLayout>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/otp/components/otp-form.test.tsx", `import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, type RenderResult } from "vitest-browser-react";
+import { type Locator, userEvent } from "vitest/browser";
+
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { OtpForm } from "./otp-form";
+
+const navigate = vi.fn();
+
+vi.mock("@tanstack/react-router", async (orig) => {
+  const actual = await orig<typeof import("@tanstack/react-router")>();
+  return { ...actual, useNavigate: () => navigate };
+});
+
+vi.mock("@/lib/show-submitted-data", () => ({ showSubmittedData: vi.fn() }));
+
+describe("OtpForm", () => {
+  let screen: RenderResult;
+  let otpInput: Locator;
+  let verifyButton: Locator;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    screen = await render(<OtpForm />);
+    otpInput = screen.getByLabelText(/^One-Time Password$/i);
+    verifyButton = screen.getByRole("button", { name: /^Verify$/i });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("disables Verify until 6 digits are entered", async () => {
+    await expect.element(verifyButton).toBeDisabled();
+
+    await userEvent.fill(otpInput, "12345");
+    await expect.element(verifyButton).toBeDisabled();
+
+    await userEvent.fill(otpInput, "123456");
+    await expect.element(verifyButton).toBeEnabled();
+  });
+
+  it("submits the OTP and navigates after timeout", async () => {
+    vi.useFakeTimers();
+
+    await userEvent.fill(otpInput, "123456");
+    await userEvent.click(verifyButton);
+
+    expect(showSubmittedData).toHaveBeenCalledOnce();
+    expect(showSubmittedData).toHaveBeenCalledWith({ otp: "123456" });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(navigate).toHaveBeenCalledWith({ to: "/" });
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/auth/otp/components/otp-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+  InputOTPSeparator,
+} from "@/components/ui/input-otp";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+import { cn } from "@/lib/utils";
+
+const formSchema = z.object({
+  otp: z.string().min(6, "Please enter the 6-digit code.").max(6, "Please enter the 6-digit code."),
+});
+
+type OtpFormProps = React.HTMLAttributes<HTMLFormElement>;
+
+export function OtpForm({ className, ...props }: OtpFormProps) {
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { otp: "" },
+  });
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const otp = form.watch("otp");
+
+  function onSubmit(data: z.infer<typeof formSchema>) {
+    setIsLoading(true);
+    showSubmittedData(data);
+
+    setTimeout(() => {
+      setIsLoading(false);
+      navigate({ to: "/" });
+    }, 1000);
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className={cn("grid gap-2", className)}
+        {...props}
+      >
+        <FormField
+          control={form.control}
+          name="otp"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="sr-only">One-Time Password</FormLabel>
+              <FormControl>
+                <InputOTP
+                  maxLength={6}
+                  {...field}
+                  containerClassName='justify-between sm:[&>[data-slot="input-otp-group"]>div]:w-12'
+                >
+                  <InputOTPGroup>
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                  </InputOTPGroup>
+                  <InputOTPSeparator />
+                  <InputOTPGroup>
+                    <InputOTPSlot index={2} />
+                    <InputOTPSlot index={3} />
+                  </InputOTPGroup>
+                  <InputOTPSeparator />
+                  <InputOTPGroup>
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button className="mt-2" disabled={otp.length < 6 || isLoading}>
+          Verify
+        </Button>
+      </form>
+    </Form>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/otp/index.tsx", `import { Link } from "@tanstack/react-router";
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+import { AuthLayout } from "../auth-layout";
+import { OtpForm } from "./components/otp-form";
+
+export function Otp() {
+  return (
+    <AuthLayout>
+      <Card className="max-w-md gap-4">
+        <CardHeader>
+          <CardTitle className="text-base tracking-tight">Two-factor Authentication</CardTitle>
+          <CardDescription>
+            Please enter the authentication code. <br /> We have sent the authentication code to
+            your email.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OtpForm />
+        </CardContent>
+        <CardFooter>
+          <p className="px-8 text-center text-sm text-muted-foreground">
+            Haven't received it?{" "}
+            <Link to="/sign-in" className="underline underline-offset-4 hover:text-primary">
+              Resend a new code.
+            </Link>
+            .
+          </p>
+        </CardFooter>
+      </Card>
+    </AuthLayout>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/sign-in/assets/dashboard-dark.png", `[Binary file]`],
+  ["addons/admin/apps/web/src/features/auth/sign-in/assets/dashboard-light.png", `[Binary file]`],
+  ["addons/admin/apps/web/src/features/auth/sign-in/components/user-auth-form.test.tsx", `import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, type RenderResult } from "vitest-browser-react";
+import { type Locator, userEvent } from "vitest/browser";
+
+import { UserAuthForm } from "./user-auth-form";
+
+const FORM_MESSAGES = {
+  emailEmpty: "Please enter your email.",
+  passwordEmpty: "Please enter your password.",
+  passwordShort: "Password must be at least 7 characters long.",
+} as const;
+
+const navigate = vi.fn();
+const setUserMock = vi.fn();
+const setAccessTokenMock = vi.fn();
+
+vi.mock("@/stores/auth-store", () => ({
+  useAuthStore: () => ({
+    auth: {
+      setUser: setUserMock,
+      setAccessToken: setAccessTokenMock,
+    },
+  }),
+}));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    useNavigate: () => navigate,
+    Link: ({
+      children,
+      to,
+      className,
+      ...rest
+    }: {
+      children?: React.ReactNode;
+      to: string;
+      className?: string;
+    }) => (
+      <a href={to} className={className} {...rest}>
+        {children}
+      </a>
+    ),
+  };
+});
+
+vi.mock("@/lib/utils", async (orig) => ({
+  ...(await orig()),
+  sleep: vi.fn(() => Promise.resolve()),
+}));
+
+describe("UserAuthForm", () => {
+  describe("Rendering without redirectTo", () => {
+    let screen: RenderResult;
+    let emailInput: Locator;
+    let passwordInput: Locator;
+    let signInButton: Locator;
+    let forgotPasswordLink: Locator;
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      screen = await render(<UserAuthForm />);
+      emailInput = screen.getByRole("textbox", { name: /^Email$/i });
+      passwordInput = screen.getByLabelText(/^Password$/i);
+      signInButton = screen.getByRole("button", { name: /^Sign in$/i });
+      forgotPasswordLink = screen.getByText(/^Forgot password\\?$/i);
+    });
+
+    it("renders fields, submit button, and forgot password link", async () => {
+      await expect.element(emailInput).toBeInTheDocument();
+      await expect.element(passwordInput).toBeInTheDocument();
+      await expect.element(signInButton).toBeInTheDocument();
+      await expect.element(forgotPasswordLink).toBeInTheDocument();
+    });
+
+    it("shows validation messages when submitting empty form", async () => {
+      await userEvent.click(signInButton);
+
+      await expect.element(screen.getByText(FORM_MESSAGES.emailEmpty)).toBeInTheDocument();
+      await expect.element(screen.getByText(FORM_MESSAGES.passwordEmpty)).toBeInTheDocument();
+    });
+
+    it("authenticates and navigates to default route on success", async () => {
+      await userEvent.fill(emailInput, "a@b.com");
+      await userEvent.fill(passwordInput, "1234567");
+
+      await userEvent.click(signInButton);
+
+      await vi.waitFor(() => expect(setUserMock).toHaveBeenCalledOnce());
+      expect(setUserMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: "a@b.com",
+          accountNo: expect.any(String),
+          role: expect.any(Array),
+          exp: expect.any(Number),
+        }),
+      );
+      expect(setAccessTokenMock).toHaveBeenCalledOnce();
+      expect(setAccessTokenMock).toHaveBeenCalledWith("mock-access-token");
+
+      await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/", replace: true }));
+    });
+  });
+
+  it("navigates to redirectTo when provided", async () => {
+    vi.clearAllMocks();
+
+    const { getByRole, getByLabelText } = await render(<UserAuthForm redirectTo="/settings" />);
+
+    await userEvent.fill(getByRole("textbox", { name: /Email/i }), "a@b.com");
+    await userEvent.fill(getByLabelText("Password"), "1234567");
+
+    await userEvent.click(getByRole("button", { name: /Sign in/i }));
+
+    await vi.waitFor(() => expect(setUserMock).toHaveBeenCalledOnce());
+    expect(setAccessTokenMock).toHaveBeenCalledOnce();
+
+    await vi.waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({
+        to: "/settings",
+        replace: true,
+      }),
+    );
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/auth/sign-in/components/user-auth-form.tsx", `// biome-ignore-all lint/performance/noJsxPropsBind: react-hook-form requires render callbacks.
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Loader2, LogIn } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
+import { z } from "zod";
+
+import { PasswordInput } from "@/components/password-input";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
+
+const formSchema = z.object({
+  email: z.email({
+    error: (iss) => (iss.input === "" ? "Please enter your email." : undefined),
+  }),
+  password: z
+    .string()
+    .min(1, "Please enter your password.")
+    .min(7, "Password must be at least 7 characters long."),
+});
+
+interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
+  redirectTo?: string;
+}
+
+export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+    resolver: zodResolver(formSchema),
+  });
+
+  async function onSubmit(data: z.infer<typeof formSchema>) {
+    setIsLoading(true);
+    const { error } = await authClient.signIn.email({
+      email: data.email,
+      password: data.password,
+    });
+    setIsLoading(false);
+    if (error) {
+      toast.error(error.message ?? "Could not sign in");
+      return;
+    }
+    toast.success(\`Welcome back, \${data.email}!\`);
+    await navigate({ replace: true, to: redirectTo || "/" });
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        className={cn("grid gap-3", className)}
+        onSubmit={form.handleSubmit(onSubmit)}
+        {...props}
+      >
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input placeholder="name@example.com" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem className="relative">
+              <FormLabel>Password</FormLabel>
+              <FormControl>
+                <PasswordInput placeholder="********" {...field} />
+              </FormControl>
+              <FormMessage />
+              <Link
+                className="absolute inset-e-0 -top-0.5 font-medium text-muted-foreground text-sm hover:opacity-75"
+                to="/forgot-password"
+              >
+                Forgot password?
+              </Link>
+            </FormItem>
+          )}
+        />
+        <Button className="mt-2" disabled={isLoading}>
+          {isLoading ? <Loader2 className="animate-spin" /> : <LogIn />}
+          Sign in
+        </Button>
+      </form>
+    </Form>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/sign-in/index.tsx", `import { Link, useSearch } from "@tanstack/react-router";
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+import { AuthLayout } from "../auth-layout";
+import { UserAuthForm } from "./components/user-auth-form";
+
+export function SignIn() {
+  const { redirect } = useSearch({ from: "/(auth)/sign-in" });
+
+  return (
+    <AuthLayout>
+      <Card className="max-w-sm gap-4">
+        <CardHeader>
+          <CardTitle className="text-lg tracking-tight">Sign in</CardTitle>
+          <CardDescription>
+            Enter your email and password below to log into <br className="max-sm:hidden" /> your
+            account. Don't have an account?{" "}
+            <Link
+              to="/sign-up"
+              className="text-nowrap underline underline-offset-4 hover:text-primary"
+            >
+              Sign Up
+            </Link>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <UserAuthForm redirectTo={redirect} />
+        </CardContent>
+        <CardFooter>
+          <p className="px-8 text-center text-sm text-muted-foreground">
+            By clicking sign in, you agree to our{" "}
+            <a href="/terms" className="underline underline-offset-4 hover:text-primary">
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a href="/privacy" className="underline underline-offset-4 hover:text-primary">
+              Privacy Policy
+            </a>
+            .
+          </p>
+        </CardFooter>
+      </Card>
+    </AuthLayout>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/sign-in/sign-in-2.tsx.hbs", `import { Link } from '@tanstack/react-router'
+import { Logo } from '@/assets/logo'
+import { cn } from '@/lib/utils'
+import dashboardDark from './assets/dashboard-dark.png'
+import dashboardLight from './assets/dashboard-light.png'
+import { UserAuthForm } from './components/user-auth-form'
+
+export function SignIn2() {
+  return (
+    <div className='relative container grid h-svh flex-col items-center justify-center lg:max-w-none lg:grid-cols-2 lg:px-0'>
+      <div className='lg:p-8'>
+        <div className='mx-auto flex w-full flex-col justify-center space-y-2 py-8 sm:w-120 sm:p-8'>
+          <div className='mb-4 flex items-center justify-center'>
+            <Logo className='me-2' />
+            <h1 className='text-xl font-medium'>{{projectName}}</h1>
+          </div>
+        </div>
+        <div className='mx-auto flex w-full max-w-sm flex-col justify-center space-y-2'>
+          <div className='flex flex-col space-y-2 text-start'>
+            <h2 className='text-lg font-semibold tracking-tight'>Sign in</h2>
+            <p className='text-sm text-muted-foreground'>
+              Enter your email and password below to log into{' '}
+              <br className='max-sm:hidden' /> your account. Don't have an
+              account?{' '}
+              <Link
+                to='/sign-up'
+                className='text-nowrap underline underline-offset-4 hover:text-primary'
+              >
+                Sign Up
+              </Link>
+            </p>
+          </div>
+          <UserAuthForm />
+          <p className='px-8 text-center text-sm text-muted-foreground'>
+            By clicking sign in, you agree to our{' '}
+            <a
+              href='/terms'
+              className='underline underline-offset-4 hover:text-primary'
+            >
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a
+              href='/privacy'
+              className='underline underline-offset-4 hover:text-primary'
+            >
+              Privacy Policy
+            </a>
+            .
+          </p>
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          'relative h-full overflow-hidden bg-muted max-lg:hidden',
+          '[&>img]:absolute [&>img]:top-[15%] [&>img]:left-20 [&>img]:h-full [&>img]:w-full [&>img]:object-cover [&>img]:object-top-left [&>img]:select-none'
+        )}
+      >
+        <img
+          src={dashboardLight}
+          className='dark:hidden'
+          width={1024}
+          height={1151}
+          alt='Shadcn-Admin'
+        />
+        <img
+          src={dashboardDark}
+          className='hidden dark:block'
+          width={1024}
+          height={1138}
+          alt='Shadcn-Admin'
+        />
+      </div>
+    </div>
+  )
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/sign-up/components/sign-up-form.test.tsx", `import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, type RenderResult } from "vitest-browser-react";
+import { type Locator, userEvent } from "vitest/browser";
+
+import { SignUpForm } from "./sign-up-form";
+
+const FORM_MESSAGES = {
+  emailEmpty: "Please enter your email.",
+  passwordEmpty: "Please enter your password.",
+  confirmPasswordEmpty: "Please confirm your password.",
+  passwordMismatch: "Passwords don't match.",
+} as const;
+
+const toastPromise = vi.hoisted(() =>
+  vi.fn((p: Promise<unknown>, opts: { success?: () => unknown }) => {
+    p.then(() => opts.success?.());
+  }),
+);
+
+vi.mock("sonner", () => ({ toast: { promise: toastPromise } }));
+
+describe("SignUpForm", () => {
+  let screen: RenderResult;
+  let emailInput: Locator;
+  let passwordInput: Locator;
+  let confirmPasswordInput: Locator;
+  let submitButton: Locator;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    screen = await render(<SignUpForm />);
+    emailInput = screen.getByRole("textbox", { name: /^Email$/i });
+    passwordInput = screen.getByLabelText(/^Password$/i);
+    confirmPasswordInput = screen.getByLabelText(/^Confirm Password$/i);
+    submitButton = screen.getByRole("button", { name: /^Create Account$/i });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders fields and submit button", async () => {
+    await expect.element(emailInput).toBeInTheDocument();
+    await expect.element(passwordInput).toBeInTheDocument();
+    await expect.element(confirmPasswordInput).toBeInTheDocument();
+    await expect.element(submitButton).toBeInTheDocument();
+  });
+
+  it("shows validation messages when submitting empty form", async () => {
+    await userEvent.click(submitButton);
+
+    await expect.element(screen.getByText(FORM_MESSAGES.emailEmpty)).toBeInTheDocument();
+    await expect.element(screen.getByText(FORM_MESSAGES.passwordEmpty)).toBeInTheDocument();
+    await expect.element(screen.getByText(FORM_MESSAGES.confirmPasswordEmpty)).toBeInTheDocument();
+  });
+
+  it("shows a mismatch error when passwords do not match", async () => {
+    await userEvent.fill(emailInput, "a@b.com");
+    await userEvent.fill(passwordInput, "1234567");
+    await userEvent.fill(confirmPasswordInput, "7654321");
+
+    await userEvent.click(submitButton);
+    await expect.element(screen.getByText(FORM_MESSAGES.passwordMismatch)).toBeInTheDocument();
+  });
+
+  it("disables submit while submitting and re-enables after timeout", async () => {
+    vi.useFakeTimers();
+
+    await userEvent.fill(emailInput, "a@b.com");
+    await userEvent.fill(passwordInput, "1234567");
+    await userEvent.fill(confirmPasswordInput, "1234567");
+
+    await userEvent.click(submitButton);
+    await expect.element(submitButton).toBeDisabled();
+
+    await vi.advanceTimersByTimeAsync(2000);
+    await expect.element(submitButton).toBeEnabled();
+    expect(toastPromise).toHaveBeenCalledOnce();
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/auth/sign-up/components/sign-up-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2, UserPlus } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
+import { z } from "zod";
+
+import { IconFacebook, IconGithub } from "@/assets/brand-icons";
+import { PasswordInput } from "@/components/password-input";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { sleep, cn } from "@/lib/utils";
+
+const formSchema = z
+  .object({
+    email: z.email({
+      error: (iss) => (iss.input === "" ? "Please enter your email." : undefined),
+    }),
+    password: z
+      .string()
+      .min(1, "Please enter your password.")
+      .min(7, "Password must be at least 7 characters long."),
+    confirmPassword: z.string().min(1, "Please confirm your password."),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match.",
+    path: ["confirmPassword"],
+  });
+
+export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFormElement>) {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+      confirmPassword: "",
+    },
+  });
+
+  function onSubmit(data: z.infer<typeof formSchema>) {
+    setIsLoading(true);
+
+    toast.promise(sleep(2000), {
+      loading: "Creating account...",
+      success: () => {
+        setIsLoading(false);
+        return \`Account created for \${data.email}.\`;
+      },
+      error: "Error",
+    });
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className={cn("grid gap-3", className)}
+        {...props}
+      >
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input placeholder="name@example.com" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Password</FormLabel>
+              <FormControl>
+                <PasswordInput placeholder="********" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Confirm Password</FormLabel>
+              <FormControl>
+                <PasswordInput placeholder="********" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button className="mt-2" disabled={isLoading}>
+          {isLoading ? <Loader2 className="animate-spin" /> : <UserPlus />}
+          Create Account
+        </Button>
+
+        <div className="relative my-2">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" className="w-full" type="button" disabled={isLoading}>
+            <IconGithub className="h-4 w-4" /> GitHub
+          </Button>
+          <Button variant="outline" className="w-full" type="button" disabled={isLoading}>
+            <IconFacebook className="h-4 w-4" /> Facebook
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/auth/sign-up/index.tsx", `import { Link } from "@tanstack/react-router";
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+import { AuthLayout } from "../auth-layout";
+import { SignUpForm } from "./components/sign-up-form";
+
+export function SignUp() {
+  return (
+    <AuthLayout>
+      <Card className="max-w-sm gap-4">
+        <CardHeader>
+          <CardTitle className="text-lg tracking-tight">Create an account</CardTitle>
+          <CardDescription>
+            Enter your email and password to create an account. <br />
+            Already have an account?{" "}
+            <Link to="/sign-in" className="underline underline-offset-4 hover:text-primary">
+              Sign In
+            </Link>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SignUpForm />
+        </CardContent>
+        <CardFooter>
+          <p className="px-8 text-center text-sm text-muted-foreground">
+            By creating an account, you agree to our{" "}
+            <a href="/terms" className="underline underline-offset-4 hover:text-primary">
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a href="/privacy" className="underline underline-offset-4 hover:text-primary">
+              Privacy Policy
+            </a>
+            .
+          </p>
+        </CardFooter>
+      </Card>
+    </AuthLayout>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/chats/components/new-chat.tsx", `import { Check, X } from "lucide-react";
+import { useState } from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { type ChatUser } from "../data/chat-types";
+
+type User = Omit<ChatUser, "messages">;
+
+type NewChatProps = {
+  users: User[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+export function NewChat({ users, onOpenChange, open }: NewChatProps) {
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+
+  const handleSelectUser = (user: User) => {
+    if (!selectedUsers.find((u) => u.id === user.id)) {
+      setSelectedUsers([...selectedUsers, user]);
+    } else {
+      handleRemoveUser(user.id);
+    }
+  };
+
+  const handleRemoveUser = (userId: string) => {
+    setSelectedUsers(selectedUsers.filter((user) => user.id !== userId));
+  };
+
+  const handleOpenChange = (newOpen: boolean) => {
+    onOpenChange(newOpen);
+    // Reset selected users when dialog closes
+    if (!newOpen) {
+      setSelectedUsers([]);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-150">
+        <DialogHeader>
+          <DialogTitle>New message</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-baseline-last gap-2">
+            <span className="min-h-6 text-sm text-muted-foreground">To:</span>
+            {selectedUsers.map((user) => (
+              <Badge key={user.id} variant="default">
+                {user.fullName}
+                <button
+                  className="ms-1 rounded-full ring-offset-background outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleRemoveUser(user.id);
+                    }
+                  }}
+                  onClick={() => handleRemoveUser(user.id)}
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+          <Command className="rounded-lg border">
+            <CommandInput placeholder="Search people..." className="text-foreground" />
+            <CommandList>
+              <CommandEmpty>No people found.</CommandEmpty>
+              <CommandGroup>
+                {users.map((user) => (
+                  <CommandItem
+                    key={user.id}
+                    onSelect={() => handleSelectUser(user)}
+                    className="flex items-center justify-between gap-2 hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={user.profile || "/placeholder.svg"}
+                        alt={user.fullName}
+                        className="h-8 w-8 rounded-full"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">{user.fullName}</span>
+                        <span className="text-xs text-accent-foreground/70">{user.username}</span>
+                      </div>
+                    </div>
+
+                    {selectedUsers.find((u) => u.id === user.id) && <Check className="h-4 w-4" />}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+          <Button
+            variant={"default"}
+            onClick={() => showSubmittedData(selectedUsers)}
+            disabled={selectedUsers.length === 0}
+          >
+            Chat
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/chats/data/chat-types.ts", `import { type conversations } from "./convo.json";
+
+export type ChatUser = (typeof conversations)[number];
+export type Convo = ChatUser["messages"][number];
+`],
+  ["addons/admin/apps/web/src/features/chats/data/convo.json", `{
+  "conversations": [
+    {
+      "id": "conv1",
+      "profile": "https://randomuser.me/api/portraits/men/32.jpg",
+      "username": "alex_dev",
+      "fullName": "Alex John",
+      "title": "Senior Backend Dev",
+      "messages": [
+        {
+          "sender": "You",
+          "message": "See you later, Alex!",
+          "timestamp": "2024-08-24T11:15:15"
+        },
+        {
+          "sender": "Alex",
+          "message": "Alright, talk to you later!",
+          "timestamp": "2024-08-24T11:11:30"
+        },
+        {
+          "sender": "You",
+          "message": "For sure. Anyway, I should get back to reviewing the project.",
+          "timestamp": "2024-08-23T09:26:50"
+        },
+        {
+          "sender": "Alex",
+          "message": "Yeah, let me know what you think.",
+          "timestamp": "2024-08-23T09:25:15"
+        },
+        {
+          "sender": "You",
+          "message": "Oh, nice! I've been waiting for that. I'll check it out later.",
+          "timestamp": "2024-08-23T09:24:30"
+        },
+        {
+          "sender": "Alex",
+          "message": "They've added a dark mode option! It looks really sleek.",
+          "timestamp": "2024-08-23T09:23:10"
+        },
+        {
+          "sender": "You",
+          "message": "No, not yet. What's new?",
+          "timestamp": "2024-08-23T09:22:00"
+        },
+        {
+          "sender": "Alex",
+          "message": "By the way, have you seen the new feature update?",
+          "timestamp": "2024-08-23T09:21:05"
+        },
+        {
+          "sender": "You",
+          "message": "Will do! Thanks, Alex.",
+          "timestamp": "2024-08-23T09:20:10"
+        },
+        {
+          "sender": "Alex",
+          "message": "Great! Let me know if you need any help.",
+          "timestamp": "2024-08-23T09:19:20"
+        },
+        {
+          "sender": "You",
+          "message": "Almost done. Just need to review a few things.",
+          "timestamp": "2024-08-23T09:18:45"
+        },
+        {
+          "sender": "Alex",
+          "message": "I'm good, thanks! Did you finish the project?",
+          "timestamp": "2024-08-23T09:17:10"
+        },
+        {
+          "sender": "You",
+          "message": "Hey Alex, I'm doing well! How about you?",
+          "timestamp": "2024-08-23T09:16:30"
+        },
+        {
+          "sender": "Alex",
+          "message": "Hey Bob, how are you doing?",
+          "timestamp": "2024-08-23T09:15:00"
+        }
+      ]
+    },
+    {
+      "id": "conv2",
+      "profile": "https://randomuser.me/api/portraits/women/45.jpg",
+      "username": "taylor.codes",
+      "fullName": "Taylor Grande",
+      "title": "Tech Lead",
+      "messages": [
+        {
+          "sender": "Taylor",
+          "message": "Yeah, it's really well-explained. You should give it a try.",
+          "timestamp": "2024-08-23T10:35:00"
+        },
+        {
+          "sender": "You",
+          "message": "Not yet, is it good?",
+          "timestamp": "2024-08-23T10:32:00"
+        },
+        {
+          "sender": "Taylor",
+          "message": "Hey, did you check out that new tutorial?",
+          "timestamp": "2024-08-23T10:30:00"
+        }
+      ]
+    },
+    {
+      "id": "conv3",
+      "profile": "https://randomuser.me/api/portraits/men/54.jpg",
+      "username": "john_stack",
+      "fullName": "John Doe",
+      "title": "QA",
+      "messages": [
+        {
+          "sender": "You",
+          "message": "Yep, see ya. 👋🏼",
+          "timestamp": "2024-08-22T18:59:00"
+        },
+        {
+          "sender": "John",
+          "message": "Great, see you then!",
+          "timestamp": "2024-08-22T18:55:00"
+        },
+        {
+          "sender": "You",
+          "message": "Yes, same time as usual. I'll send the invite shortly.",
+          "timestamp": "2024-08-22T18:50:00"
+        },
+        {
+          "sender": "John",
+          "message": "Are we still on for the meeting tomorrow?",
+          "timestamp": "2024-08-22T18:45:00"
+        }
+      ]
+    },
+    {
+      "id": "conv4",
+      "profile": "https://randomuser.me/api/portraits/women/29.jpg",
+      "username": "megan_frontend",
+      "fullName": "Megan Flux",
+      "title": "Jr Developer",
+      "messages": [
+        {
+          "sender": "You",
+          "message": "Sure ✌🏼",
+          "timestamp": "2024-08-23T11:30:00"
+        },
+        {
+          "sender": "Megan",
+          "message": "Thanks, appreciate it!",
+          "timestamp": "2024-08-23T11:30:00"
+        },
+        {
+          "sender": "You",
+          "message": "Sure thing! I'll take a look in the next hour.",
+          "timestamp": "2024-08-23T11:25:00"
+        },
+        {
+          "sender": "Megan",
+          "message": "Hey! Do you have time to review my PR today?",
+          "timestamp": "2024-08-23T11:20:00"
+        }
+      ]
+    },
+    {
+      "id": "conv5",
+      "profile": "https://randomuser.me/api/portraits/men/72.jpg",
+      "username": "dev_david",
+      "fullName": "David Brown",
+      "title": "Senior UI/UX Designer",
+      "messages": [
+        {
+          "sender": "You",
+          "message": "Great, I'll review them now!",
+          "timestamp": "2024-08-23T12:00:00"
+        },
+        {
+          "sender": "David",
+          "message": "Just sent you the files. Let me know if you need any changes.",
+          "timestamp": "2024-08-23T11:58:00"
+        },
+        {
+          "sender": "David",
+          "message": "I finished the design for the dashboard. Thoughts?",
+          "timestamp": "2024-08-23T11:55:00"
+        }
+      ]
+    },
+    {
+      "id": "conv6",
+      "profile": "https://randomuser.me/api/portraits/women/68.jpg",
+      "username": "julia.design",
+      "fullName": "Julia Carter",
+      "title": "Product Designer",
+      "messages": [
+        {
+          "sender": "Julia",
+          "message": "Same here! It's coming together nicely.",
+          "timestamp": "2024-08-22T14:10:00"
+        },
+        {
+          "sender": "You",
+          "message": "I'm really excited to see the final product!",
+          "timestamp": "2024-08-22T14:15:00"
+        },
+        {
+          "sender": "You",
+          "message": "How's the project looking on your end?",
+          "timestamp": "2024-08-22T14:05:00"
+        }
+      ]
+    },
+    {
+      "id": "conv7",
+      "profile": "https://randomuser.me/api/portraits/men/24.jpg",
+      "username": "brad_dev",
+      "fullName": "Brad Wilson",
+      "title": "CEO",
+      "messages": [
+        {
+          "sender": "Brad",
+          "message": "Got it! Thanks for the update.",
+          "timestamp": "2024-08-23T15:45:00"
+        },
+        {
+          "sender": "You",
+          "message": "The release has been delayed to next week.",
+          "timestamp": "2024-08-23T15:40:00"
+        },
+        {
+          "sender": "Brad",
+          "message": "Hey, any news on the release?",
+          "timestamp": "2024-08-23T15:35:00"
+        }
+      ]
+    },
+    {
+      "id": "conv8",
+      "profile": "https://randomuser.me/api/portraits/women/34.jpg",
+      "username": "katie_ui",
+      "fullName": "Katie Lee",
+      "title": "QA",
+      "messages": [
+        {
+          "sender": "Katie",
+          "message": "I'll join the call in a few minutes.",
+          "timestamp": "2024-08-23T09:50:00"
+        },
+        {
+          "sender": "You",
+          "message": "Perfect! We'll start as soon as you're in.",
+          "timestamp": "2024-08-23T09:48:00"
+        },
+        {
+          "sender": "Katie",
+          "message": "Is the meeting still on?",
+          "timestamp": "2024-08-23T09:45:00"
+        }
+      ]
+    },
+    {
+      "id": "conv9",
+      "profile": "https://randomuser.me/api/portraits/men/67.jpg",
+      "username": "matt_fullstack",
+      "fullName": "Matt Green",
+      "title": "Full-stack Dev",
+      "messages": [
+        {
+          "sender": "Matt",
+          "message": "Sure thing, I'll send over the updates shortly.",
+          "timestamp": "2024-08-23T10:25:00"
+        },
+        {
+          "sender": "You",
+          "message": "Could you update the backend as well?",
+          "timestamp": "2024-08-23T10:23:00"
+        },
+        {
+          "sender": "Matt",
+          "message": "The frontend updates are done. How does it look?",
+          "timestamp": "2024-08-23T10:20:00"
+        }
+      ]
+    },
+    {
+      "id": "conv10",
+      "profile": "https://randomuser.me/api/portraits/women/56.jpg",
+      "username": "sophie_dev",
+      "fullName": "Sophie Alex",
+      "title": "Jr. Frontend Dev",
+      "messages": [
+        {
+          "sender": "You",
+          "message": "Thanks! I'll review your code and get back to you.",
+          "timestamp": "2024-08-23T16:10:00"
+        },
+        {
+          "sender": "Sophie",
+          "message": "Let me know if you need anything else.",
+          "timestamp": "2024-08-23T16:05:00"
+        },
+        {
+          "sender": "Sophie",
+          "message": "The feature is implemented. Can you review it?",
+          "timestamp": "2024-08-23T16:00:00"
+        }
+      ]
+    }
+  ]
+}
+`],
+  ["addons/admin/apps/web/src/features/chats/index.tsx", `import { format } from "date-fns";
+import {
+  ArrowLeft,
+  MoreVertical,
+  Edit,
+  Paperclip,
+  Phone,
+  ImagePlus,
+  Plus,
+  Search as SearchIcon,
+  Send,
+  Video,
+  MessagesSquare,
+} from "lucide-react";
+import { useState } from "react";
+import { Fragment } from "react/jsx-runtime";
+
+import { ConfigDrawer } from "@/components/config-drawer";
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { ProfileDropdown } from "@/components/profile-dropdown";
+import { Search } from "@/components/search";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { cn, getDisplayNameInitials } from "@/lib/utils";
+
+import { NewChat } from "./components/new-chat";
+import { type ChatUser, type Convo } from "./data/chat-types";
+// Fake Data
+import { conversations } from "./data/convo.json";
+
+export function Chats() {
+  const [search, setSearch] = useState("");
+  const [selectedUser, setSelectedUser] = useState<ChatUser | null>(null);
+  const [mobileSelectedUser, setMobileSelectedUser] = useState<ChatUser | null>(null);
+  const [createConversationDialogOpened, setCreateConversationDialog] = useState(false);
+
+  // Filtered data based on the search query
+  const filteredChatList = conversations.filter(({ fullName }) =>
+    fullName.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
+  const currentMessage = selectedUser?.messages.reduce((acc: Record<string, Convo[]>, obj) => {
+    const key = format(obj.timestamp, "d MMM, yyyy");
+
+    // Create an array for the category if it doesn't exist
+    if (!acc[key]) {
+      acc[key] = [];
+    }
+
+    // Push the current object to the array
+    acc[key].push(obj);
+
+    return acc;
+  }, {});
+
+  const users = conversations.map(({ messages, ...user }) => user);
+
+  return (
+    <>
+      {/* ===== Top Heading ===== */}
+      <Header>
+        <Search className="me-auto" />
+        <ThemeSwitch />
+        <ConfigDrawer />
+        <ProfileDropdown />
+      </Header>
+
+      <Main fixed>
+        <section className="flex h-full gap-6">
+          {/* Left Side */}
+          <div className="flex w-full flex-col gap-2 sm:w-56 lg:w-72 2xl:w-80">
+            <div className="sticky top-0 z-10 -mx-4 bg-background px-4 pb-3 shadow-md sm:static sm:z-auto sm:mx-0 sm:p-0 sm:shadow-none">
+              <div className="flex items-center justify-between py-2">
+                <div className="flex gap-2">
+                  <h1 className="text-2xl font-bold">Inbox</h1>
+                  <MessagesSquare size={20} />
+                </div>
+
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setCreateConversationDialog(true)}
+                  className="rounded-lg"
+                >
+                  <Edit size={24} className="stroke-muted-foreground" />
+                </Button>
+              </div>
+
+              <label
+                className={cn(
+                  "focus-within:ring-1 focus-within:ring-ring focus-within:outline-hidden",
+                  "flex h-10 w-full items-center space-x-0 rounded-md border border-border ps-2",
+                )}
+              >
+                <SearchIcon size={15} className="me-2 stroke-slate-500" />
+                <span className="sr-only">Search</span>
+                <input
+                  type="text"
+                  className="w-full flex-1 bg-inherit text-sm focus-visible:outline-hidden"
+                  placeholder="Search chat..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </label>
+            </div>
+
+            <ScrollArea className="-mx-3 h-full overflow-scroll p-3">
+              {filteredChatList.map((chatUsr) => {
+                const { id, profile, username, messages, fullName } = chatUsr;
+                const lastConvo = messages[0];
+                const lastMsg =
+                  lastConvo.sender === "You" ? \`You: \${lastConvo.message}\` : lastConvo.message;
+                return (
+                  <Fragment key={id}>
+                    <button
+                      type="button"
+                      className={cn(
+                        "group hover:bg-accent hover:text-accent-foreground",
+                        \`flex w-full rounded-md px-2 py-2 text-start text-sm\`,
+                        selectedUser?.id === id && "sm:bg-muted",
+                      )}
+                      onClick={() => {
+                        setSelectedUser(chatUsr);
+                        setMobileSelectedUser(chatUsr);
+                      }}
+                    >
+                      <div className="flex gap-2">
+                        <Avatar>
+                          <AvatarImage src={profile} alt={username} />
+                          <AvatarFallback>{getDisplayNameInitials(fullName)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <span className="col-start-2 row-span-2 font-medium">{fullName}</span>
+                          <span className="col-start-2 row-span-2 row-start-2 line-clamp-2 text-ellipsis text-muted-foreground group-hover:text-accent-foreground/90">
+                            {lastMsg}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                    <Separator className="my-1" />
+                  </Fragment>
+                );
+              })}
+            </ScrollArea>
+          </div>
+
+          {/* Right Side */}
+          {selectedUser ? (
+            <div
+              className={cn(
+                "absolute inset-0 start-full z-50 hidden w-full flex-1 flex-col border bg-background shadow-xs sm:static sm:z-auto sm:flex sm:rounded-md",
+                mobileSelectedUser && "inset-s-0 flex",
+              )}
+            >
+              {/* Top Part */}
+              <div className="mb-1 flex flex-none justify-between bg-card p-4 shadow-lg sm:rounded-t-md">
+                {/* Left */}
+                <div className="flex gap-3">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="-ms-2 h-full sm:hidden"
+                    onClick={() => setMobileSelectedUser(null)}
+                  >
+                    <ArrowLeft className="rtl:rotate-180" />
+                  </Button>
+                  <div className="flex items-center gap-2 lg:gap-4">
+                    <Avatar className="size-9 lg:size-11">
+                      <AvatarImage src={selectedUser.profile} alt={selectedUser.username} />
+                      <AvatarFallback>
+                        {getDisplayNameInitials(selectedUser.fullName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <span className="col-start-2 row-span-2 text-sm font-medium lg:text-base">
+                        {selectedUser.fullName}
+                      </span>
+                      <span className="col-start-2 row-span-2 row-start-2 line-clamp-1 block max-w-32 text-xs text-nowrap text-ellipsis text-muted-foreground lg:max-w-none lg:text-sm">
+                        {selectedUser.title}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right */}
+                <div className="-me-1 flex items-center gap-1 lg:gap-2">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="hidden size-8 rounded-full sm:inline-flex lg:size-10"
+                  >
+                    <Video size={22} className="stroke-muted-foreground" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="hidden size-8 rounded-full sm:inline-flex lg:size-10"
+                  >
+                    <Phone size={22} className="stroke-muted-foreground" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-10 rounded-md sm:h-8 sm:w-4 lg:h-10 lg:w-6"
+                  >
+                    <MoreVertical className="stroke-muted-foreground sm:size-5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Conversation */}
+              <div className="flex flex-1 flex-col gap-2 rounded-md px-4 pt-0 pb-4">
+                <div className="flex size-full flex-1">
+                  <div className="chat-text-container relative -me-4 flex flex-1 flex-col overflow-y-hidden">
+                    <div className="chat-flex flex h-40 w-full grow flex-col-reverse justify-start gap-4 overflow-y-auto py-2 pe-4 pb-4">
+                      {currentMessage &&
+                        Object.keys(currentMessage).map((key) => (
+                          <Fragment key={key}>
+                            {currentMessage[key].map((msg, index) => (
+                              <div
+                                key={\`\${msg.sender}-\${msg.timestamp}-\${index}\`}
+                                className={cn(
+                                  "chat-box max-w-72 px-3 py-2 wrap-break-word shadow-lg",
+                                  msg.sender === "You"
+                                    ? "self-end rounded-[16px_16px_0_16px] bg-primary/90 text-primary-foreground/75"
+                                    : "self-start rounded-[16px_16px_16px_0] bg-muted",
+                                )}
+                              >
+                                {msg.message}{" "}
+                                <span
+                                  className={cn(
+                                    "mt-1 block text-xs font-light text-foreground/75 italic",
+                                    msg.sender === "You" && "text-end text-primary-foreground/85",
+                                  )}
+                                >
+                                  {format(msg.timestamp, "h:mm a")}
+                                </span>
+                              </div>
+                            ))}
+                            <div className="text-center text-xs">{key}</div>
+                          </Fragment>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+                <form className="flex w-full flex-none gap-2">
+                  <div className="flex flex-1 items-center gap-2 rounded-md border border-input bg-card px-2 py-1 focus-within:ring-1 focus-within:ring-ring focus-within:outline-hidden lg:gap-4">
+                    <div className="space-x-1">
+                      <Button size="icon" type="button" variant="ghost" className="h-8 rounded-md">
+                        <Plus size={20} className="stroke-muted-foreground" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                        className="hidden h-8 rounded-md lg:inline-flex"
+                      >
+                        <ImagePlus size={20} className="stroke-muted-foreground" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                        className="hidden h-8 rounded-md lg:inline-flex"
+                      >
+                        <Paperclip size={20} className="stroke-muted-foreground" />
+                      </Button>
+                    </div>
+                    <label className="flex-1">
+                      <span className="sr-only">Chat Text Box</span>
+                      <input
+                        type="text"
+                        placeholder="Type your messages..."
+                        className="h-8 w-full bg-inherit focus-visible:outline-hidden"
+                      />
+                    </label>
+                    <Button variant="ghost" size="icon" className="hidden sm:inline-flex">
+                      <Send size={20} />
+                    </Button>
+                  </div>
+                  <Button className="h-full sm:hidden">
+                    <Send size={18} /> Send
+                  </Button>
+                </form>
+              </div>
+            </div>
+          ) : (
+            <div
+              className={cn(
+                "absolute inset-0 start-full z-50 hidden w-full flex-1 flex-col justify-center rounded-md border bg-card shadow-xs sm:static sm:z-auto sm:flex",
+              )}
+            >
+              <div className="flex flex-col items-center space-y-6">
+                <div className="flex size-16 items-center justify-center rounded-full border-2 border-border">
+                  <MessagesSquare className="size-8" />
+                </div>
+                <div className="space-y-2 text-center">
+                  <h1 className="text-xl font-semibold">Your messages</h1>
+                  <p className="text-sm text-muted-foreground">Send a message to start a chat.</p>
+                </div>
+                <Button onClick={() => setCreateConversationDialog(true)}>Send message</Button>
+              </div>
+            </div>
+          )}
+        </section>
+        <NewChat
+          users={users}
+          onOpenChange={setCreateConversationDialog}
+          open={createConversationDialogOpened}
+        />
+      </Main>
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/dashboard/components/analytics-chart.tsx", `import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+
+const data = [
+  {
+    name: "Mon",
+    clicks: Math.floor(Math.random() * 900) + 100,
+    uniques: Math.floor(Math.random() * 700) + 80,
+  },
+  {
+    name: "Tue",
+    clicks: Math.floor(Math.random() * 900) + 100,
+    uniques: Math.floor(Math.random() * 700) + 80,
+  },
+  {
+    name: "Wed",
+    clicks: Math.floor(Math.random() * 900) + 100,
+    uniques: Math.floor(Math.random() * 700) + 80,
+  },
+  {
+    name: "Thu",
+    clicks: Math.floor(Math.random() * 900) + 100,
+    uniques: Math.floor(Math.random() * 700) + 80,
+  },
+  {
+    name: "Fri",
+    clicks: Math.floor(Math.random() * 900) + 100,
+    uniques: Math.floor(Math.random() * 700) + 80,
+  },
+  {
+    name: "Sat",
+    clicks: Math.floor(Math.random() * 900) + 100,
+    uniques: Math.floor(Math.random() * 700) + 80,
+  },
+  {
+    name: "Sun",
+    clicks: Math.floor(Math.random() * 900) + 100,
+    uniques: Math.floor(Math.random() * 700) + 80,
+  },
+];
+
+export function AnalyticsChart() {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <AreaChart data={data}>
+        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+        <Area
+          type="monotone"
+          dataKey="clicks"
+          stroke="currentColor"
+          className="text-primary"
+          fill="currentColor"
+          fillOpacity={0.15}
+        />
+        <Area
+          type="monotone"
+          dataKey="uniques"
+          stroke="currentColor"
+          className="text-muted-foreground"
+          fill="currentColor"
+          fillOpacity={0.1}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/dashboard/components/analytics.tsx", `import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { AnalyticsChart } from "./analytics-chart";
+
+export function Analytics() {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Traffic Overview</CardTitle>
+          <CardDescription>Weekly clicks and unique visitors</CardDescription>
+        </CardHeader>
+        <CardContent className="px-6">
+          <AnalyticsChart />
+        </CardContent>
+      </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Clicks</CardTitle>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              className="h-4 w-4 text-muted-foreground"
+            >
+              <path d="M3 3v18h18" />
+              <path d="M7 15l4-4 4 4 4-6" />
+            </svg>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">1,248</div>
+            <p className="text-xs text-muted-foreground">+12.4% vs last week</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Unique Visitors</CardTitle>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              className="h-4 w-4 text-muted-foreground"
+            >
+              <circle cx="12" cy="7" r="4" />
+              <path d="M6 21v-2a6 6 0 0 1 12 0v2" />
+            </svg>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">832</div>
+            <p className="text-xs text-muted-foreground">+5.8% vs last week</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Bounce Rate</CardTitle>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              className="h-4 w-4 text-muted-foreground"
+            >
+              <path d="M3 12h6l3 6 3-6h6" />
+            </svg>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">42%</div>
+            <p className="text-xs text-muted-foreground">-3.2% vs last week</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avg. Session</CardTitle>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              className="h-4 w-4 text-muted-foreground"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">3m 24s</div>
+            <p className="text-xs text-muted-foreground">+18s vs last week</p>
+          </CardContent>
+        </Card>
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-7">
+        <Card className="col-span-1 lg:col-span-4">
+          <CardHeader>
+            <CardTitle>Referrers</CardTitle>
+            <CardDescription>Top sources driving traffic</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SimpleBarList
+              items={[
+                { name: "Direct", value: 512 },
+                { name: "Product Hunt", value: 238 },
+                { name: "Twitter", value: 174 },
+                { name: "Blog", value: 104 },
+              ]}
+              barClass="bg-primary"
+              valueFormatter={(n) => \`\${n}\`}
+            />
+          </CardContent>
+        </Card>
+        <Card className="col-span-1 lg:col-span-3">
+          <CardHeader>
+            <CardTitle>Devices</CardTitle>
+            <CardDescription>How users access your app</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SimpleBarList
+              items={[
+                { name: "Desktop", value: 74 },
+                { name: "Mobile", value: 22 },
+                { name: "Tablet", value: 4 },
+              ]}
+              barClass="bg-muted-foreground"
+              valueFormatter={(n) => \`\${n}%\`}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function SimpleBarList({
+  items,
+  valueFormatter,
+  barClass,
+}: {
+  items: { name: string; value: number }[];
+  valueFormatter: (n: number) => string;
+  barClass: string;
+}) {
+  const max = Math.max(...items.map((i) => i.value), 1);
+  return (
+    <ul className="space-y-3">
+      {items.map((i) => {
+        const width = \`\${Math.round((i.value / max) * 100)}%\`;
+        return (
+          <li key={i.name} className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 truncate text-xs text-muted-foreground">{i.name}</div>
+              <div className="h-2.5 w-full rounded-full bg-muted">
+                <div className={\`h-2.5 rounded-full \${barClass}\`} style={{ width }} />
+              </div>
+            </div>
+            <div className="ps-2 text-xs font-medium tabular-nums">{valueFormatter(i.value)}</div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/dashboard/components/overview.tsx", `import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+
+const data = [
+  {
+    name: "Jan",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Feb",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Mar",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Apr",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "May",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Jun",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Jul",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Aug",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Sep",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Oct",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Nov",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+  {
+    name: "Dec",
+    total: Math.floor(Math.random() * 5000) + 1000,
+  },
+];
+
+export function Overview() {
+  return (
+    <ResponsiveContainer width="100%" height={350}>
+      <BarChart data={data}>
+        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+        <YAxis
+          direction="ltr"
+          stroke="#888888"
+          fontSize={12}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(value) => \`$\${value}\`}
+        />
+        <Bar dataKey="total" fill="currentColor" radius={[4, 4, 0, 0]} className="fill-primary" />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/dashboard/components/recent-sales.tsx", `import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
+export function RecentSales() {
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center gap-4">
+        <Avatar className="h-9 w-9">
+          <AvatarImage src="/avatars/01.png" alt="Avatar" />
+          <AvatarFallback>OM</AvatarFallback>
+        </Avatar>
+        <div className="flex flex-1 flex-wrap items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-sm leading-none font-medium">Olivia Martin</p>
+            <p className="text-sm text-muted-foreground">olivia.martin@email.com</p>
+          </div>
+          <div className="font-medium">+$1,999.00</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-4">
+        <Avatar className="flex h-9 w-9 items-center justify-center space-y-0 border">
+          <AvatarImage src="/avatars/02.png" alt="Avatar" />
+          <AvatarFallback>JL</AvatarFallback>
+        </Avatar>
+        <div className="flex flex-1 flex-wrap items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-sm leading-none font-medium">Jackson Lee</p>
+            <p className="text-sm text-muted-foreground">jackson.lee@email.com</p>
+          </div>
+          <div className="font-medium">+$39.00</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-4">
+        <Avatar className="h-9 w-9">
+          <AvatarImage src="/avatars/03.png" alt="Avatar" />
+          <AvatarFallback>IN</AvatarFallback>
+        </Avatar>
+        <div className="flex flex-1 flex-wrap items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-sm leading-none font-medium">Isabella Nguyen</p>
+            <p className="text-sm text-muted-foreground">isabella.nguyen@email.com</p>
+          </div>
+          <div className="font-medium">+$299.00</div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <Avatar className="h-9 w-9">
+          <AvatarImage src="/avatars/04.png" alt="Avatar" />
+          <AvatarFallback>WK</AvatarFallback>
+        </Avatar>
+        <div className="flex flex-1 flex-wrap items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-sm leading-none font-medium">William Kim</p>
+            <p className="text-sm text-muted-foreground">will@email.com</p>
+          </div>
+          <div className="font-medium">+$99.00</div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <Avatar className="h-9 w-9">
+          <AvatarImage src="/avatars/05.png" alt="Avatar" />
+          <AvatarFallback>SD</AvatarFallback>
+        </Avatar>
+        <div className="flex flex-1 flex-wrap items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-sm leading-none font-medium">Sofia Davis</p>
+            <p className="text-sm text-muted-foreground">sofia.davis@email.com</p>
+          </div>
+          <div className="font-medium">+$39.00</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/dashboard/index.tsx", `import { ConfigDrawer } from "@/components/config-drawer";
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { TopNav } from "@/components/layout/top-nav";
+import { ProfileDropdown } from "@/components/profile-dropdown";
+import { Search } from "@/components/search";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import { Analytics } from "./components/analytics";
+import { Overview } from "./components/overview";
+import { RecentSales } from "./components/recent-sales";
+
+export function Dashboard() {
+  return (
+    <>
+      {/* ===== Top Heading ===== */}
+      <Header>
+        <TopNav links={topNav} className="me-auto" />
+        <Search />
+        <ThemeSwitch />
+        <ConfigDrawer />
+        <ProfileDropdown />
+      </Header>
+
+      {/* ===== Main ===== */}
+      <Main>
+        <div className="mb-2 flex items-center justify-between space-y-2">
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <div className="flex items-center space-x-2">
+            <Button>Download</Button>
+          </div>
+        </div>
+        <Tabs orientation="vertical" defaultValue="overview" className="space-y-4">
+          <div className="w-full overflow-x-auto pb-2">
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
+              <TabsTrigger value="reports" disabled>
+                Reports
+              </TabsTrigger>
+              <TabsTrigger value="notifications" disabled>
+                Notifications
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent value="overview" className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-muted-foreground"
+                  >
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                  </svg>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">$45,231.89</div>
+                  <p className="text-xs text-muted-foreground">+20.1% from last month</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Subscriptions</CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-muted-foreground"
+                  >
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">+2350</div>
+                  <p className="text-xs text-muted-foreground">+180.1% from last month</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Sales</CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-muted-foreground"
+                  >
+                    <rect width="20" height="14" x="2" y="5" rx="2" />
+                    <path d="M2 10h20" />
+                  </svg>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">+12,234</div>
+                  <p className="text-xs text-muted-foreground">+19% from last month</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Active Now</CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-muted-foreground"
+                  >
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                  </svg>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">+573</div>
+                  <p className="text-xs text-muted-foreground">+201 since last hour</p>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-7">
+              <Card className="col-span-1 lg:col-span-4">
+                <CardHeader>
+                  <CardTitle>Overview</CardTitle>
+                </CardHeader>
+                <CardContent className="ps-2">
+                  <Overview />
+                </CardContent>
+              </Card>
+              <Card className="col-span-1 lg:col-span-3">
+                <CardHeader>
+                  <CardTitle>Recent Sales</CardTitle>
+                  <CardDescription>You made 265 sales this month.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RecentSales />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+          <TabsContent value="analytics" className="space-y-4">
+            <Analytics />
+          </TabsContent>
+        </Tabs>
+      </Main>
+    </>
+  );
+}
+
+const topNav = [
+  {
+    title: "Overview",
+    href: "dashboard/overview",
+    isActive: true,
+    disabled: false,
+  },
+  {
+    title: "Customers",
+    href: "dashboard/customers",
+    isActive: false,
+    disabled: true,
+  },
+  {
+    title: "Products",
+    href: "dashboard/products",
+    isActive: false,
+    disabled: true,
+  },
+  {
+    title: "Settings",
+    href: "dashboard/settings",
+    isActive: false,
+    disabled: true,
+  },
+];
+`],
+  ["addons/admin/apps/web/src/features/errors/forbidden.tsx", `import { useNavigate, useRouter } from "@tanstack/react-router";
+
+import { Button } from "@/components/ui/button";
+
+export function ForbiddenError() {
+  const navigate = useNavigate();
+  const { history } = useRouter();
+  return (
+    <div className="h-svh">
+      <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
+        <h1 className="text-[7rem] leading-tight font-bold">403</h1>
+        <span className="font-medium">Access Forbidden</span>
+        <p className="text-center text-muted-foreground">
+          You don't have necessary permission <br />
+          to view this resource.
+        </p>
+        <div className="mt-6 flex gap-4">
+          <Button variant="outline" onClick={() => history.go(-1)}>
+            Go Back
+          </Button>
+          <Button onClick={() => navigate({ to: "/" })}>Back to Home</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/errors/general-error.tsx", `import { useNavigate, useRouter } from "@tanstack/react-router";
+
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
+  minimal?: boolean;
+};
+
+export function GeneralError({ className, minimal = false }: GeneralErrorProps) {
+  const navigate = useNavigate();
+  const { history } = useRouter();
+  return (
+    <div className={cn("h-svh w-full", className)}>
+      <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
+        {!minimal && <h1 className="text-[7rem] leading-tight font-bold">500</h1>}
+        <span className="font-medium">Oops! Something went wrong {\`:')\`}</span>
+        <p className="text-center text-muted-foreground">
+          We apologize for the inconvenience. <br /> Please try again later.
+        </p>
+        {!minimal && (
+          <div className="mt-6 flex gap-4">
+            <Button variant="outline" onClick={() => history.go(-1)}>
+              Go Back
+            </Button>
+            <Button onClick={() => navigate({ to: "/" })}>Back to Home</Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/errors/maintenance-error.tsx", `import { Button } from "@/components/ui/button";
+
+export function MaintenanceError() {
+  return (
+    <div className="h-svh">
+      <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
+        <h1 className="text-[7rem] leading-tight font-bold">503</h1>
+        <span className="font-medium">Website is under maintenance!</span>
+        <p className="text-center text-muted-foreground">
+          The site is not available at the moment. <br />
+          We'll be back online shortly.
+        </p>
+        <div className="mt-6 flex gap-4">
+          <Button variant="outline">Learn more</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/errors/not-found-error.tsx", `import { useNavigate, useRouter } from "@tanstack/react-router";
+
+import { Button } from "@/components/ui/button";
+
+export function NotFoundError() {
+  const navigate = useNavigate();
+  const { history } = useRouter();
+  return (
+    <div className="h-svh">
+      <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
+        <h1 className="text-[7rem] leading-tight font-bold">404</h1>
+        <span className="font-medium">Oops! Page Not Found!</span>
+        <p className="text-center text-muted-foreground">
+          It seems like the page you're looking for <br />
+          does not exist or might have been removed.
+        </p>
+        <div className="mt-6 flex gap-4">
+          <Button variant="outline" onClick={() => history.go(-1)}>
+            Go Back
+          </Button>
+          <Button onClick={() => navigate({ to: "/" })}>Back to Home</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/errors/unauthorized-error.tsx", `import { useNavigate, useRouter } from "@tanstack/react-router";
+
+import { Button } from "@/components/ui/button";
+
+export function UnauthorisedError() {
+  const navigate = useNavigate();
+  const { history } = useRouter();
+  return (
+    <div className="h-svh">
+      <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
+        <h1 className="text-[7rem] leading-tight font-bold">401</h1>
+        <span className="font-medium">Unauthorized Access</span>
+        <p className="text-center text-muted-foreground">
+          Please log in with the appropriate credentials <br /> to access this resource.
+        </p>
+        <div className="mt-6 flex gap-4">
+          <Button variant="outline" onClick={() => history.go(-1)}>
+            Go Back
+          </Button>
+          <Button onClick={() => navigate({ to: "/" })}>Back to Home</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/account/account-form.tsx", `import { useCallback, useState } from "react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { authClient } from "@/lib/auth-client";
+
+export function AccountForm() {
+  const [pending, setPending] = useState(false);
+  const submit = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const target = event.currentTarget;
+    const data = new FormData(target);
+    const newPassword = String(data.get("newPassword") ?? "");
+    if (newPassword !== String(data.get("confirmPassword") ?? "")) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    setPending(true);
+    const { error } = await authClient.changePassword({
+      currentPassword: String(data.get("currentPassword") ?? ""),
+      newPassword,
+      revokeOtherSessions: true,
+    });
+    setPending(false);
+    if (error) {
+      toast.error(error.message ?? "Could not change password");
+      return;
+    }
+    target.reset();
+    toast.success("Password changed and other sessions revoked");
+  }, []);
+
+  return (
+    <form className="space-y-8" onSubmit={submit}>
+      <div className="space-y-2">
+        <Label htmlFor="current-password">Current password</Label>
+        <Input
+          autoComplete="current-password"
+          id="current-password"
+          name="currentPassword"
+          required
+          type="password"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="new-password">New password</Label>
+        <Input
+          autoComplete="new-password"
+          id="new-password"
+          minLength={8}
+          name="newPassword"
+          required
+          type="password"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="confirm-password">Confirm new password</Label>
+        <Input
+          autoComplete="new-password"
+          id="confirm-password"
+          minLength={8}
+          name="confirmPassword"
+          required
+          type="password"
+        />
+      </div>
+      <Button disabled={pending} type="submit">
+        {pending ? "Updating…" : "Change password"}
+      </Button>
+    </form>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/account/index.tsx", `import { ContentSection } from "../components/content-section";
+import { AccountForm } from "./account-form";
+
+export function SettingsAccount() {
+  return (
+    <ContentSection
+      desc="Change your password and revoke every other active session."
+      title="Account security"
+    >
+      <AccountForm />
+    </ContentSection>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/appearance/appearance-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { ChevronDownIcon } from "@radix-ui/react-icons";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { fonts } from "@/config/fonts";
+import { useFont } from "@/context/font-provider";
+import { useTheme } from "@/context/theme-provider";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+import { cn } from "@/lib/utils";
+
+const appearanceFormSchema = z.object({
+  theme: z.enum(["light", "dark"]),
+  font: z.enum(fonts),
+});
+
+type AppearanceFormValues = z.infer<typeof appearanceFormSchema>;
+
+export function AppearanceForm() {
+  const { font, setFont } = useFont();
+  const { theme, setTheme } = useTheme();
+
+  // This can come from your database or API.
+  const defaultValues: Partial<AppearanceFormValues> = {
+    theme: theme as "light" | "dark",
+    font,
+  };
+
+  const form = useForm<AppearanceFormValues>({
+    resolver: zodResolver(appearanceFormSchema),
+    defaultValues,
+  });
+
+  function onSubmit(data: AppearanceFormValues) {
+    if (data.font != font) setFont(data.font);
+    if (data.theme != theme) setTheme(data.theme);
+
+    showSubmittedData(data);
+  }
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        <FormField
+          control={form.control}
+          name="font"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Font</FormLabel>
+              <div className="relative w-max">
+                <FormControl>
+                  <select
+                    className={cn(
+                      buttonVariants({ variant: "outline" }),
+                      "w-50 appearance-none font-normal capitalize",
+                      "dark:bg-background dark:hover:bg-background",
+                    )}
+                    {...field}
+                  >
+                    {fonts.map((font) => (
+                      <option key={font} value={font}>
+                        {font}
+                      </option>
+                    ))}
+                  </select>
+                </FormControl>
+                <ChevronDownIcon className="absolute inset-e-3 top-2.5 h-4 w-4 opacity-50" />
+              </div>
+              <FormDescription className="font-manrope">
+                Set the font you want to use in the dashboard.
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="theme"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Theme</FormLabel>
+              <FormDescription>Select the theme for the dashboard.</FormDescription>
+              <FormMessage />
+              <RadioGroup
+                onValueChange={field.onChange}
+                defaultValue={field.value}
+                className="grid max-w-md grid-cols-2 gap-8 pt-2"
+              >
+                <FormItem>
+                  <FormLabel className="[&:has([data-state=checked])>div]:border-primary">
+                    <FormControl>
+                      <RadioGroupItem value="light" className="sr-only" />
+                    </FormControl>
+                    <div className="items-center rounded-md border-2 border-muted p-1 hover:border-accent">
+                      <div className="space-y-2 rounded-sm bg-[#ecedef] p-2">
+                        <div className="space-y-2 rounded-md bg-white p-2 shadow-xs">
+                          <div className="h-2 w-20 rounded-lg bg-[#ecedef]" />
+                          <div className="h-2 w-25 rounded-lg bg-[#ecedef]" />
+                        </div>
+                        <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-xs">
+                          <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
+                          <div className="h-2 w-25 rounded-lg bg-[#ecedef]" />
+                        </div>
+                        <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-xs">
+                          <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
+                          <div className="h-2 w-25 rounded-lg bg-[#ecedef]" />
+                        </div>
+                      </div>
+                    </div>
+                    <span className="block w-full p-2 text-center font-normal">Light</span>
+                  </FormLabel>
+                </FormItem>
+                <FormItem>
+                  <FormLabel className="[&:has([data-state=checked])>div]:border-primary">
+                    <FormControl>
+                      <RadioGroupItem value="dark" className="sr-only" />
+                    </FormControl>
+                    <div className="items-center rounded-md border-2 border-muted bg-popover p-1 hover:bg-accent hover:text-accent-foreground">
+                      <div className="space-y-2 rounded-sm bg-slate-950 p-2">
+                        <div className="space-y-2 rounded-md bg-slate-800 p-2 shadow-xs">
+                          <div className="h-2 w-20 rounded-lg bg-slate-400" />
+                          <div className="h-2 w-25 rounded-lg bg-slate-400" />
+                        </div>
+                        <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-xs">
+                          <div className="h-4 w-4 rounded-full bg-slate-400" />
+                          <div className="h-2 w-25 rounded-lg bg-slate-400" />
+                        </div>
+                        <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-xs">
+                          <div className="h-4 w-4 rounded-full bg-slate-400" />
+                          <div className="h-2 w-25 rounded-lg bg-slate-400" />
+                        </div>
+                      </div>
+                    </div>
+                    <span className="block w-full p-2 text-center font-normal">Dark</span>
+                  </FormLabel>
+                </FormItem>
+              </RadioGroup>
+            </FormItem>
+          )}
+        />
+
+        <Button type="submit">Update preferences</Button>
+      </form>
+    </Form>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/appearance/index.tsx", `import { ContentSection } from "../components/content-section";
+import { AppearanceForm } from "./appearance-form";
+
+export function SettingsAppearance() {
+  return (
+    <ContentSection
+      title="Appearance"
+      desc="Customize the appearance of the app. Automatically switch between day
+          and night themes."
+    >
+      <AppearanceForm />
+    </ContentSection>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/components/content-section.tsx", `import { Separator } from "@/components/ui/separator";
+
+type ContentSectionProps = {
+  title: string;
+  desc: string;
+  children: React.JSX.Element;
+};
+
+export function ContentSection({ title, desc, children }: ContentSectionProps) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="flex-none">
+        <h3 className="text-lg font-medium">{title}</h3>
+        <p className="text-sm text-muted-foreground">{desc}</p>
+      </div>
+      <Separator className="my-4 flex-none" />
+      <div className="faded-bottom h-full w-full overflow-y-auto scroll-smooth pe-4 pb-12">
+        <div className="-mx-1 px-1.5 lg:max-w-xl">{children}</div>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/components/sidebar-nav.tsx", `import { useLocation, useNavigate, Link } from "@tanstack/react-router";
+import { useState, type JSX } from "react";
+
+import { buttonVariants } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+type SidebarNavProps = React.HTMLAttributes<HTMLElement> & {
+  items: {
+    href: string;
+    title: string;
+    icon: JSX.Element;
+  }[];
+};
+
+export function SidebarNav({ className, items, ...props }: SidebarNavProps) {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [val, setVal] = useState(pathname ?? "/settings");
+
+  const handleSelect = (e: string) => {
+    setVal(e);
+    navigate({ to: e });
+  };
+
+  return (
+    <>
+      <div className="p-1 md:hidden">
+        <Select value={val} onValueChange={handleSelect}>
+          <SelectTrigger className="h-12 sm:w-48">
+            <SelectValue placeholder="Theme" />
+          </SelectTrigger>
+          <SelectContent>
+            {items.map((item) => (
+              <SelectItem key={item.href} value={item.href}>
+                <div className="flex gap-x-4 px-2 py-1">
+                  <span className="scale-125">{item.icon}</span>
+                  <span className="text-md">{item.title}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <ScrollArea
+        orientation="horizontal"
+        type="always"
+        className="hidden w-full min-w-40 bg-background px-1 py-2 md:block"
+      >
+        <nav
+          className={cn("flex space-x-2 py-1 lg:flex-col lg:space-y-1 lg:space-x-0", className)}
+          {...props}
+        >
+          {items.map((item) => (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                pathname === item.href
+                  ? "bg-muted hover:bg-accent"
+                  : "hover:bg-accent hover:underline",
+                "justify-start",
+              )}
+            >
+              <span className="me-2">{item.icon}</span>
+              {item.title}
+            </Link>
+          ))}
+        </nav>
+      </ScrollArea>
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/display/display-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+const items = [
+  {
+    id: "recents",
+    label: "Recents",
+  },
+  {
+    id: "home",
+    label: "Home",
+  },
+  {
+    id: "applications",
+    label: "Applications",
+  },
+  {
+    id: "desktop",
+    label: "Desktop",
+  },
+  {
+    id: "downloads",
+    label: "Downloads",
+  },
+  {
+    id: "documents",
+    label: "Documents",
+  },
+] as const;
+
+const displayFormSchema = z.object({
+  items: z.array(z.string()).refine((value) => value.some((item) => item), {
+    message: "You have to select at least one item.",
+  }),
+});
+
+type DisplayFormValues = z.infer<typeof displayFormSchema>;
+
+// This can come from your database or API.
+const defaultValues: Partial<DisplayFormValues> = {
+  items: ["recents", "home"],
+};
+
+export function DisplayForm() {
+  const form = useForm<DisplayFormValues>({
+    resolver: zodResolver(displayFormSchema),
+    defaultValues,
+  });
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit((data) => showSubmittedData(data))} className="space-y-8">
+        <FormField
+          control={form.control}
+          name="items"
+          render={() => (
+            <FormItem>
+              <div className="mb-4">
+                <FormLabel className="text-base">Sidebar</FormLabel>
+                <FormDescription>
+                  Select the items you want to display in the sidebar.
+                </FormDescription>
+              </div>
+              {items.map((item) => (
+                <FormField
+                  key={item.id}
+                  control={form.control}
+                  name="items"
+                  render={({ field }) => {
+                    return (
+                      <FormItem key={item.id} className="flex flex-row items-start">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value?.includes(item.id)}
+                            onCheckedChange={(checked) => {
+                              return checked
+                                ? field.onChange([...field.value, item.id])
+                                : field.onChange(field.value?.filter((value) => value !== item.id));
+                            }}
+                          />
+                        </FormControl>
+                        <FormLabel className="font-normal">{item.label}</FormLabel>
+                      </FormItem>
+                    );
+                  }}
+                />
+              ))}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit">Update display</Button>
+      </form>
+    </Form>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/display/index.tsx", `import { ContentSection } from "../components/content-section";
+import { DisplayForm } from "./display-form";
+
+export function SettingsDisplay() {
+  return (
+    <ContentSection
+      title="Display"
+      desc="Turn items on or off to control what's displayed in the app."
+    >
+      <DisplayForm />
+    </ContentSection>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/index.tsx", `import { Outlet } from "@tanstack/react-router";
+import { Monitor, Bell, Palette, Wrench, UserCog } from "lucide-react";
+
+import { ConfigDrawer } from "@/components/config-drawer";
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { ProfileDropdown } from "@/components/profile-dropdown";
+import { Search } from "@/components/search";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Separator } from "@/components/ui/separator";
+
+import { SidebarNav } from "./components/sidebar-nav";
+
+const sidebarNavItems = [
+  {
+    title: "Profile",
+    href: "/settings",
+    icon: <UserCog size={18} />,
+  },
+  {
+    title: "Account",
+    href: "/settings/account",
+    icon: <Wrench size={18} />,
+  },
+  {
+    title: "Appearance",
+    href: "/settings/appearance",
+    icon: <Palette size={18} />,
+  },
+  {
+    title: "Notifications",
+    href: "/settings/notifications",
+    icon: <Bell size={18} />,
+  },
+  {
+    title: "Display",
+    href: "/settings/display",
+    icon: <Monitor size={18} />,
+  },
+];
+
+export function Settings() {
+  return (
+    <>
+      {/* ===== Top Heading ===== */}
+      <Header>
+        <Search className="me-auto" />
+        <ThemeSwitch />
+        <ConfigDrawer />
+        <ProfileDropdown />
+      </Header>
+
+      <Main fixed>
+        <div className="space-y-0.5">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Settings</h1>
+          <p className="text-muted-foreground">
+            Manage your account settings and set e-mail preferences.
+          </p>
+        </div>
+        <Separator className="my-4 lg:my-6" />
+        <div className="flex flex-1 flex-col space-y-2 overflow-hidden md:space-y-2 lg:flex-row lg:space-y-0 lg:space-x-12">
+          <aside className="top-0 lg:sticky lg:w-1/5">
+            <SidebarNav items={sidebarNavItems} />
+          </aside>
+          <div className="flex w-full overflow-y-hidden p-1">
+            <Outlet />
+          </div>
+        </div>
+      </Main>
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/notifications/index.tsx", `import { ContentSection } from "../components/content-section";
+import { NotificationsForm } from "./notifications-form";
+
+export function SettingsNotifications() {
+  return (
+    <ContentSection title="Notifications" desc="Configure how you receive notifications.">
+      <NotificationsForm />
+    </ContentSection>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/notifications/notifications-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { Link } from "@tanstack/react-router";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+const notificationsFormSchema = z.object({
+  type: z.enum(["all", "mentions", "none"], {
+    error: (iss) => (iss.input === undefined ? "Please select a notification type." : undefined),
+  }),
+  mobile: z.boolean().default(false).optional(),
+  communication_emails: z.boolean().default(false).optional(),
+  social_emails: z.boolean().default(false).optional(),
+  marketing_emails: z.boolean().default(false).optional(),
+  security_emails: z.boolean(),
+});
+
+type NotificationsFormValues = z.infer<typeof notificationsFormSchema>;
+
+// This can come from your database or API.
+const defaultValues: Partial<NotificationsFormValues> = {
+  communication_emails: false,
+  marketing_emails: false,
+  social_emails: true,
+  security_emails: true,
+};
+
+export function NotificationsForm() {
+  const form = useForm<NotificationsFormValues>({
+    resolver: zodResolver(notificationsFormSchema),
+    defaultValues,
+  });
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit((data) => showSubmittedData(data))} className="space-y-8">
+        <FormField
+          control={form.control}
+          name="type"
+          render={({ field }) => (
+            <FormItem className="relative space-y-3">
+              <FormLabel>Notify me about...</FormLabel>
+              <FormControl>
+                <RadioGroup
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                  className="flex flex-col gap-2"
+                >
+                  <FormItem className="flex items-center">
+                    <FormControl>
+                      <RadioGroupItem value="all" />
+                    </FormControl>
+                    <FormLabel className="font-normal">All new messages</FormLabel>
+                  </FormItem>
+                  <FormItem className="flex items-center">
+                    <FormControl>
+                      <RadioGroupItem value="mentions" />
+                    </FormControl>
+                    <FormLabel className="font-normal">Direct messages and mentions</FormLabel>
+                  </FormItem>
+                  <FormItem className="flex items-center">
+                    <FormControl>
+                      <RadioGroupItem value="none" />
+                    </FormControl>
+                    <FormLabel className="font-normal">Nothing</FormLabel>
+                  </FormItem>
+                </RadioGroup>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="relative">
+          <h3 className="mb-4 text-lg font-medium">Email Notifications</h3>
+          <div className="space-y-4">
+            <FormField
+              control={form.control}
+              name="communication_emails"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Communication emails</FormLabel>
+                    <FormDescription>Receive emails about your account activity.</FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="marketing_emails"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Marketing emails</FormLabel>
+                    <FormDescription>
+                      Receive emails about new products, features, and more.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="social_emails"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Social emails</FormLabel>
+                    <FormDescription>
+                      Receive emails for friend requests, follows, and more.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="security_emails"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Security emails</FormLabel>
+                    <FormDescription>
+                      Receive emails about your account activity and security.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled
+                      aria-readonly
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+        <FormField
+          control={form.control}
+          name="mobile"
+          render={({ field }) => (
+            <FormItem className="relative flex flex-row items-start">
+              <FormControl>
+                <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel>Use different settings for my mobile devices</FormLabel>
+                <FormDescription>
+                  You can manage your mobile notifications in the{" "}
+                  <Link
+                    to="/settings"
+                    className="underline decoration-dashed underline-offset-4 hover:decoration-solid"
+                  >
+                    mobile settings
+                  </Link>{" "}
+                  page.
+                </FormDescription>
+              </div>
+            </FormItem>
+          )}
+        />
+        <Button type="submit">Update notifications</Button>
+      </form>
+    </Form>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/profile/index.tsx", `import { ContentSection } from "../components/content-section";
+import { ProfileForm } from "./profile-form";
+
+export function SettingsProfile() {
+  return (
+    <ContentSection title="Profile" desc="This is how others will see you on the site.">
+      <ProfileForm />
+    </ContentSection>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/profile/profile-form.tsx", `import { useCallback, useState } from "react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { authClient } from "@/lib/auth-client";
+
+export function ProfileForm() {
+  const { data: session, refetch } = authClient.useSession();
+  const [pending, setPending] = useState(false);
+  const submit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      setPending(true);
+      const { error } = await authClient.updateUser({
+        name: String(form.get("name") ?? "").trim(),
+      });
+      setPending(false);
+      if (error) {
+        toast.error(error.message ?? "Could not update profile");
+        return;
+      }
+      await refetch();
+      toast.success("Profile updated");
+    },
+    [refetch],
+  );
+
+  return (
+    <form className="space-y-8" onSubmit={submit}>
+      <div className="space-y-2">
+        <Label htmlFor="profile-name">Display name</Label>
+        <Input defaultValue={session?.user.name ?? ""} id="profile-name" name="name" required />
+        <p className="text-muted-foreground text-sm">
+          This is your public display name across the dashboard.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="profile-email">Email</Label>
+        <Input disabled id="profile-email" value={session?.user.email ?? ""} />
+        <p className="text-muted-foreground text-sm">Your verified sign-in address.</p>
+      </div>
+      <Button disabled={pending} type="submit">
+        {pending ? "Updating…" : "Update profile"}
+      </Button>
+    </form>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/data-table-bulk-actions.tsx", `import { type Table } from "@tanstack/react-table";
+import { Trash2, CircleArrowUp, ArrowUpDown, Download } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { DataTableBulkActions as BulkActionsToolbar } from "@/components/data-table";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { sleep } from "@/lib/utils";
+
+import { priorities, statuses } from "../data/data";
+import { type Task } from "../data/schema";
+import { TasksMultiDeleteDialog } from "./tasks-multi-delete-dialog";
+
+type DataTableBulkActionsProps<TData> = {
+  table: Table<TData>;
+};
+
+export function DataTableBulkActions<TData>({ table }: DataTableBulkActionsProps<TData>) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const selectedRows = table.getFilteredSelectedRowModel().rows;
+
+  const handleBulkStatusChange = (status: string) => {
+    const selectedTasks = selectedRows.map((row) => row.original as Task);
+    toast.promise(sleep(2000), {
+      loading: "Updating status...",
+      success: () => {
+        table.resetRowSelection();
+        return \`Status updated to "\${status}" for \${selectedTasks.length} task\${selectedTasks.length > 1 ? "s" : ""}.\`;
+      },
+      error: "Error",
+    });
+    table.resetRowSelection();
+  };
+
+  const handleBulkPriorityChange = (priority: string) => {
+    const selectedTasks = selectedRows.map((row) => row.original as Task);
+    toast.promise(sleep(2000), {
+      loading: "Updating priority...",
+      success: () => {
+        table.resetRowSelection();
+        return \`Priority updated to "\${priority}" for \${selectedTasks.length} task\${selectedTasks.length > 1 ? "s" : ""}.\`;
+      },
+      error: "Error",
+    });
+    table.resetRowSelection();
+  };
+
+  const handleBulkExport = () => {
+    const selectedTasks = selectedRows.map((row) => row.original as Task);
+    toast.promise(sleep(2000), {
+      loading: "Exporting tasks...",
+      success: () => {
+        table.resetRowSelection();
+        return \`Exported \${selectedTasks.length} task\${selectedTasks.length > 1 ? "s" : ""} to CSV.\`;
+      },
+      error: "Error",
+    });
+    table.resetRowSelection();
+  };
+
+  return (
+    <>
+      <BulkActionsToolbar table={table} entityName="task">
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-8"
+                  aria-label="Update status"
+                  title="Update status"
+                >
+                  <CircleArrowUp />
+                  <span className="sr-only">Update status</span>
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Update status</p>
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent sideOffset={14}>
+            {statuses.map((status) => (
+              <DropdownMenuItem
+                key={status.value}
+                defaultValue={status.value}
+                onClick={() => handleBulkStatusChange(status.value)}
+              >
+                {status.icon && <status.icon className="size-4 text-muted-foreground" />}
+                {status.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-8"
+                  aria-label="Update priority"
+                  title="Update priority"
+                >
+                  <ArrowUpDown />
+                  <span className="sr-only">Update priority</span>
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Update priority</p>
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent sideOffset={14}>
+            {priorities.map((priority) => (
+              <DropdownMenuItem
+                key={priority.value}
+                defaultValue={priority.value}
+                onClick={() => handleBulkPriorityChange(priority.value)}
+              >
+                {priority.icon && <priority.icon className="size-4 text-muted-foreground" />}
+                {priority.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => handleBulkExport()}
+              className="size-8"
+              aria-label="Export tasks"
+              title="Export tasks"
+            >
+              <Download />
+              <span className="sr-only">Export tasks</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Export tasks</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="destructive"
+              size="icon"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="size-8"
+              aria-label="Delete selected tasks"
+              title="Delete selected tasks"
+            >
+              <Trash2 />
+              <span className="sr-only">Delete selected tasks</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Delete selected tasks</p>
+          </TooltipContent>
+        </Tooltip>
+      </BulkActionsToolbar>
+
+      <TasksMultiDeleteDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        table={table}
+      />
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/data-table-row-actions.tsx", `import { DotsHorizontalIcon } from "@radix-ui/react-icons";
+import { type Row } from "@tanstack/react-table";
+import { Trash2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { labels } from "../data/data";
+import { taskSchema } from "../data/schema";
+import { useTasks } from "./tasks-provider";
+
+type DataTableRowActionsProps<TData> = {
+  row: Row<TData>;
+};
+
+export function DataTableRowActions<TData>({ row }: DataTableRowActionsProps<TData>) {
+  const task = taskSchema.parse(row.original);
+
+  const { setOpen, setCurrentRow } = useTasks();
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="flex h-8 w-8 p-0 data-[state=open]:bg-muted">
+          <DotsHorizontalIcon className="h-4 w-4" />
+          <span className="sr-only">Open menu</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuItem
+          onClick={() => {
+            setCurrentRow(task);
+            setOpen("update");
+          }}
+        >
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled>Make a copy</DropdownMenuItem>
+        <DropdownMenuItem disabled>Favorite</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>Labels</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuRadioGroup value={task.label}>
+              {labels.map((label) => (
+                <DropdownMenuRadioItem key={label.value} value={label.value}>
+                  {label.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => {
+            setCurrentRow(task);
+            setOpen("delete");
+          }}
+        >
+          Delete
+          <DropdownMenuShortcut>
+            <Trash2 size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-columns.tsx", `import { type ColumnDef } from "@tanstack/react-table";
+
+import { DataTableColumnHeader } from "@/components/data-table";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+
+import { labels, priorities, statuses } from "../data/data";
+import { type Task } from "../data/schema";
+import { DataTableRowActions } from "./data-table-row-actions";
+
+export const tasksColumns: ColumnDef<Task>[] = [
+  {
+    id: "select",
+    header: ({ table }) => (
+      <Checkbox
+        checked={
+          table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")
+        }
+        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+        aria-label="Select all"
+        className="translate-y-0.5"
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        checked={row.getIsSelected()}
+        onCheckedChange={(value) => row.toggleSelected(!!value)}
+        aria-label="Select row"
+        className="translate-y-0.5"
+      />
+    ),
+    enableSorting: false,
+    enableHiding: false,
+  },
+  {
+    accessorKey: "id",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Task" />,
+    cell: ({ row }) => <div className="w-20">{row.getValue("id")}</div>,
+    enableSorting: false,
+    enableHiding: false,
+  },
+  {
+    accessorKey: "title",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />,
+    meta: {
+      className: "ps-1 max-w-0 w-2/3",
+      tdClassName: "ps-4",
+    },
+    cell: ({ row }) => {
+      const label = labels.find((label) => label.value === row.original.label);
+
+      return (
+        <div className="flex space-x-2">
+          {label && <Badge variant="outline">{label.label}</Badge>}
+          <span className="truncate font-medium">{row.getValue("title")}</span>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "status",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+    meta: { className: "ps-1", tdClassName: "ps-4" },
+    cell: ({ row }) => {
+      const status = statuses.find((status) => status.value === row.getValue("status"));
+
+      if (!status) {
+        return null;
+      }
+
+      return (
+        <div className="flex w-25 items-center gap-2">
+          {status.icon && <status.icon className="size-4 text-muted-foreground" />}
+          <span>{status.label}</span>
+        </div>
+      );
+    },
+    filterFn: (row, id, value) => {
+      return value.includes(row.getValue(id));
+    },
+  },
+  {
+    accessorKey: "priority",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Priority" />,
+    meta: { className: "ps-1", tdClassName: "ps-3" },
+    cell: ({ row }) => {
+      const priority = priorities.find((priority) => priority.value === row.getValue("priority"));
+
+      if (!priority) {
+        return null;
+      }
+
+      return (
+        <div className="flex items-center gap-2">
+          {priority.icon && <priority.icon className="size-4 text-muted-foreground" />}
+          <span>{priority.label}</span>
+        </div>
+      );
+    },
+    filterFn: (row, id, value) => {
+      return value.includes(row.getValue(id));
+    },
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => <DataTableRowActions row={row} />,
+  },
+];
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-dialogs.tsx", `import { ConfirmDialog } from "@/components/confirm-dialog";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { TasksImportDialog } from "./tasks-import-dialog";
+import { TasksMutateDrawer } from "./tasks-mutate-drawer";
+import { useTasks } from "./tasks-provider";
+
+export function TasksDialogs() {
+  const { open, setOpen, currentRow, setCurrentRow } = useTasks();
+  return (
+    <>
+      <TasksMutateDrawer
+        key="task-create"
+        open={open === "create"}
+        onOpenChange={() => setOpen("create")}
+      />
+
+      <TasksImportDialog
+        key="tasks-import"
+        open={open === "import"}
+        onOpenChange={() => setOpen("import")}
+      />
+
+      {currentRow && (
+        <>
+          <TasksMutateDrawer
+            key={\`task-update-\${currentRow.id}\`}
+            open={open === "update"}
+            onOpenChange={() => {
+              setOpen("update");
+              setTimeout(() => {
+                setCurrentRow(null);
+              }, 500);
+            }}
+            currentRow={currentRow}
+          />
+
+          <ConfirmDialog
+            key="task-delete"
+            destructive
+            open={open === "delete"}
+            onOpenChange={() => {
+              setOpen("delete");
+              setTimeout(() => {
+                setCurrentRow(null);
+              }, 500);
+            }}
+            handleConfirm={() => {
+              setOpen(null);
+              setTimeout(() => {
+                setCurrentRow(null);
+              }, 500);
+              showSubmittedData(currentRow, "The following task has been deleted:");
+            }}
+            className="max-w-md"
+            title={\`Delete this task: \${currentRow.id} ?\`}
+            desc={
+              <>
+                You are about to delete a task with the ID <strong>{currentRow.id}</strong>. <br />
+                This action cannot be undone.
+              </>
+            }
+            confirmText="Delete"
+          />
+        </>
+      )}
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-import-dialog.test.tsx", `import { useState } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { TasksImportDialog } from "./tasks-import-dialog";
+
+vi.mock("@/lib/show-submitted-data", () => ({ showSubmittedData: vi.fn() }));
+
+describe("TasksImportDialog", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("renders the dialog with the correct title, description, file input and buttons", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole, getByText, getByLabelText } = await render(
+      <TasksImportDialog open onOpenChange={onOpenChange} />,
+    );
+
+    const title = getByRole("heading", {
+      level: 2,
+      name: /Import Tasks/i,
+    });
+    const desc = getByText("Import tasks quickly from a CSV file");
+    const fileInput = getByLabelText("File");
+    const closeButtons = getByRole("dialog").getByRole("button", { name: "Close" }).all();
+
+    const importButton = getByRole("button", { name: /^Import$/i });
+
+    await expect.element(title).toBeInTheDocument();
+    await expect.element(desc).toBeInTheDocument();
+    await expect.element(fileInput).toBeInTheDocument();
+    expect(closeButtons).toHaveLength(2);
+    await expect.element(importButton).toBeInTheDocument();
+  });
+
+  it("shows validation when submitting without a file", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole, getByText } = await render(
+      <TasksImportDialog open onOpenChange={onOpenChange} />,
+    );
+
+    const importButton = getByRole("button", { name: /^Import$/i });
+    await userEvent.click(importButton);
+
+    await expect.element(getByText("Please upload a file.")).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(showSubmittedData).not.toHaveBeenCalled();
+  });
+
+  it("calls showSubmittedData and closes when a CSV file is imported", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole, getByLabelText } = await render(
+      <TasksImportDialog open onOpenChange={onOpenChange} />,
+    );
+
+    const csv = new File(["a,b"], "tasks.csv", { type: "text/csv" });
+    await userEvent.upload(getByLabelText("File"), csv);
+
+    const importButton = getByRole("button", { name: /^Import$/i });
+    await userEvent.click(importButton);
+
+    expect(showSubmittedData).toHaveBeenCalledOnce();
+    expect(showSubmittedData).toHaveBeenCalledWith(
+      {
+        name: "tasks.csv",
+        size: csv.size,
+        type: "text/csv",
+      },
+      "You have imported the following file:",
+    );
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("closes the dialog when Close is clicked", async () => {
+    const onOpenChange = vi.fn();
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reopen
+          </button>
+          <TasksImportDialog
+            open={open}
+            onOpenChange={(val) => {
+              onOpenChange(val);
+              setOpen(val);
+            }}
+          />
+        </>
+      );
+    }
+
+    const { getByRole } = await render(<Harness />);
+
+    const closeButtonX = getByRole("dialog")
+      .getByRole("button", {
+        name: /Close/i,
+      })
+      .nth(0);
+    await userEvent.click(closeButtonX);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(showSubmittedData).not.toHaveBeenCalled();
+
+    await userEvent.click(getByRole("button", { name: /Reopen/i }));
+    const closeButton = getByRole("dialog")
+      .getByRole("button", {
+        name: /Close/i,
+      })
+      .nth(1);
+    await userEvent.click(closeButton);
+
+    expect(onOpenChange).toHaveBeenCalledTimes(2);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(showSubmittedData).not.toHaveBeenCalled();
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-import-dialog.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+const formSchema = z.object({
+  file: z
+    .instanceof(FileList)
+    .refine((files) => files.length > 0, {
+      message: "Please upload a file.",
+    })
+    .refine((files) => ["text/csv"].includes(files?.[0]?.type), "Please upload csv format."),
+});
+
+type TaskImportDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function TasksImportDialog({ open, onOpenChange }: TaskImportDialogProps) {
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { file: undefined },
+  });
+
+  const fileRef = form.register("file");
+
+  const onSubmit = () => {
+    const file = form.getValues("file");
+
+    if (file && file[0]) {
+      const fileDetails = {
+        name: file[0].name,
+        size: file[0].size,
+        type: file[0].type,
+      };
+      showSubmittedData(fileDetails, "You have imported the following file:");
+    }
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(val) => {
+        onOpenChange(val);
+        form.reset();
+      }}
+    >
+      <DialogContent className="gap-2 sm:max-w-sm">
+        <DialogHeader className="text-start">
+          <DialogTitle>Import Tasks</DialogTitle>
+          <DialogDescription>Import tasks quickly from a CSV file.</DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form id="task-import-form" onSubmit={form.handleSubmit(onSubmit)}>
+            <FormField
+              control={form.control}
+              name="file"
+              render={() => (
+                <FormItem className="my-2">
+                  <FormLabel>File</FormLabel>
+                  <FormControl>
+                    <Input type="file" accept="text/csv" {...fileRef} className="h-8 py-0" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+        <DialogFooter className="gap-2">
+          <DialogClose asChild>
+            <Button variant="outline">Close</Button>
+          </DialogClose>
+          <Button type="submit" form="task-import-form">
+            Import
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-multi-delete-dialog.test.tsx", `import { useState } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { createTableMock } from "@/test-utils/tanstack-table";
+
+import { TasksMultiDeleteDialog } from "./tasks-multi-delete-dialog";
+
+vi.mock("@/lib/utils", async (orig) => ({
+  ...(await orig()),
+  sleep: vi.fn(() => Promise.resolve()),
+}));
+
+describe("TasksMultiDeleteDialog", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("renders the dialog with the correct title, description, input and buttons", async () => {
+    const { table } = createTableMock();
+
+    const { getByRole, getByText } = await render(
+      <TasksMultiDeleteDialog open onOpenChange={vi.fn()} table={table} />,
+    );
+
+    const title = getByRole("heading", {
+      level: 2,
+      name: /Delete 2 tasks/i,
+    });
+    const desc = getByText("Are you sure you want to delete the selected tasks?");
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    const cancelButton = getByRole("button", { name: /Cancel/i });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(title).toBeInTheDocument();
+    await expect.element(desc).toBeInTheDocument();
+    await expect.element(confirmDeleteInput).toBeInTheDocument();
+    await expect.element(cancelButton).toBeInTheDocument();
+    await expect.element(deleteButton).toBeInTheDocument();
+    await expect.element(deleteButton).toBeDisabled();
+  });
+
+  it("keeps the delete button disabled until the confirm delete input is filled correctly", async () => {
+    const { table } = createTableMock();
+    const { getByRole } = await render(
+      <TasksMultiDeleteDialog open onOpenChange={vi.fn()} table={table} />,
+    );
+
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(confirmDeleteInput, "wrong-input");
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(confirmDeleteInput, "DELETE");
+    await expect.element(deleteButton).toBeEnabled();
+  });
+
+  it("closes the dialog when the cancel button is clicked", async () => {
+    const onOpenChange = vi.fn();
+    const { table } = createTableMock();
+    const { getByRole } = await render(
+      <TasksMultiDeleteDialog open onOpenChange={onOpenChange} table={table} />,
+    );
+
+    const cancelButton = getByRole("button", { name: /Cancel/i });
+    await userEvent.click(cancelButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("resets the confirm delete input when the dialog is closed and reopened", async () => {
+    const { table } = createTableMock();
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reopen
+          </button>
+          {open ? (
+            <TasksMultiDeleteDialog open={open} onOpenChange={setOpen} table={table} />
+          ) : null}
+        </>
+      );
+    }
+
+    const { getByRole } = await render(<Harness />);
+
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    await userEvent.fill(confirmDeleteInput, "DELETE");
+    await expect.element(confirmDeleteInput).toHaveValue("DELETE");
+
+    const cancelButton = getByRole("button", { name: /Cancel/i });
+    await userEvent.click(cancelButton);
+
+    const reopenButton = getByRole("button", { name: /Reopen/i });
+    await userEvent.click(reopenButton);
+    await expect.element(confirmDeleteInput).toHaveValue("");
+  });
+
+  it("shows the submitted data when deleted successfully", async () => {
+    const { table, resetRowSelection } = createTableMock();
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(
+      <TasksMultiDeleteDialog open onOpenChange={onOpenChange} table={table} />,
+    );
+
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(confirmDeleteInput, "DELETE");
+    await expect.element(deleteButton).toBeEnabled();
+
+    await userEvent.click(deleteButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    await vi.waitFor(() => expect(resetRowSelection).toHaveBeenCalledOnce());
+  });
+
+  it("deletes successfully when press Enter key on the confirm delete input", async () => {
+    const { table, resetRowSelection } = createTableMock();
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(
+      <TasksMultiDeleteDialog open onOpenChange={onOpenChange} table={table} />,
+    );
+
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(confirmDeleteInput, "DELETE");
+    await expect.element(deleteButton).toBeEnabled();
+
+    await userEvent.keyboard("{Enter}");
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    await vi.waitFor(() => expect(resetRowSelection).toHaveBeenCalledOnce());
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-multi-delete-dialog.tsx", `"use client";
+
+import { type Table } from "@tanstack/react-table";
+import { AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { sleep } from "@/lib/utils";
+
+type TaskMultiDeleteDialogProps<TData> = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  table: Table<TData>;
+};
+
+const CONFIRM_WORD = "DELETE";
+
+export function TasksMultiDeleteDialog<TData>({
+  open,
+  onOpenChange,
+  table,
+}: TaskMultiDeleteDialogProps<TData>) {
+  const [value, setValue] = useState("");
+
+  const selectedRows = table.getFilteredSelectedRowModel().rows;
+
+  const handleDelete = () => {
+    if (value.trim() !== CONFIRM_WORD) {
+      toast.error(\`Please type "\${CONFIRM_WORD}" to confirm.\`);
+      return;
+    }
+
+    onOpenChange(false);
+
+    toast.promise(sleep(2000), {
+      loading: "Deleting tasks...",
+      success: () => {
+        setValue("");
+        table.resetRowSelection();
+        return \`Deleted \${selectedRows.length} \${selectedRows.length > 1 ? "tasks" : "task"}\`;
+      },
+      error: "Error",
+    });
+  };
+
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      form="tasks-multi-delete-form"
+      disabled={value.trim() !== CONFIRM_WORD}
+      title={
+        <span className="text-destructive">
+          <AlertTriangle className="me-1 inline-block stroke-destructive" size={18} /> Delete{" "}
+          {selectedRows.length} {selectedRows.length > 1 ? "tasks" : "task"}
+        </span>
+      }
+      desc={
+        <form
+          id="tasks-multi-delete-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleDelete();
+          }}
+          className="space-y-4"
+        >
+          <p className="mb-2">
+            Are you sure you want to delete the selected tasks? <br />
+            This action cannot be undone.
+          </p>
+
+          <Label className="my-4 flex flex-col items-start gap-1.5">
+            <span className="">Confirm by typing "{CONFIRM_WORD}":</span>
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={\`Type "\${CONFIRM_WORD}" to confirm.\`}
+              autoFocus
+            />
+          </Label>
+
+          <Alert variant="destructive">
+            <AlertTitle>Warning!</AlertTitle>
+            <AlertDescription>
+              Please be careful, this operation can not be rolled back.
+            </AlertDescription>
+          </Alert>
+        </form>
+      }
+      confirmText="Delete"
+      destructive
+    />
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-mutate-drawer.test.tsx", `import { useState } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { type Task } from "../data/schema";
+import { TasksMutateDrawer } from "./tasks-mutate-drawer";
+
+vi.mock("@/lib/show-submitted-data", () => ({ showSubmittedData: vi.fn() }));
+
+const MOCK_TASK = {
+  id: "task-1",
+  title: "Existing task",
+  status: "in progress",
+  label: "feature",
+  priority: "medium",
+} as const satisfies Task;
+
+describe("TasksMutateDrawer", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("renders create title and description", async () => {
+    const { getByRole, getByText } = await render(
+      <TasksMutateDrawer open onOpenChange={vi.fn()} />,
+    );
+
+    const title = getByRole("heading", {
+      level: 2,
+      name: /Create Task/i,
+    });
+    const desc = getByText(/Add a new task/i);
+
+    await expect.element(title).toBeInTheDocument();
+    await expect.element(desc).toBeInTheDocument();
+  });
+
+  it("renders edit title, description, and prefilled title", async () => {
+    const { getByRole, getByText } = await render(
+      <TasksMutateDrawer open onOpenChange={vi.fn()} currentRow={MOCK_TASK} />,
+    );
+
+    const title = getByRole("heading", {
+      level: 2,
+      name: /Update Task/i,
+    });
+    const desc = getByText(/Update the task/i);
+
+    const titleInput = getByRole("textbox", { name: /Title/i });
+    const statusSelect = getByRole("combobox", { name: /Status/i });
+    const labelRadio = getByRole("radio", { name: MOCK_TASK.label });
+    const priorityRadio = getByRole("radio", { name: MOCK_TASK.priority });
+
+    await expect.element(title).toBeInTheDocument();
+    await expect.element(desc).toBeInTheDocument();
+    await expect.element(titleInput).toHaveValue(MOCK_TASK.title);
+    await expect.element(statusSelect).toHaveTextContent(new RegExp(MOCK_TASK.status, "i"));
+    await expect.element(labelRadio).toBeChecked();
+    await expect.element(priorityRadio).toBeChecked();
+  });
+
+  it("shows validation messages when submitting an empty form", async () => {
+    const { getByRole, getByText } = await render(
+      <TasksMutateDrawer open onOpenChange={vi.fn()} />,
+    );
+
+    const saveButton = getByRole("button", { name: /Save changes/i });
+    await userEvent.click(saveButton);
+
+    await expect.element(getByText(/Title is required.$/i)).toBeInTheDocument();
+    await expect.element(getByText(/Please select a status.$/i)).toBeInTheDocument();
+    await expect.element(getByText(/Please select a label.$/i)).toBeInTheDocument();
+    await expect.element(getByText(/Please choose a priority.$/i)).toBeInTheDocument();
+  });
+
+  it("submits create form and shows submitted data", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(<TasksMutateDrawer open onOpenChange={onOpenChange} />);
+
+    const titleInput = getByRole("textbox", { name: /Title/i });
+    await userEvent.fill(titleInput, "New task title");
+
+    const statusSelect = getByRole("combobox", { name: /Status/i });
+    await userEvent.click(statusSelect);
+    await userEvent.click(getByRole("option", { name: /Todo/i }));
+
+    await userEvent.click(getByRole("radio", { name: /^Bug$/i }));
+    await userEvent.click(getByRole("radio", { name: /^Low$/i }));
+
+    const saveButton = getByRole("button", { name: /Save changes/i });
+    await userEvent.click(saveButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    expect(showSubmittedData).toHaveBeenCalledOnce();
+    expect(showSubmittedData).toHaveBeenCalledWith({
+      title: "New task title",
+      status: "todo",
+      label: "bug",
+      priority: "low",
+    });
+  });
+
+  it("closes when Close is clicked", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(<TasksMutateDrawer open onOpenChange={onOpenChange} />);
+
+    const closeButtons = getByRole("dialog")
+      .getByRole("button", {
+        name: /Close/i,
+      })
+      .all();
+    expect(closeButtons).toHaveLength(2);
+    await userEvent.click(closeButtons[1]);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("resets entered values when the sheet is closed and reopened", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reopen
+          </button>
+          <TasksMutateDrawer open={open} onOpenChange={setOpen} />
+        </>
+      );
+    }
+
+    const { getByRole } = await render(<Harness />);
+
+    const titleInput = getByRole("textbox", { name: /Title/i });
+    await userEvent.fill(titleInput, "Draft title");
+    await expect.element(titleInput).toHaveValue("Draft title");
+
+    const statusSelect = getByRole("combobox", { name: /Status/i });
+    await userEvent.click(statusSelect);
+    await userEvent.click(getByRole("option", { name: /Todo/i }));
+    await expect.element(statusSelect).toHaveTextContent(/Todo/i);
+
+    const labelRadio = getByRole("radio", { name: /^Documentation$/i });
+    await userEvent.click(labelRadio);
+    await expect.element(labelRadio).toBeChecked();
+
+    const priorityRadio = getByRole("radio", { name: /^High$/i });
+    await userEvent.click(priorityRadio);
+    await expect.element(priorityRadio).toBeChecked();
+
+    const closeButtons = getByRole("dialog")
+      .getByRole("button", {
+        name: /Close/i,
+      })
+      .all();
+    await userEvent.click(closeButtons[0]);
+
+    const reopenButton = getByRole("button", { name: /Reopen/i });
+    await userEvent.click(reopenButton);
+
+    await expect.element(titleInput).toHaveValue("");
+    await expect.element(statusSelect).not.toHaveTextContent(/Todo/i);
+    await expect.element(labelRadio).not.toBeChecked();
+    await expect.element(priorityRadio).not.toBeChecked();
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-mutate-drawer.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { SelectDropdown } from "@/components/select-dropdown";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { type Task } from "../data/schema";
+
+type TaskMutateDrawerProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  currentRow?: Task;
+};
+
+const formSchema = z.object({
+  title: z.string().min(1, "Title is required."),
+  status: z.string().min(1, "Please select a status."),
+  label: z.string().min(1, "Please select a label."),
+  priority: z.string().min(1, "Please choose a priority."),
+});
+type TaskForm = z.infer<typeof formSchema>;
+
+export function TasksMutateDrawer({ open, onOpenChange, currentRow }: TaskMutateDrawerProps) {
+  const isUpdate = !!currentRow;
+
+  const form = useForm<TaskForm>({
+    resolver: zodResolver(formSchema),
+    defaultValues: currentRow ?? {
+      title: "",
+      status: "",
+      label: "",
+      priority: "",
+    },
+  });
+
+  const onSubmit = (data: TaskForm) => {
+    // do something with the form data
+    onOpenChange(false);
+    form.reset();
+    showSubmittedData(data);
+  };
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        form.reset();
+      }}
+    >
+      <SheetContent className="flex flex-col">
+        <SheetHeader className="text-start">
+          <SheetTitle>{isUpdate ? "Update" : "Create"} Task</SheetTitle>
+          <SheetDescription>
+            {isUpdate
+              ? "Update the task by providing necessary info."
+              : "Add a new task by providing necessary info."}
+            Click save when you&apos;re done.
+          </SheetDescription>
+        </SheetHeader>
+        <Form {...form}>
+          <form
+            id="tasks-form"
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex-1 space-y-6 overflow-y-auto px-4"
+          >
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Title</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter a title" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Status</FormLabel>
+                  <SelectDropdown
+                    defaultValue={field.value}
+                    onValueChange={field.onChange}
+                    placeholder="Select dropdown"
+                    items={[
+                      { label: "In Progress", value: "in progress" },
+                      { label: "Backlog", value: "backlog" },
+                      { label: "Todo", value: "todo" },
+                      { label: "Canceled", value: "canceled" },
+                      { label: "Done", value: "done" },
+                    ]}
+                  />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="label"
+              render={({ field }) => (
+                <FormItem className="relative">
+                  <FormLabel>Label</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      className="flex flex-col space-y-1"
+                    >
+                      <FormItem className="flex items-center">
+                        <FormControl>
+                          <RadioGroupItem value="documentation" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Documentation</FormLabel>
+                      </FormItem>
+                      <FormItem className="flex items-center">
+                        <FormControl>
+                          <RadioGroupItem value="feature" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Feature</FormLabel>
+                      </FormItem>
+                      <FormItem className="flex items-center">
+                        <FormControl>
+                          <RadioGroupItem value="bug" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Bug</FormLabel>
+                      </FormItem>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="priority"
+              render={({ field }) => (
+                <FormItem className="relative">
+                  <FormLabel>Priority</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      className="flex flex-col space-y-1"
+                    >
+                      <FormItem className="flex items-center">
+                        <FormControl>
+                          <RadioGroupItem value="high" />
+                        </FormControl>
+                        <FormLabel className="font-normal">High</FormLabel>
+                      </FormItem>
+                      <FormItem className="flex items-center">
+                        <FormControl>
+                          <RadioGroupItem value="medium" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Medium</FormLabel>
+                      </FormItem>
+                      <FormItem className="flex items-center">
+                        <FormControl>
+                          <RadioGroupItem value="low" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Low</FormLabel>
+                      </FormItem>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+        <SheetFooter className="gap-2">
+          <SheetClose asChild>
+            <Button variant="outline">Close</Button>
+          </SheetClose>
+          <Button form="tasks-form" type="submit">
+            Save changes
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-primary-buttons.tsx", `import { Download, Plus } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+
+import { useTasks } from "./tasks-provider";
+
+export function TasksPrimaryButtons() {
+  const { setOpen } = useTasks();
+  return (
+    <div className="flex gap-2">
+      <Button variant="outline" className="space-x-1" onClick={() => setOpen("import")}>
+        <span>Import</span> <Download size={18} />
+      </Button>
+      <Button className="space-x-1" onClick={() => setOpen("create")}>
+        <span>Create</span> <Plus size={18} />
+      </Button>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-provider.tsx", `import React, { useState } from "react";
+
+import useDialogState from "@/hooks/use-dialog-state";
+
+import { type Task } from "../data/schema";
+
+type TasksDialogType = "create" | "update" | "delete" | "import";
+
+type TasksContextType = {
+  open: TasksDialogType | null;
+  setOpen: (str: TasksDialogType | null) => void;
+  currentRow: Task | null;
+  setCurrentRow: React.Dispatch<React.SetStateAction<Task | null>>;
+};
+
+const TasksContext = React.createContext<TasksContextType | null>(null);
+
+export function TasksProvider({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useDialogState<TasksDialogType>(null);
+  const [currentRow, setCurrentRow] = useState<Task | null>(null);
+
+  return (
+    <TasksContext value={{ open, setOpen, currentRow, setCurrentRow }}>{children}</TasksContext>
+  );
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const useTasks = () => {
+  const tasksContext = React.useContext(TasksContext);
+
+  if (!tasksContext) {
+    throw new Error("useTasks has to be used within <TasksContext>");
+  }
+
+  return tasksContext;
+};
+`],
+  ["addons/admin/apps/web/src/features/tasks/components/tasks-table.tsx", `import { getRouteApi } from "@tanstack/react-router";
+import {
+  type SortingState,
+  type VisibilityState,
+  flexRender,
+  getCoreRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import { useEffect, useState } from "react";
+
+import { DataTablePagination, DataTableToolbar } from "@/components/data-table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useTableUrlState } from "@/hooks/use-table-url-state";
+import { cn } from "@/lib/utils";
+
+import { priorities, statuses } from "../data/data";
+import { type Task } from "../data/schema";
+import { DataTableBulkActions } from "./data-table-bulk-actions";
+import { tasksColumns as columns } from "./tasks-columns";
+
+const route = getRouteApi("/_authenticated/tasks/");
+
+type DataTableProps = {
+  data: Task[];
+};
+
+export function TasksTable({ data }: DataTableProps) {
+  // Local UI-only states
+  const [rowSelection, setRowSelection] = useState({});
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+
+  // Local state management for table (uncomment to use local-only state, not synced with URL)
+  // const [globalFilter, onGlobalFilterChange] = useState('')
+  // const [columnFilters, onColumnFiltersChange] = useState<ColumnFiltersState>([])
+  // const [pagination, onPaginationChange] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+
+  // Synced with URL states (updated to match route search schema defaults)
+  const {
+    globalFilter,
+    onGlobalFilterChange,
+    columnFilters,
+    onColumnFiltersChange,
+    pagination,
+    onPaginationChange,
+    ensurePageInRange,
+  } = useTableUrlState({
+    search: route.useSearch(),
+    navigate: route.useNavigate(),
+    pagination: { defaultPage: 1, defaultPageSize: 10 },
+    globalFilter: { enabled: true, key: "filter" },
+    columnFilters: [
+      { columnId: "status", searchKey: "status", type: "array" },
+      { columnId: "priority", searchKey: "priority", type: "array" },
+    ],
+  });
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const table = useReactTable({
+    data,
+    columns,
+    state: {
+      sorting,
+      columnVisibility,
+      rowSelection,
+      columnFilters,
+      globalFilter,
+      pagination,
+    },
+    enableRowSelection: true,
+    onRowSelectionChange: setRowSelection,
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
+    globalFilterFn: (row, _columnId, filterValue) => {
+      const id = String(row.getValue("id")).toLowerCase();
+      const title = String(row.getValue("title")).toLowerCase();
+      const searchValue = String(filterValue).toLowerCase();
+
+      return id.includes(searchValue) || title.includes(searchValue);
+    },
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+    onPaginationChange,
+    onGlobalFilterChange,
+    onColumnFiltersChange,
+  });
+
+  const pageCount = table.getPageCount();
+  useEffect(() => {
+    ensurePageInRange(pageCount);
+  }, [pageCount, ensurePageInRange]);
+
+  return (
+    <div
+      className={cn(
+        'max-sm:has-[div[role="toolbar"]]:mb-16', // Add margin bottom to the table on mobile when the toolbar is visible
+        "flex flex-1 flex-col gap-4",
+      )}
+    >
+      <DataTableToolbar
+        table={table}
+        searchPlaceholder="Filter by title or ID..."
+        filters={[
+          {
+            columnId: "status",
+            title: "Status",
+            options: statuses,
+          },
+          {
+            columnId: "priority",
+            title: "Priority",
+            options: priorities,
+          },
+        ]}
+      />
+      <div className="overflow-hidden rounded-md border">
+        <Table className="min-w-xl">
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  return (
+                    <TableHead
+                      key={header.id}
+                      colSpan={header.colSpan}
+                      className={cn(
+                        header.column.columnDef.meta?.className,
+                        header.column.columnDef.meta?.thClassName,
+                      )}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell
+                      key={cell.id}
+                      className={cn(
+                        cell.column.columnDef.meta?.className,
+                        cell.column.columnDef.meta?.tdClassName,
+                      )}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No results.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <DataTablePagination table={table} className="mt-auto" />
+      <DataTableBulkActions table={table} />
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/tasks/data/data.tsx", `import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  Circle,
+  CheckCircle,
+  AlertCircle,
+  Timer,
+  HelpCircle,
+  CircleOff,
+} from "lucide-react";
+
+export const labels = [
+  {
+    value: "bug",
+    label: "Bug",
+  },
+  {
+    value: "feature",
+    label: "Feature",
+  },
+  {
+    value: "documentation",
+    label: "Documentation",
+  },
+];
+
+export const statuses = [
+  {
+    label: "Backlog",
+    value: "backlog" as const,
+    icon: HelpCircle,
+  },
+  {
+    label: "Todo",
+    value: "todo" as const,
+    icon: Circle,
+  },
+  {
+    label: "In Progress",
+    value: "in progress" as const,
+    icon: Timer,
+  },
+  {
+    label: "Done",
+    value: "done" as const,
+    icon: CheckCircle,
+  },
+  {
+    label: "Canceled",
+    value: "canceled" as const,
+    icon: CircleOff,
+  },
+];
+
+export const priorities = [
+  {
+    label: "Low",
+    value: "low" as const,
+    icon: ArrowDown,
+  },
+  {
+    label: "Medium",
+    value: "medium" as const,
+    icon: ArrowRight,
+  },
+  {
+    label: "High",
+    value: "high" as const,
+    icon: ArrowUp,
+  },
+  {
+    label: "Critical",
+    value: "critical" as const,
+    icon: AlertCircle,
+  },
+];
+`],
+  ["addons/admin/apps/web/src/features/tasks/data/schema.ts", `import { z } from "zod";
+
+// We're keeping a simple non-relational schema here.
+// IRL, you will have a schema for your data models.
+export const taskSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  label: z.string(),
+  priority: z.string(),
+});
+
+export type Task = z.infer<typeof taskSchema>;
+`],
+  ["addons/admin/apps/web/src/features/tasks/data/tasks.ts", `import { faker } from "@faker-js/faker";
+
+// Set a fixed seed for consistent data generation
+faker.seed(12345);
+
+export const tasks = Array.from({ length: 100 }, () => {
+  const statuses = ["todo", "in progress", "done", "canceled", "backlog"] as const;
+  const labels = ["bug", "feature", "documentation"] as const;
+  const priorities = ["low", "medium", "high"] as const;
+
+  return {
+    id: \`TASK-\${faker.number.int({ min: 1000, max: 9999 })}\`,
+    title: faker.lorem.sentence({ min: 5, max: 15 }),
+    status: faker.helpers.arrayElement(statuses),
+    label: faker.helpers.arrayElement(labels),
+    priority: faker.helpers.arrayElement(priorities),
+    createdAt: faker.date.past(),
+    updatedAt: faker.date.recent(),
+    assignee: faker.person.fullName(),
+    description: faker.lorem.paragraph({ min: 1, max: 3 }),
+    dueDate: faker.date.future(),
+  };
+});
+`],
+  ["addons/admin/apps/web/src/features/tasks/index.tsx", `// biome-ignore-all lint/performance/noJsxPropsBind: role table actions intentionally close over row identifiers.
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MoreHorizontal, Plus } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
+
+import { type BusinessColumn, BusinessDataTable } from "@/components/business-data-table";
+import { ConfigDrawer } from "@/components/config-drawer";
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { ProfileDropdown } from "@/components/profile-dropdown";
+import { Search } from "@/components/search";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useTRPC } from "@/lib/trpc";
+
+interface PermissionItem {
+  action: string;
+  description: string;
+  key: string;
+  resource: string;
+}
+interface RoleItem {
+  description: string | null;
+  id: string;
+  isSystem: boolean;
+  name: string;
+  permissionKeys: string[];
+  slug: string;
+  userCount: number;
+}
+interface RoleDraft {
+  description: string;
+  id?: string;
+  isSystem: boolean;
+  name: string;
+  permissionKeys: string[];
+  slug: string;
+}
+
+const EMPTY_ROLE: RoleDraft = {
+  description: "",
+  isSystem: false,
+  name: "",
+  permissionKeys: [],
+  slug: "",
+};
+const filterRole = (role: RoleItem, query: string) =>
+  !query ||
+  role.name.toLowerCase().includes(query) ||
+  role.description?.toLowerCase().includes(query) === true;
+const getRoleId = (role: RoleItem) => role.id;
+const toSlug = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+export function Tasks() {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const rolesQuery = useQuery(trpc.admin.roles.queryOptions());
+  const permissionsQuery = useQuery(trpc.admin.permissions.queryOptions());
+  const roles = (rolesQuery.data ?? []) as RoleItem[];
+  const permissions = (permissionsQuery.data ?? []) as PermissionItem[];
+  const [draft, setDraft] = useState<RoleDraft | null>(null);
+  const refresh = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: trpc.admin.roles.queryKey() }),
+    [queryClient, trpc.admin.roles],
+  );
+  const createRole = useMutation(
+    trpc.admin.createRole.mutationOptions({
+      onSuccess: async () => {
+        await refresh();
+        setDraft(null);
+        toast.success("Role created");
+      },
+    }),
+  );
+  const updateRole = useMutation(
+    trpc.admin.updateRole.mutationOptions({
+      onSuccess: async () => {
+        await refresh();
+        setDraft(null);
+        toast.success("Role updated");
+      },
+    }),
+  );
+  const deleteRole = useMutation(
+    trpc.admin.deleteRole.mutationOptions({
+      onSuccess: async () => {
+        await refresh();
+        setDraft(null);
+        toast.success("Role deleted");
+      },
+    }),
+  );
+  const openNew = useCallback(() => setDraft(EMPTY_ROLE), []);
+  const close = useCallback(() => setDraft(null), []);
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setDraft(null);
+    }
+  }, []);
+  const changeName = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const name = event.target.value;
+    setDraft((current) =>
+      current ? { ...current, name, slug: current.id ? current.slug : toSlug(name) } : current,
+    );
+  }, []);
+  const changeDescription = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft((current) => (current ? { ...current, description: event.target.value } : current));
+  }, []);
+  const togglePermission = useCallback((key: string, checked: boolean) => {
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        permissionKeys: checked
+          ? [...current.permissionKeys, key]
+          : current.permissionKeys.filter((value) => value !== key),
+      };
+    });
+  }, []);
+  const save = useCallback(() => {
+    if (!draft) {
+      return;
+    }
+    if (draft.id) {
+      updateRole.mutate({
+        description: draft.description,
+        id: draft.id,
+        name: draft.name,
+        permissionKeys: draft.permissionKeys,
+      });
+      return;
+    }
+    createRole.mutate({
+      description: draft.description,
+      name: draft.name,
+      permissionKeys: draft.permissionKeys,
+      slug: draft.slug,
+    });
+  }, [createRole, draft, updateRole]);
+  const remove = useCallback(() => {
+    if (draft?.id && !draft.isSystem) {
+      deleteRole.mutate({ id: draft.id });
+    }
+  }, [deleteRole, draft]);
+  const columns = useMemo<BusinessColumn<RoleItem>[]>(
+    () => [
+      {
+        header: "Role",
+        render: (role) => (
+          <div>
+            <div className="flex items-center gap-2 font-medium">
+              {role.name}
+              {role.isSystem ? <Badge variant="outline">Protected</Badge> : null}
+            </div>
+            <div className="text-muted-foreground text-xs">{role.description}</div>
+          </div>
+        ),
+      },
+      {
+        header: "Permissions",
+        render: (role) => (
+          <div className="flex flex-wrap gap-1">
+            {role.permissionKeys.slice(0, 3).map((key) => (
+              <Badge key={key} variant="secondary">
+                {key}
+              </Badge>
+            ))}
+            {role.permissionKeys.length > 3 ? (
+              <Badge variant="outline">+{role.permissionKeys.length - 3}</Badge>
+            ) : null}
+          </div>
+        ),
+      },
+      { header: "Members", render: (role) => role.userCount },
+      {
+        className: "w-16 text-right",
+        header: "Actions",
+        render: (role) => (
+          <Button
+            aria-label={\`Manage \${role.name}\`}
+            onClick={() =>
+              setDraft({
+                description: role.description ?? "",
+                id: role.id,
+                isSystem: role.isSystem,
+                name: role.name,
+                permissionKeys: role.permissionKeys,
+                slug: role.slug,
+              })
+            }
+            size="icon"
+            variant="ghost"
+          >
+            <MoreHorizontal />
+          </Button>
+        ),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <>
+      <Header fixed>
+        <Search className="me-auto" />
+        <ThemeSwitch />
+        <ConfigDrawer />
+        <ProfileDropdown />
+      </Header>
+      <Main className="flex flex-1 flex-col gap-4 sm:gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="font-bold text-2xl tracking-tight">Roles & permissions</h2>
+            <p className="text-muted-foreground">
+              Define reusable access policies for your workspace.
+            </p>
+          </div>
+          <Button onClick={openNew}>
+            <Plus />
+            Add role
+          </Button>
+        </div>
+        <BusinessDataTable
+          columns={columns}
+          data={roles}
+          empty="No roles found."
+          filter={filterRole}
+          getRowId={getRoleId}
+          placeholder="Filter roles..."
+        />
+      </Main>
+      <Dialog onOpenChange={handleOpenChange} open={draft !== null}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{draft?.id ? \`Edit \${draft.name}\` : "Add role"}</DialogTitle>
+            <DialogDescription>Set role details and choose permissions.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="role-name">Role name</Label>
+              <Input
+                disabled={draft?.isSystem}
+                id="role-name"
+                onChange={changeName}
+                value={draft?.name ?? ""}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="role-description">Description</Label>
+              <Textarea
+                disabled={draft?.isSystem}
+                id="role-description"
+                onChange={changeDescription}
+                value={draft?.description ?? ""}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Permissions</Label>
+            <div className="grid max-h-72 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
+              {permissions.map((permission) => (
+                <PermissionChoice
+                  checked={draft?.permissionKeys.includes(permission.key) ?? false}
+                  disabled={draft?.isSystem ?? false}
+                  key={permission.key}
+                  onToggle={togglePermission}
+                  permission={permission}
+                />
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            {draft?.id && !draft.isSystem ? (
+              <Button onClick={remove} variant="destructive">
+                Delete role
+              </Button>
+            ) : null}
+            <Button onClick={close} variant="outline">
+              Cancel
+            </Button>
+            <Button disabled={draft?.isSystem || !draft?.name || !draft.slug} onClick={save}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function PermissionChoice({
+  checked,
+  disabled,
+  onToggle,
+  permission,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onToggle: (key: string, checked: boolean) => void;
+  permission: PermissionItem;
+}) {
+  const id = \`permission-\${permission.key}\`;
+  const handleToggle = useCallback(
+    (value: boolean | "indeterminate") => onToggle(permission.key, value === true),
+    [onToggle, permission.key],
+  );
+  return (
+    <Label
+      className="flex min-h-14 cursor-pointer items-start gap-3 rounded-md p-3 hover:bg-muted has-disabled:cursor-not-allowed has-disabled:opacity-60"
+      htmlFor={id}
+    >
+      <Checkbox checked={checked} disabled={disabled} id={id} onCheckedChange={handleToggle} />
+      <span className="grid gap-0.5">
+        <span>
+          {permission.resource}: {permission.action}
+        </span>
+        <span className="font-normal text-muted-foreground text-xs">{permission.description}</span>
+      </span>
+    </Label>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/data-table-bulk-actions.tsx", `import { type Table } from "@tanstack/react-table";
+import { Trash2, UserX, UserCheck, Mail } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { DataTableBulkActions as BulkActionsToolbar } from "@/components/data-table";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { sleep } from "@/lib/utils";
+
+import { type User } from "../data/schema";
+import { UsersMultiDeleteDialog } from "./users-multi-delete-dialog";
+
+type DataTableBulkActionsProps<TData> = {
+  table: Table<TData>;
+};
+
+export function DataTableBulkActions<TData>({ table }: DataTableBulkActionsProps<TData>) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const selectedRows = table.getFilteredSelectedRowModel().rows;
+
+  const handleBulkStatusChange = (status: "active" | "inactive") => {
+    const selectedUsers = selectedRows.map((row) => row.original as User);
+    toast.promise(sleep(2000), {
+      loading: \`\${status === "active" ? "Activating" : "Deactivating"} users...\`,
+      success: () => {
+        table.resetRowSelection();
+        return \`\${status === "active" ? "Activated" : "Deactivated"} \${selectedUsers.length} user\${selectedUsers.length > 1 ? "s" : ""}\`;
+      },
+      error: \`Error \${status === "active" ? "activating" : "deactivating"} users\`,
+    });
+    table.resetRowSelection();
+  };
+
+  const handleBulkInvite = () => {
+    const selectedUsers = selectedRows.map((row) => row.original as User);
+    toast.promise(sleep(2000), {
+      loading: "Inviting users...",
+      success: () => {
+        table.resetRowSelection();
+        return \`Invited \${selectedUsers.length} user\${selectedUsers.length > 1 ? "s" : ""}\`;
+      },
+      error: "Error inviting users",
+    });
+    table.resetRowSelection();
+  };
+
+  return (
+    <>
+      <BulkActionsToolbar table={table} entityName="user">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleBulkInvite}
+              className="size-8"
+              aria-label="Invite selected users"
+              title="Invite selected users"
+            >
+              <Mail />
+              <span className="sr-only">Invite selected users</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Invite selected users</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => handleBulkStatusChange("active")}
+              className="size-8"
+              aria-label="Activate selected users"
+              title="Activate selected users"
+            >
+              <UserCheck />
+              <span className="sr-only">Activate selected users</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Activate selected users</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => handleBulkStatusChange("inactive")}
+              className="size-8"
+              aria-label="Deactivate selected users"
+              title="Deactivate selected users"
+            >
+              <UserX />
+              <span className="sr-only">Deactivate selected users</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Deactivate selected users</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="destructive"
+              size="icon"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="size-8"
+              aria-label="Delete selected users"
+              title="Delete selected users"
+            >
+              <Trash2 />
+              <span className="sr-only">Delete selected users</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Delete selected users</p>
+          </TooltipContent>
+        </Tooltip>
+      </BulkActionsToolbar>
+
+      <UsersMultiDeleteDialog
+        table={table}
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+      />
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/data-table-row-actions.tsx", `import { DotsHorizontalIcon } from "@radix-ui/react-icons";
+import { type Row } from "@tanstack/react-table";
+import { Trash2, UserPen } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { type User } from "../data/schema";
+import { useUsers } from "./users-provider";
+
+type DataTableRowActionsProps = {
+  row: Row<User>;
+};
+
+export function DataTableRowActions({ row }: DataTableRowActionsProps) {
+  const { setOpen, setCurrentRow } = useUsers();
+  return (
+    <>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="flex h-8 w-8 p-0 data-[state=open]:bg-muted">
+            <DotsHorizontalIcon className="h-4 w-4" />
+            <span className="sr-only">Open menu</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem
+            onClick={() => {
+              setCurrentRow(row.original);
+              setOpen("edit");
+            }}
+          >
+            Edit
+            <DropdownMenuShortcut>
+              <UserPen size={16} />
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => {
+              setCurrentRow(row.original);
+              setOpen("delete");
+            }}
+            className="text-red-500!"
+          >
+            Delete
+            <DropdownMenuShortcut>
+              <Trash2 size={16} />
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-action-dialog.test.tsx", `import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, type RenderResult } from "vitest-browser-react";
+import { type UserEvent, userEvent } from "vitest/browser";
+
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { type User } from "../data/schema";
+import { UsersActionDialog } from "./users-action-dialog";
+
+const VALIDATION_MESSAGES = {
+  firstName: "First Name is required.",
+  lastName: "Last Name is required.",
+  username: "Username is required.",
+  phoneNumber: "Phone number is required.",
+  email: "Email is required.",
+  role: "Role is required.",
+  password: "Password is required.",
+  passwordMismatch: "Passwords don't match.",
+  passwordLength: "Password must be at least 8 characters long.",
+  passwordNumber: "Password must contain at least one number.",
+  passwordLowercase: "Password must contain at least one lowercase letter.",
+} as const;
+
+const MOCK_USER: User = {
+  id: "alex_uuid",
+  firstName: "Alex",
+  lastName: "Smith",
+  username: "alex_smith",
+  email: "alex@smith.com",
+  phoneNumber: "+19999999999",
+  status: "active",
+  role: "superadmin",
+  createdAt: new Date("2026-01-01"),
+  updatedAt: new Date("2026-02-02"),
+};
+
+vi.mock("@/lib/show-submitted-data", () => ({ showSubmittedData: vi.fn() }));
+
+describe("UsersActionDialog", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  describe("add user", () => {
+    it("renders title and description", async () => {
+      const { getByRole, getByText } = await render(
+        <UsersActionDialog open onOpenChange={vi.fn()} />,
+      );
+
+      const title = getByRole("heading", {
+        level: 2,
+        name: /Add New User/i,
+      });
+      const description = getByText(/Create new user here. Click save when you're done./i);
+
+      await expect.element(title).toBeInTheDocument();
+      await expect.element(description).toBeInTheDocument();
+    });
+
+    it("shows validation messages when the form is submitted with empty fields", async () => {
+      const { getByRole, getByText } = await render(
+        <UsersActionDialog open onOpenChange={vi.fn()} />,
+      );
+
+      const submitButton = getByRole("button", { name: /Save Changes/i });
+      await userEvent.click(submitButton);
+
+      await expect.element(getByText(VALIDATION_MESSAGES.firstName)).toBeInTheDocument();
+      await expect.element(getByText(VALIDATION_MESSAGES.lastName)).toBeInTheDocument();
+      await expect.element(getByText(VALIDATION_MESSAGES.username)).toBeInTheDocument();
+      await expect.element(getByText(VALIDATION_MESSAGES.phoneNumber)).toBeInTheDocument();
+      await expect.element(getByText(VALIDATION_MESSAGES.email)).toBeInTheDocument();
+      await expect.element(getByText(VALIDATION_MESSAGES.role)).toBeInTheDocument();
+      await expect.element(getByText(VALIDATION_MESSAGES.password)).toBeInTheDocument();
+    });
+
+    it("keeps confirm password disabled until password field is touched", async () => {
+      const { getByRole } = await render(<UsersActionDialog open onOpenChange={vi.fn()} />);
+
+      const password = getByRole("textbox", { name: /^Password$/i });
+      const confirmPassword = getByRole("textbox", {
+        name: /Confirm Password/i,
+      });
+      await expect.element(confirmPassword).toBeDisabled();
+
+      await userEvent.type(password, "a");
+      await expect.element(confirmPassword).toBeEnabled();
+    });
+
+    it("shows password validation messages when password is invalid", async () => {
+      const { getByRole, getByText } = await render(
+        <UsersActionDialog open onOpenChange={vi.fn()} />,
+      );
+
+      const password = getByRole("textbox", { name: /^Password$/i });
+      const confirmPassword = getByRole("textbox", {
+        name: /Confirm Password/i,
+      });
+      await userEvent.type(password, "a");
+      await userEvent.type(confirmPassword, "b");
+      const submitButton = getByRole("button", { name: /Save Changes/i });
+
+      await userEvent.click(submitButton);
+
+      await expect.element(getByText(VALIDATION_MESSAGES.passwordMismatch)).toBeInTheDocument();
+
+      await userEvent.fill(password, "short");
+
+      await expect.element(getByText(VALIDATION_MESSAGES.passwordLength)).toBeInTheDocument();
+
+      await userEvent.fill(password, "ONLYUPPERCASE");
+
+      await expect.element(getByText(VALIDATION_MESSAGES.passwordLowercase)).toBeInTheDocument();
+
+      await userEvent.fill(password, "onlylowercase");
+
+      await expect.element(getByText(VALIDATION_MESSAGES.passwordNumber)).toBeInTheDocument();
+
+      await userEvent.fill(password, "S3cur3P@ssw0rd");
+      await userEvent.fill(confirmPassword, "S3cur3P@ssw0rd");
+
+      await expect.element(getByText(VALIDATION_MESSAGES.passwordMismatch)).not.toBeInTheDocument();
+      await expect.element(getByText(VALIDATION_MESSAGES.passwordLength)).not.toBeInTheDocument();
+      await expect.element(getByText(VALIDATION_MESSAGES.passwordNumber)).not.toBeInTheDocument();
+    });
+
+    it("shows the submitted data when the form is submitted successfully", async () => {
+      const onOpenChange = vi.fn();
+
+      const screen = await render(<UsersActionDialog open onOpenChange={onOpenChange} />);
+
+      await fillRequiredProfileFields(userEvent, screen, MOCK_USER);
+
+      await fillPasswords(userEvent, screen, "S3cur3P@ssw0rd", "S3cur3P@ssw0rd");
+
+      const submitButton = screen.getByRole("button", { name: /Save Changes/i });
+      await userEvent.click(submitButton);
+
+      expect(onOpenChange).toHaveBeenCalledOnce();
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+
+      expect(showSubmittedData).toHaveBeenCalledOnce();
+      expect(showSubmittedData).toHaveBeenCalledWith({
+        firstName: MOCK_USER.firstName,
+        lastName: MOCK_USER.lastName,
+        username: MOCK_USER.username,
+        email: MOCK_USER.email,
+        role: MOCK_USER.role,
+        phoneNumber: MOCK_USER.phoneNumber,
+        password: "S3cur3P@ssw0rd",
+        confirmPassword: "S3cur3P@ssw0rd",
+        isEdit: false,
+      });
+    });
+  });
+
+  describe("edit user", () => {
+    it("renders title and description", async () => {
+      const { getByRole, getByText } = await render(
+        <UsersActionDialog open onOpenChange={vi.fn()} currentRow={MOCK_USER} />,
+      );
+
+      const title = getByRole("heading", {
+        level: 2,
+        name: /Edit User/i,
+      });
+      const description = getByText(/Update the user here\\. Click save when you're done\\./i);
+
+      await expect.element(title).toBeInTheDocument();
+      await expect.element(description).toBeInTheDocument();
+    });
+
+    it("submits without password changes", async () => {
+      const onOpenChange = vi.fn();
+      const screen = await render(
+        <UsersActionDialog open onOpenChange={onOpenChange} currentRow={MOCK_USER} />,
+      );
+
+      const submitButton = screen.getByRole("button", { name: /Save Changes/i });
+      await userEvent.click(submitButton);
+
+      expect(onOpenChange).toHaveBeenCalledOnce();
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+
+      expect(showSubmittedData).toHaveBeenCalledOnce();
+      expect(showSubmittedData).toHaveBeenCalledWith({
+        firstName: MOCK_USER.firstName,
+        lastName: MOCK_USER.lastName,
+        username: MOCK_USER.username,
+        email: MOCK_USER.email,
+        phoneNumber: MOCK_USER.phoneNumber,
+        role: MOCK_USER.role,
+        password: "",
+        confirmPassword: "",
+        isEdit: true,
+      });
+    });
+
+    it("requires confirm password when password is changed", async () => {
+      const { getByRole, getByText } = await render(
+        <UsersActionDialog open onOpenChange={vi.fn()} currentRow={MOCK_USER} />,
+      );
+
+      const password = getByRole("textbox", { name: /^Password$/i });
+      const confirmPassword = getByRole("textbox", {
+        name: /Confirm Password/i,
+      });
+
+      await userEvent.fill(password, "S3cur3P@ssw0rd");
+      await expect.element(confirmPassword).toBeEnabled();
+
+      const submitButton = getByRole("button", { name: /Save Changes/i });
+      await userEvent.click(submitButton);
+
+      await expect.element(getByText(VALIDATION_MESSAGES.passwordMismatch)).toBeInTheDocument();
+    });
+
+    it("shows the submitted data when the form is submitted successfully", async () => {
+      const onOpenChange = vi.fn();
+      const screen = await render(
+        <UsersActionDialog open onOpenChange={onOpenChange} currentRow={MOCK_USER} />,
+      );
+
+      const EDIT_SUCCESS_FIRST_NAME = "John";
+      const EDIT_SUCCESS_PASSWORD = "S3cur3P@ssw0rd";
+
+      await userEvent.fill(screen.getByLabelText(/first name/i), EDIT_SUCCESS_FIRST_NAME);
+      await fillPasswords(userEvent, screen, EDIT_SUCCESS_PASSWORD, EDIT_SUCCESS_PASSWORD);
+
+      const submitButton = screen.getByRole("button", { name: /Save Changes/i });
+      await userEvent.click(submitButton);
+
+      expect(onOpenChange).toHaveBeenCalledOnce();
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+
+      expect(showSubmittedData).toHaveBeenCalledOnce();
+      expect(showSubmittedData).toHaveBeenCalledWith({
+        firstName: EDIT_SUCCESS_FIRST_NAME,
+        lastName: MOCK_USER.lastName,
+        username: MOCK_USER.username,
+        email: MOCK_USER.email,
+        phoneNumber: MOCK_USER.phoneNumber,
+        role: MOCK_USER.role,
+        password: EDIT_SUCCESS_PASSWORD,
+        confirmPassword: EDIT_SUCCESS_PASSWORD,
+        isEdit: true,
+      });
+    });
+  });
+});
+
+async function fillRequiredProfileFields(
+  user: UserEvent,
+  screen: RenderResult,
+  overrides?: {
+    firstName?: string;
+    lastName?: string;
+    username?: string;
+    email?: string;
+    roleOption?: string | RegExp;
+    phoneNumber?: string;
+  },
+) {
+  const entries = [
+    [/first name/i, overrides?.firstName ?? "John"],
+    [/last name/i, overrides?.lastName ?? "Doe"],
+    [/username/i, overrides?.username ?? "john_doe"],
+    [/^email$/i, overrides?.email ?? "a@b.co"],
+    [/phone number/i, overrides?.phoneNumber ?? "+19999999999"],
+  ] as const;
+
+  for (const [label, value] of entries) {
+    const el = screen.getByLabelText(label);
+    await expect.element(el).toBeInTheDocument();
+    await user.fill(el, value);
+  }
+
+  const roleSelect = screen.getByRole("combobox", { name: /Role/i });
+  await user.click(roleSelect);
+  await user.click(screen.getByRole("option", { name: overrides?.roleOption ?? "Superadmin" }));
+}
+
+async function fillPasswords(user: UserEvent, screen: RenderResult, a: string, b: string) {
+  const password = screen.getByLabelText(/^Password$/i);
+  const confirmPassword = screen.getByLabelText(/^Confirm Password$/i);
+  await user.fill(password, a);
+  await user.fill(confirmPassword, b);
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-action-dialog.tsx", `"use client";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { PasswordInput } from "@/components/password-input";
+import { SelectDropdown } from "@/components/select-dropdown";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { roles } from "../data/data";
+import { type User } from "../data/schema";
+
+const formSchema = z
+  .object({
+    firstName: z.string().min(1, "First Name is required."),
+    lastName: z.string().min(1, "Last Name is required."),
+    username: z.string().min(1, "Username is required."),
+    phoneNumber: z.string().min(1, "Phone number is required."),
+    email: z.email({
+      error: (iss) => (iss.input === "" ? "Email is required." : undefined),
+    }),
+    password: z.string().transform((pwd) => pwd.trim()),
+    role: z.string().min(1, "Role is required."),
+    confirmPassword: z.string().transform((pwd) => pwd.trim()),
+    isEdit: z.boolean(),
+  })
+  .refine(
+    (data) => {
+      if (data.isEdit && !data.password) return true;
+      return data.password.length > 0;
+    },
+    {
+      message: "Password is required.",
+      path: ["password"],
+    },
+  )
+  .refine(
+    ({ isEdit, password }) => {
+      if (isEdit && !password) return true;
+      return password.length >= 8;
+    },
+    {
+      message: "Password must be at least 8 characters long.",
+      path: ["password"],
+    },
+  )
+  .refine(
+    ({ isEdit, password }) => {
+      if (isEdit && !password) return true;
+      return /[a-z]/.test(password);
+    },
+    {
+      message: "Password must contain at least one lowercase letter.",
+      path: ["password"],
+    },
+  )
+  .refine(
+    ({ isEdit, password }) => {
+      if (isEdit && !password) return true;
+      return /\\d/.test(password);
+    },
+    {
+      message: "Password must contain at least one number.",
+      path: ["password"],
+    },
+  )
+  .refine(
+    ({ isEdit, password, confirmPassword }) => {
+      if (isEdit && !password) return true;
+      return password === confirmPassword;
+    },
+    {
+      message: "Passwords don't match.",
+      path: ["confirmPassword"],
+    },
+  );
+type UserForm = z.infer<typeof formSchema>;
+
+type UserActionDialogProps = {
+  currentRow?: User;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function UsersActionDialog({ currentRow, open, onOpenChange }: UserActionDialogProps) {
+  const isEdit = !!currentRow;
+  const form = useForm<UserForm>({
+    resolver: zodResolver(formSchema),
+    defaultValues: isEdit
+      ? {
+          ...currentRow,
+          password: "",
+          confirmPassword: "",
+          isEdit,
+        }
+      : {
+          firstName: "",
+          lastName: "",
+          username: "",
+          email: "",
+          role: "",
+          phoneNumber: "",
+          password: "",
+          confirmPassword: "",
+          isEdit,
+        },
+  });
+
+  const onSubmit = (values: UserForm) => {
+    form.reset();
+    showSubmittedData(values);
+    onOpenChange(false);
+  };
+
+  const isPasswordTouched = !!form.formState.dirtyFields.password;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(state) => {
+        form.reset();
+        onOpenChange(state);
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader className="text-start">
+          <DialogTitle>{isEdit ? "Edit User" : "Add New User"}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? "Update the user here. " : "Create new user here. "}
+            Click save when you&apos;re done.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="h-105 w-[calc(100%+0.75rem)] overflow-y-auto py-1 pe-3">
+          <Form {...form}>
+            <form
+              id="user-form"
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-4 px-0.5"
+            >
+              <FormField
+                control={form.control}
+                name="firstName"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1">
+                    <FormLabel className="col-span-2 text-end">First Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="John"
+                        className="col-span-4"
+                        autoComplete="off"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage className="col-span-4 col-start-3" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="lastName"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1">
+                    <FormLabel className="col-span-2 text-end">Last Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Doe"
+                        className="col-span-4"
+                        autoComplete="off"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage className="col-span-4 col-start-3" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="username"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1">
+                    <FormLabel className="col-span-2 text-end">Username</FormLabel>
+                    <FormControl>
+                      <Input placeholder="john_doe" className="col-span-4" {...field} />
+                    </FormControl>
+                    <FormMessage className="col-span-4 col-start-3" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1">
+                    <FormLabel className="col-span-2 text-end">Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="john.doe@gmail.com" className="col-span-4" {...field} />
+                    </FormControl>
+                    <FormMessage className="col-span-4 col-start-3" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phoneNumber"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1">
+                    <FormLabel className="col-span-2 text-end">Phone Number</FormLabel>
+                    <FormControl>
+                      <Input placeholder="+123456789" className="col-span-4" {...field} />
+                    </FormControl>
+                    <FormMessage className="col-span-4 col-start-3" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1">
+                    <FormLabel className="col-span-2 text-end">Role</FormLabel>
+                    <SelectDropdown
+                      defaultValue={field.value}
+                      onValueChange={field.onChange}
+                      placeholder="Select a role"
+                      className="col-span-4"
+                      items={roles.map(({ label, value }) => ({
+                        label,
+                        value,
+                      }))}
+                    />
+                    <FormMessage className="col-span-4 col-start-3" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1">
+                    <FormLabel className="col-span-2 text-end">Password</FormLabel>
+                    <FormControl>
+                      <PasswordInput
+                        placeholder="e.g., S3cur3P@ssw0rd"
+                        className="col-span-4"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage className="col-span-4 col-start-3" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1">
+                    <FormLabel className="col-span-2 text-end">Confirm Password</FormLabel>
+                    <FormControl>
+                      <PasswordInput
+                        disabled={!isPasswordTouched}
+                        placeholder="e.g., S3cur3P@ssw0rd"
+                        className="col-span-4"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage className="col-span-4 col-start-3" />
+                  </FormItem>
+                )}
+              />
+            </form>
+          </Form>
+        </div>
+        <DialogFooter>
+          <Button type="submit" form="user-form">
+            Save changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-columns.tsx", `import { type ColumnDef } from "@tanstack/react-table";
+
+import { DataTableColumnHeader } from "@/components/data-table";
+import { LongText } from "@/components/long-text";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
+
+import { callTypes, roles } from "../data/data";
+import { type User } from "../data/schema";
+import { DataTableRowActions } from "./data-table-row-actions";
+
+export const usersColumns: ColumnDef<User>[] = [
+  {
+    id: "select",
+    header: ({ table }) => (
+      <Checkbox
+        checked={
+          table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")
+        }
+        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+        aria-label="Select all"
+        className="translate-y-0.5"
+      />
+    ),
+    meta: {
+      className: cn("inset-s-0 z-10 rounded-tl-[inherit] max-md:sticky"),
+    },
+    cell: ({ row }) => (
+      <Checkbox
+        checked={row.getIsSelected()}
+        onCheckedChange={(value) => row.toggleSelected(!!value)}
+        aria-label="Select row"
+        className="translate-y-0.5"
+      />
+    ),
+    enableSorting: false,
+    enableHiding: false,
+  },
+  {
+    accessorKey: "username",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Username" />,
+    cell: ({ row }) => <LongText className="max-w-36 ps-3">{row.getValue("username")}</LongText>,
+    meta: {
+      className: cn(
+        "drop-shadow-[0_1px_2px_rgb(0_0_0_/_0.1)] dark:drop-shadow-[0_1px_2px_rgb(255_255_255_/_0.1)]",
+        "inset-s-6 ps-0.5 max-md:sticky @4xl/content:table-cell @4xl/content:drop-shadow-none",
+      ),
+    },
+    enableHiding: false,
+  },
+  {
+    id: "fullName",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+    cell: ({ row }) => {
+      const { firstName, lastName } = row.original;
+      const fullName = \`\${firstName} \${lastName}\`;
+      return <LongText className="max-w-36">{fullName}</LongText>;
+    },
+    meta: { className: "w-36" },
+  },
+  {
+    accessorKey: "email",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Email" />,
+    cell: ({ row }) => <div className="w-fit ps-2 text-nowrap">{row.getValue("email")}</div>,
+  },
+  {
+    accessorKey: "phoneNumber",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Phone Number" />,
+    cell: ({ row }) => <div>{row.getValue("phoneNumber")}</div>,
+    enableSorting: false,
+  },
+  {
+    accessorKey: "status",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+    cell: ({ row }) => {
+      const { status } = row.original;
+      const badgeColor = callTypes.get(status);
+      return (
+        <div className="flex space-x-2">
+          <Badge variant="outline" className={cn("capitalize", badgeColor)}>
+            {row.getValue("status")}
+          </Badge>
+        </div>
+      );
+    },
+    filterFn: (row, id, value) => {
+      return value.includes(row.getValue(id));
+    },
+    enableHiding: false,
+    enableSorting: false,
+  },
+  {
+    accessorKey: "role",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Role" />,
+    cell: ({ row }) => {
+      const { role } = row.original;
+      const userType = roles.find(({ value }) => value === role);
+
+      if (!userType) {
+        return null;
+      }
+
+      return (
+        <div className="flex items-center gap-x-2">
+          {userType.icon && <userType.icon size={16} className="text-muted-foreground" />}
+          <span className="text-sm capitalize">{row.getValue("role")}</span>
+        </div>
+      );
+    },
+    filterFn: (row, id, value) => {
+      return value.includes(row.getValue(id));
+    },
+    enableSorting: false,
+    enableHiding: false,
+  },
+  {
+    id: "actions",
+    cell: DataTableRowActions,
+  },
+];
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-delete-dialog.test.tsx", `import { useState } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { type User } from "../data/schema";
+import { UsersDeleteDialog } from "./users-delete-dialog";
+
+vi.mock("@/lib/show-submitted-data", () => ({ showSubmittedData: vi.fn() }));
+
+const MOCK_USER: User = {
+  id: "user-delete-test",
+  firstName: "John",
+  lastName: "Doe",
+  username: "john_doe",
+  email: "johndoe@shadcn-admin.com",
+  phoneNumber: "+959123456789",
+  status: "active",
+  role: "manager",
+  createdAt: new Date("2026-01-01"),
+  updatedAt: new Date("2026-02-02"),
+};
+
+describe("UsersDeleteDialog", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("renders the dialog with the correct title, description, input and buttons", async () => {
+    const { getByText, getByRole } = await render(
+      <UsersDeleteDialog open onOpenChange={vi.fn()} currentRow={MOCK_USER} />,
+    );
+
+    const title = getByRole("heading", {
+      level: 2,
+      name: /Delete User/i,
+    });
+    const desc = getByText(
+      new RegExp(\`Are you sure you want to delete \${MOCK_USER.username}?\`, "i"),
+    );
+    const usernameInput = getByRole("textbox", { name: /Username/i });
+    const cancelButton = getByRole("button", { name: /Cancel/i });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(title).toBeInTheDocument();
+    await expect.element(desc).toBeInTheDocument();
+    await expect.element(usernameInput).toBeInTheDocument();
+    await expect.element(cancelButton).toBeInTheDocument();
+    await expect.element(deleteButton).toBeInTheDocument();
+    await expect.element(deleteButton).toBeDisabled();
+  });
+
+  it("keeps the delete button disabled until the username input is filled correctly", async () => {
+    const { getByRole } = await render(
+      <UsersDeleteDialog open onOpenChange={vi.fn()} currentRow={MOCK_USER} />,
+    );
+
+    const usernameInput = getByRole("textbox", { name: /Username/i });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(usernameInput, "wrong-username");
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(usernameInput, MOCK_USER.username);
+    await expect.element(deleteButton).toBeEnabled();
+  });
+
+  it("closes the dialog when the cancel button is clicked", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(
+      <UsersDeleteDialog open onOpenChange={onOpenChange} currentRow={MOCK_USER} />,
+    );
+
+    const cancelButton = getByRole("button", { name: /Cancel/i });
+    await userEvent.click(cancelButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("resets the username input when the dialog is closed and reopened", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reopen
+          </button>
+          {open ? (
+            <UsersDeleteDialog open={open} onOpenChange={setOpen} currentRow={MOCK_USER} />
+          ) : null}
+        </>
+      );
+    }
+
+    const { getByRole } = await render(<Harness />);
+
+    const usernameInput = getByRole("textbox", { name: /Username/i });
+    await userEvent.fill(usernameInput, MOCK_USER.username);
+    await expect.element(usernameInput).toHaveValue(MOCK_USER.username);
+
+    const closeButton = getByRole("button", { name: /Cancel/i });
+    await userEvent.click(closeButton);
+
+    const reopenButton = getByRole("button", { name: /Reopen/i });
+    await userEvent.click(reopenButton);
+    await expect.element(usernameInput).toHaveValue("");
+  });
+
+  it("shows the submitted data when deleted successfully", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(
+      <UsersDeleteDialog open onOpenChange={onOpenChange} currentRow={MOCK_USER} />,
+    );
+
+    const usernameInput = getByRole("textbox", { name: /Username/i });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(usernameInput, MOCK_USER.username);
+
+    await expect.element(deleteButton).toBeEnabled();
+
+    await userEvent.click(deleteButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    expect(showSubmittedData).toHaveBeenCalledOnce();
+    expect(showSubmittedData).toHaveBeenCalledWith(
+      MOCK_USER,
+      "The following user has been deleted:",
+    );
+  });
+
+  it("deletes successfully when press Enter key on the username input", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(
+      <UsersDeleteDialog open onOpenChange={onOpenChange} currentRow={MOCK_USER} />,
+    );
+
+    const usernameInput = getByRole("textbox", { name: /Username/i });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(usernameInput, MOCK_USER.username);
+    await expect.element(deleteButton).toBeEnabled();
+
+    await userEvent.keyboard("{Enter}");
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    expect(showSubmittedData).toHaveBeenCalledOnce();
+    expect(showSubmittedData).toHaveBeenCalledWith(
+      MOCK_USER,
+      "The following user has been deleted:",
+    );
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-delete-dialog.tsx", `"use client";
+
+import { AlertTriangle } from "lucide-react";
+import { useState } from "react";
+
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { type User } from "../data/schema";
+
+type UserDeleteDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  currentRow: User;
+};
+
+export function UsersDeleteDialog({ open, onOpenChange, currentRow }: UserDeleteDialogProps) {
+  const [value, setValue] = useState("");
+
+  const handleDelete = () => {
+    if (value.trim() !== currentRow.username) return;
+
+    onOpenChange(false);
+    showSubmittedData(currentRow, "The following user has been deleted:");
+  };
+
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      form="users-delete-form"
+      disabled={value.trim() !== currentRow.username}
+      title={
+        <span className="text-destructive">
+          <AlertTriangle className="me-1 inline-block stroke-destructive" size={18} /> Delete User
+        </span>
+      }
+      desc={
+        <form
+          id="users-delete-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleDelete();
+          }}
+          className="space-y-4"
+        >
+          <p className="mb-2">
+            Are you sure you want to delete <span className="font-bold">{currentRow.username}</span>
+            ?
+            <br />
+            This action will permanently remove the user with the role of{" "}
+            <span className="font-bold">{currentRow.role.toUpperCase()}</span> from the system. This
+            cannot be undone.
+          </p>
+
+          <Label className="my-2">
+            Username:
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="Enter username to confirm deletion."
+              autoFocus
+            />
+          </Label>
+
+          <Alert variant="destructive">
+            <AlertTitle>Warning!</AlertTitle>
+            <AlertDescription>
+              Please be careful, this operation can not be rolled back.
+            </AlertDescription>
+          </Alert>
+        </form>
+      }
+      confirmText="Delete"
+      destructive
+    />
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-dialogs.tsx", `import { UsersActionDialog } from "./users-action-dialog";
+import { UsersDeleteDialog } from "./users-delete-dialog";
+import { UsersInviteDialog } from "./users-invite-dialog";
+import { useUsers } from "./users-provider";
+
+export function UsersDialogs() {
+  const { open, setOpen, currentRow, setCurrentRow } = useUsers();
+  return (
+    <>
+      <UsersActionDialog key="user-add" open={open === "add"} onOpenChange={() => setOpen("add")} />
+
+      <UsersInviteDialog
+        key="user-invite"
+        open={open === "invite"}
+        onOpenChange={() => setOpen("invite")}
+      />
+
+      {currentRow && (
+        <>
+          <UsersActionDialog
+            key={\`user-edit-\${currentRow.id}\`}
+            open={open === "edit"}
+            onOpenChange={() => {
+              setOpen("edit");
+              setTimeout(() => {
+                setCurrentRow(null);
+              }, 500);
+            }}
+            currentRow={currentRow}
+          />
+
+          <UsersDeleteDialog
+            key={\`user-delete-\${currentRow.id}\`}
+            open={open === "delete"}
+            onOpenChange={() => {
+              setOpen("delete");
+              setTimeout(() => {
+                setCurrentRow(null);
+              }, 500);
+            }}
+            currentRow={currentRow}
+          />
+        </>
+      )}
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-invite-dialog.test.tsx", `import { useState } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { UsersInviteDialog } from "./users-invite-dialog";
+
+vi.mock("@/lib/show-submitted-data", () => ({ showSubmittedData: vi.fn() }));
+
+describe("UsersInviteDialog", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("renders the dialog title and description", async () => {
+    const { getByRole, getByText } = await render(
+      <UsersInviteDialog open onOpenChange={vi.fn()} />,
+    );
+
+    const title = getByRole("heading", {
+      level: 2,
+      name: /Invite User/i,
+    });
+    const desc = getByText(/Invite new user to join your team/i);
+
+    await expect.element(title).toBeInTheDocument();
+    await expect.element(desc).toBeInTheDocument();
+  });
+
+  it("closes when the dialog close button is clicked", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(<UsersInviteDialog open onOpenChange={onOpenChange} />);
+
+    const closeButton = getByRole("button", { name: /Close/i });
+    await userEvent.click(closeButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("closes when Cancel is clicked", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(<UsersInviteDialog open onOpenChange={onOpenChange} />);
+
+    const cancelButton = getByRole("button", { name: /Cancel/i });
+    await userEvent.click(cancelButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("shows error messages when submitting empty form, and clears them as fields are filled", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole, getByText } = await render(
+      <UsersInviteDialog open onOpenChange={onOpenChange} />,
+    );
+
+    const emailErrorMessage = getByText(/Please enter an email to invite./i);
+    const roleErrorMessage = getByText(/Role is required./i);
+
+    const submitButton = getByRole("button", { name: /Invite/i });
+    await userEvent.click(submitButton);
+
+    await expect.element(emailErrorMessage).toBeInTheDocument();
+    await expect.element(roleErrorMessage).toBeInTheDocument();
+
+    const emailInput = getByRole("textbox", { name: /Email/i });
+    await userEvent.fill(emailInput, "test@example.com");
+
+    const roleSelect = getByRole("combobox", { name: /Role/i });
+    await userEvent.click(roleSelect);
+    await userEvent.click(getByRole("option", { name: /Superadmin/i }));
+
+    await expect.element(emailErrorMessage).not.toBeInTheDocument();
+    await expect.element(roleErrorMessage).not.toBeInTheDocument();
+  });
+
+  it("resets entered values when the dialog is closed and reopened", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reopen
+          </button>
+          <UsersInviteDialog open={open} onOpenChange={setOpen} />
+        </>
+      );
+    }
+
+    const { getByRole } = await render(<Harness />);
+
+    const EMAIL_VALUE = "test@example.com";
+    const ROLE_VALUE = "Superadmin";
+    const DESC_VALUE = "This is a test description";
+
+    const emailInput = getByRole("textbox", { name: /Email/i });
+    await userEvent.fill(emailInput, EMAIL_VALUE);
+
+    const roleSelect = getByRole("combobox", { name: /Role/i });
+    await userEvent.click(roleSelect);
+    await userEvent.click(getByRole("option", { name: ROLE_VALUE }));
+
+    const descInput = getByRole("textbox", { name: /Description/i });
+    await userEvent.fill(descInput, DESC_VALUE);
+
+    await expect.element(emailInput).toHaveValue(EMAIL_VALUE);
+    await expect.element(roleSelect).toHaveTextContent(ROLE_VALUE);
+    await expect.element(descInput).toHaveValue(DESC_VALUE);
+
+    const cancelButton = getByRole("button", { name: /Cancel/i });
+    await userEvent.click(cancelButton);
+
+    const reopenButton = getByRole("button", { name: /Reopen/i });
+    await userEvent.click(reopenButton);
+
+    await expect.element(emailInput).toHaveValue("");
+    await expect.element(roleSelect).toHaveTextContent("Select a role");
+    await expect.element(descInput).toHaveValue("");
+  });
+
+  it("shows submitted data when the form is submitted successfully", async () => {
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(<UsersInviteDialog open onOpenChange={onOpenChange} />);
+
+    const EMAIL_VALUE = "test@example.com";
+    const ROLE_VALUE = "superadmin";
+    const DESC_VALUE = "Welcome aboard!";
+
+    const emailInput = getByRole("textbox", { name: /Email/i });
+    await userEvent.fill(emailInput, EMAIL_VALUE);
+
+    const roleSelect = getByRole("combobox", { name: /Role/i });
+    await userEvent.click(roleSelect);
+    await userEvent.click(getByRole("option", { name: ROLE_VALUE }));
+
+    const descInput = getByRole("textbox", { name: /Description/i });
+    await userEvent.fill(descInput, DESC_VALUE);
+
+    const submitButton = getByRole("button", { name: /Invite/i });
+    await userEvent.click(submitButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    expect(showSubmittedData).toHaveBeenCalledOnce();
+    expect(showSubmittedData).toHaveBeenCalledWith({
+      email: EMAIL_VALUE,
+      role: ROLE_VALUE,
+      desc: DESC_VALUE,
+    });
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-invite-dialog.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { MailPlus, Send } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { SelectDropdown } from "@/components/select-dropdown";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { showSubmittedData } from "@/lib/show-submitted-data";
+
+import { roles } from "../data/data";
+
+const formSchema = z.object({
+  email: z.email({
+    error: (iss) => (iss.input === "" ? "Please enter an email to invite." : undefined),
+  }),
+  role: z.string().min(1, "Role is required."),
+  desc: z.string().optional(),
+});
+
+type UserInviteForm = z.infer<typeof formSchema>;
+
+type UserInviteDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function UsersInviteDialog({ open, onOpenChange }: UserInviteDialogProps) {
+  const form = useForm<UserInviteForm>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { email: "", role: "", desc: "" },
+  });
+
+  const onSubmit = (values: UserInviteForm) => {
+    form.reset();
+    showSubmittedData(values);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(state) => {
+        form.reset();
+        onOpenChange(state);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader className="text-start">
+          <DialogTitle className="flex items-center gap-2">
+            <MailPlus /> Invite User
+          </DialogTitle>
+          <DialogDescription>
+            Invite new user to join your team by sending them an email invitation. Assign a role to
+            define their access level.
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form id="user-invite-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="eg: john.doe@gmail.com" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Role</FormLabel>
+                  <SelectDropdown
+                    defaultValue={field.value}
+                    onValueChange={field.onChange}
+                    placeholder="Select a role"
+                    items={roles.map(({ label, value }) => ({
+                      label,
+                      value,
+                    }))}
+                  />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="desc"
+              render={({ field }) => (
+                <FormItem className="">
+                  <FormLabel>Description (optional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      className="resize-none"
+                      placeholder="Add a personal note to your invitation (optional)"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+        <DialogFooter className="gap-y-2">
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button type="submit" form="user-invite-form">
+            Invite <Send />
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-multi-delete-dialog.test.tsx", `import { useState } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+import { userEvent } from "vitest/browser";
+
+import { createTableMock } from "@/test-utils/tanstack-table";
+
+import { UsersMultiDeleteDialog } from "./users-multi-delete-dialog";
+
+vi.mock("@/lib/utils", async (orig) => ({
+  ...(await orig()),
+  sleep: vi.fn(() => Promise.resolve()),
+}));
+
+describe("UsersMultiDeleteDialog", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("renders the dialog with the correct title, description, input and buttons", async () => {
+    const { table } = createTableMock();
+
+    const { getByRole, getByText } = await render(
+      <UsersMultiDeleteDialog open onOpenChange={vi.fn()} table={table} />,
+    );
+
+    const title = getByRole("heading", {
+      level: 2,
+      name: /Delete 2 users/i,
+    });
+    const desc = getByText(new RegExp(\`Are you sure you want to delete the selected users?\`, "i"));
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(title).toBeInTheDocument();
+    await expect.element(desc).toBeInTheDocument();
+    await expect.element(confirmDeleteInput).toBeInTheDocument();
+    await expect.element(deleteButton).toBeInTheDocument();
+    await expect.element(deleteButton).toBeDisabled();
+  });
+
+  it("keeps the delete button disabled until the confirm delete input is filled correctly", async () => {
+    const { table } = createTableMock();
+    const { getByRole } = await render(
+      <UsersMultiDeleteDialog open onOpenChange={vi.fn()} table={table} />,
+    );
+
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(confirmDeleteInput, "wrong-input");
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(confirmDeleteInput, "DELETE");
+    await expect.element(deleteButton).toBeEnabled();
+  });
+
+  it("closes the dialog when the cancel button is clicked", async () => {
+    const { table } = createTableMock();
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(
+      <UsersMultiDeleteDialog open onOpenChange={onOpenChange} table={table} />,
+    );
+
+    const cancelButton = getByRole("button", { name: /Cancel/i });
+    await userEvent.click(cancelButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("resets the confirm delete input when the dialog is closed and reopened", async () => {
+    const { table } = createTableMock();
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reopen
+          </button>
+          {open ? (
+            <UsersMultiDeleteDialog open={open} onOpenChange={setOpen} table={table} />
+          ) : null}
+        </>
+      );
+    }
+
+    const { getByRole } = await render(<Harness />);
+
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    await userEvent.fill(confirmDeleteInput, "DELETE");
+    await expect.element(confirmDeleteInput).toHaveValue("DELETE");
+
+    const cancelButton = getByRole("button", { name: /Cancel/i });
+    await userEvent.click(cancelButton);
+
+    const reopenButton = getByRole("button", { name: /Reopen/i });
+    await userEvent.click(reopenButton);
+    await expect.element(confirmDeleteInput).toHaveValue("");
+  });
+
+  it("shows the submitted data when deleted successfully", async () => {
+    const { table, resetRowSelection } = createTableMock();
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(
+      <UsersMultiDeleteDialog open onOpenChange={onOpenChange} table={table} />,
+    );
+
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(confirmDeleteInput, "DELETE");
+    await expect.element(deleteButton).toBeEnabled();
+
+    await userEvent.click(deleteButton);
+
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    await vi.waitFor(() => expect(resetRowSelection).toHaveBeenCalledOnce());
+  });
+
+  it("deletes successfully when press Enter key on the confirm delete input", async () => {
+    const { table, resetRowSelection } = createTableMock();
+    const onOpenChange = vi.fn();
+    const { getByRole } = await render(
+      <UsersMultiDeleteDialog open onOpenChange={onOpenChange} table={table} />,
+    );
+
+    const confirmDeleteInput = getByRole("textbox", {
+      name: /Confirm by typing "DELETE"/i,
+    });
+    const deleteButton = getByRole("button", { name: /Delete/i });
+
+    await expect.element(deleteButton).toBeDisabled();
+
+    await userEvent.fill(confirmDeleteInput, "DELETE");
+    await expect.element(deleteButton).toBeEnabled();
+
+    await userEvent.keyboard("{Enter}");
+    expect(onOpenChange).toHaveBeenCalledOnce();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    await vi.waitFor(() => expect(resetRowSelection).toHaveBeenCalledOnce());
+  });
+});
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-multi-delete-dialog.tsx", `"use client";
+
+import { type Table } from "@tanstack/react-table";
+import { AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { sleep } from "@/lib/utils";
+
+type UserMultiDeleteDialogProps<TData> = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  table: Table<TData>;
+};
+
+const CONFIRM_WORD = "DELETE";
+
+export function UsersMultiDeleteDialog<TData>({
+  open,
+  onOpenChange,
+  table,
+}: UserMultiDeleteDialogProps<TData>) {
+  const [value, setValue] = useState("");
+
+  const selectedRows = table.getFilteredSelectedRowModel().rows;
+
+  const handleDelete = () => {
+    if (value.trim() !== CONFIRM_WORD) {
+      toast.error(\`Please type "\${CONFIRM_WORD}" to confirm.\`);
+      return;
+    }
+
+    onOpenChange(false);
+
+    toast.promise(sleep(2000), {
+      loading: "Deleting users...",
+      success: () => {
+        setValue("");
+        table.resetRowSelection();
+        return \`Deleted \${selectedRows.length} \${selectedRows.length > 1 ? "users" : "user"}\`;
+      },
+      error: "Error",
+    });
+  };
+
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      form="users-multi-delete-form"
+      disabled={value.trim() !== CONFIRM_WORD}
+      title={
+        <span className="text-destructive">
+          <AlertTriangle className="me-1 inline-block stroke-destructive" size={18} /> Delete{" "}
+          {selectedRows.length} {selectedRows.length > 1 ? "users" : "user"}
+        </span>
+      }
+      desc={
+        <form
+          id="users-multi-delete-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleDelete();
+          }}
+          className="space-y-4"
+        >
+          <p className="mb-2">
+            Are you sure you want to delete the selected users? <br />
+            This action cannot be undone.
+          </p>
+
+          <Label className="my-4 flex flex-col items-start gap-1.5">
+            <span className="">Confirm by typing "{CONFIRM_WORD}":</span>
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={\`Type "\${CONFIRM_WORD}" to confirm.\`}
+              autoFocus
+            />
+          </Label>
+
+          <Alert variant="destructive">
+            <AlertTitle>Warning!</AlertTitle>
+            <AlertDescription>
+              Please be careful, this operation can not be rolled back.
+            </AlertDescription>
+          </Alert>
+        </form>
+      }
+      confirmText="Delete"
+      destructive
+    />
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-primary-buttons.tsx", `import { MailPlus, UserPlus } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+
+import { useUsers } from "./users-provider";
+
+export function UsersPrimaryButtons() {
+  const { setOpen } = useUsers();
+  return (
+    <div className="flex gap-2">
+      <Button variant="outline" className="space-x-1" onClick={() => setOpen("invite")}>
+        <span>Invite User</span> <MailPlus size={18} />
+      </Button>
+      <Button className="space-x-1" onClick={() => setOpen("add")}>
+        <span>Add User</span> <UserPlus size={18} />
+      </Button>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-provider.tsx", `import React, { useState } from "react";
+
+import useDialogState from "@/hooks/use-dialog-state";
+
+import { type User } from "../data/schema";
+
+type UsersDialogType = "invite" | "add" | "edit" | "delete";
+
+type UsersContextType = {
+  open: UsersDialogType | null;
+  setOpen: (str: UsersDialogType | null) => void;
+  currentRow: User | null;
+  setCurrentRow: React.Dispatch<React.SetStateAction<User | null>>;
+};
+
+const UsersContext = React.createContext<UsersContextType | null>(null);
+
+export function UsersProvider({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useDialogState<UsersDialogType>(null);
+  const [currentRow, setCurrentRow] = useState<User | null>(null);
+
+  return (
+    <UsersContext value={{ open, setOpen, currentRow, setCurrentRow }}>{children}</UsersContext>
+  );
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const useUsers = () => {
+  const usersContext = React.useContext(UsersContext);
+
+  if (!usersContext) {
+    throw new Error("useUsers has to be used within <UsersContext>");
+  }
+
+  return usersContext;
+};
+`],
+  ["addons/admin/apps/web/src/features/users/components/users-table.tsx", `import {
+  type SortingState,
+  type VisibilityState,
+  flexRender,
+  getCoreRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import { useEffect, useState } from "react";
+
+import { DataTablePagination, DataTableToolbar } from "@/components/data-table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { type NavigateFn, useTableUrlState } from "@/hooks/use-table-url-state";
+import { cn } from "@/lib/utils";
+
+import { roles } from "../data/data";
+import { type User } from "../data/schema";
+import { DataTableBulkActions } from "./data-table-bulk-actions";
+import { usersColumns as columns } from "./users-columns";
+
+type DataTableProps = {
+  data: User[];
+  search: Record<string, unknown>;
+  navigate: NavigateFn;
+};
+
+export function UsersTable({ data, search, navigate }: DataTableProps) {
+  // Local UI-only states
+  const [rowSelection, setRowSelection] = useState({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [sorting, setSorting] = useState<SortingState>([]);
+
+  // Local state management for table (uncomment to use local-only state, not synced with URL)
+  // const [columnFilters, onColumnFiltersChange] = useState<ColumnFiltersState>([])
+  // const [pagination, onPaginationChange] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+
+  // Synced with URL states (keys/defaults mirror users route search schema)
+  const {
+    columnFilters,
+    onColumnFiltersChange,
+    pagination,
+    onPaginationChange,
+    ensurePageInRange,
+  } = useTableUrlState({
+    search,
+    navigate,
+    pagination: { defaultPage: 1, defaultPageSize: 10 },
+    globalFilter: { enabled: false },
+    columnFilters: [
+      // username per-column text filter
+      { columnId: "username", searchKey: "username", type: "string" },
+      { columnId: "status", searchKey: "status", type: "array" },
+      { columnId: "role", searchKey: "role", type: "array" },
+    ],
+  });
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const table = useReactTable({
+    data,
+    columns,
+    state: {
+      sorting,
+      pagination,
+      rowSelection,
+      columnFilters,
+      columnVisibility,
+    },
+    enableRowSelection: true,
+    onPaginationChange,
+    onColumnFiltersChange,
+    onRowSelectionChange: setRowSelection,
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
+    getPaginationRowModel: getPaginationRowModel(),
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
+  });
+
+  useEffect(() => {
+    ensurePageInRange(table.getPageCount());
+  }, [table, ensurePageInRange]);
+
+  return (
+    <div
+      className={cn(
+        'max-sm:has-[div[role="toolbar"]]:mb-16', // Add margin bottom to the table on mobile when the toolbar is visible
+        "flex flex-1 flex-col gap-4",
+      )}
+    >
+      <DataTableToolbar
+        table={table}
+        searchPlaceholder="Filter users..."
+        searchKey="username"
+        filters={[
+          {
+            columnId: "status",
+            title: "Status",
+            options: [
+              { label: "Active", value: "active" },
+              { label: "Inactive", value: "inactive" },
+              { label: "Invited", value: "invited" },
+              { label: "Suspended", value: "suspended" },
+            ],
+          },
+          {
+            columnId: "role",
+            title: "Role",
+            options: roles.map((role) => ({ ...role })),
+          },
+        ]}
+      />
+      <div className="overflow-hidden rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id} className="group/row">
+                {headerGroup.headers.map((header) => {
+                  return (
+                    <TableHead
+                      key={header.id}
+                      colSpan={header.colSpan}
+                      className={cn(
+                        "bg-background group-hover/row:bg-muted group-data-[state=selected]/row:bg-muted",
+                        header.column.columnDef.meta?.className,
+                        header.column.columnDef.meta?.thClassName,
+                      )}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && "selected"}
+                  className="group/row"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell
+                      key={cell.id}
+                      className={cn(
+                        "bg-background group-hover/row:bg-muted group-data-[state=selected]/row:bg-muted",
+                        cell.column.columnDef.meta?.className,
+                        cell.column.columnDef.meta?.tdClassName,
+                      )}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No results.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <DataTablePagination table={table} className="mt-auto" />
+      <DataTableBulkActions table={table} />
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/users/data/data.ts", `import { Shield, UserCheck, Users, CreditCard } from "lucide-react";
+
+import { type UserStatus } from "./schema";
+
+export const callTypes = new Map<UserStatus, string>([
+  ["active", "bg-teal-100/30 text-teal-900 dark:text-teal-200 border-teal-200"],
+  ["inactive", "bg-neutral-300/40 border-neutral-300"],
+  ["invited", "bg-sky-200/40 text-sky-900 dark:text-sky-100 border-sky-300"],
+  [
+    "suspended",
+    "bg-destructive/10 dark:bg-destructive/50 text-destructive dark:text-primary border-destructive/10",
+  ],
+]);
+
+export const roles = [
+  {
+    label: "Superadmin",
+    value: "superadmin",
+    icon: Shield,
+  },
+  {
+    label: "Admin",
+    value: "admin",
+    icon: UserCheck,
+  },
+  {
+    label: "Manager",
+    value: "manager",
+    icon: Users,
+  },
+  {
+    label: "Cashier",
+    value: "cashier",
+    icon: CreditCard,
+  },
+] as const;
+`],
+  ["addons/admin/apps/web/src/features/users/data/schema.ts", `import { z } from "zod";
+
+const userStatusSchema = z.union([
+  z.literal("active"),
+  z.literal("inactive"),
+  z.literal("invited"),
+  z.literal("suspended"),
+]);
+export type UserStatus = z.infer<typeof userStatusSchema>;
+
+const userRoleSchema = z.union([
+  z.literal("superadmin"),
+  z.literal("admin"),
+  z.literal("cashier"),
+  z.literal("manager"),
+]);
+
+const _userSchema = z.object({
+  id: z.string(),
+  firstName: z.string(),
+  lastName: z.string(),
+  username: z.string(),
+  email: z.string(),
+  phoneNumber: z.string(),
+  status: userStatusSchema,
+  role: userRoleSchema,
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type User = z.infer<typeof _userSchema>;
+`],
+  ["addons/admin/apps/web/src/features/users/data/users.ts", `import { faker } from "@faker-js/faker";
+
+// Set a fixed seed for consistent data generation
+faker.seed(67890);
+
+export const users = Array.from({ length: 500 }, () => {
+  const firstName = faker.person.firstName();
+  const lastName = faker.person.lastName();
+  return {
+    id: faker.string.uuid(),
+    firstName,
+    lastName,
+    username: faker.internet.username({ firstName, lastName }).toLocaleLowerCase(),
+    email: faker.internet.email({ firstName }).toLocaleLowerCase(),
+    phoneNumber: faker.phone.number({ style: "international" }),
+    status: faker.helpers.arrayElement(["active", "inactive", "invited", "suspended"]),
+    role: faker.helpers.arrayElement(["superadmin", "admin", "cashier", "manager"]),
+    createdAt: faker.date.past(),
+    updatedAt: faker.date.recent(),
+  };
+});
+`],
+  ["addons/admin/apps/web/src/features/users/index.tsx", `// biome-ignore-all lint/performance/noJsxPropsBind: table and role controls intentionally close over row identifiers.
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MoreHorizontal } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
+
+import { type BusinessColumn, BusinessDataTable } from "@/components/business-data-table";
+import { ConfigDrawer } from "@/components/config-drawer";
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { ProfileDropdown } from "@/components/profile-dropdown";
+import { Search } from "@/components/search";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useTRPC } from "@/lib/trpc";
+
+interface RoleOption {
+  id: string;
+  name: string;
+}
+interface UserItem {
+  banned: boolean | null;
+  email: string;
+  id: string;
+  name: string;
+  roles: { roleId: string; roleName: string }[];
+}
+
+const filterUser = (user: UserItem, query: string) =>
+  !query ||
+  user.name.toLowerCase().includes(query) ||
+  user.email.toLowerCase().includes(query) ||
+  user.roles.some((role) => role.roleName.toLowerCase().includes(query));
+
+export function Users() {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const usersQuery = useQuery(trpc.admin.users.queryOptions({ search: "" }));
+  const rolesQuery = useQuery(trpc.admin.roles.queryOptions());
+  const users = (usersQuery.data ?? []) as UserItem[];
+  const roles = (rolesQuery.data ?? []) as RoleOption[];
+  const [selected, setSelected] = useState<UserItem | null>(null);
+  const refresh = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: trpc.admin.users.queryKey() }),
+    [queryClient, trpc.admin.users],
+  );
+  const setRoles = useMutation(
+    trpc.admin.setUserRoles.mutationOptions({
+      onSuccess: async () => {
+        await refresh();
+        toast.success("User roles updated");
+      },
+    }),
+  );
+  const setBanned = useMutation(
+    trpc.admin.setUserBanned.mutationOptions({
+      onSuccess: async () => {
+        await refresh();
+        toast.success("Account status updated");
+      },
+    }),
+  );
+  const revokeSessions = useMutation(
+    trpc.admin.revokeUserSessions.mutationOptions({
+      onSuccess: () => toast.success("User sessions revoked"),
+    }),
+  );
+  const closeDialog = useCallback(() => setSelected(null), []);
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setSelected(null);
+    }
+  }, []);
+  const toggleRole = useCallback(
+    (roleId: string, checked: boolean) => {
+      if (!selected) {
+        return;
+      }
+      const current = selected.roles.map((role) => role.roleId);
+      const roleIds = checked ? [...current, roleId] : current.filter((id) => id !== roleId);
+      setRoles.mutate({ roleIds, userId: selected.id });
+      setSelected({
+        ...selected,
+        roles: roles
+          .filter((role) => roleIds.includes(role.id))
+          .map((role) => ({ roleId: role.id, roleName: role.name })),
+      });
+    },
+    [roles, selected, setRoles],
+  );
+  const toggleBan = useCallback(() => {
+    if (!selected) {
+      return;
+    }
+    setBanned.mutate({ banned: !selected.banned, userId: selected.id });
+    setSelected({ ...selected, banned: !selected.banned });
+  }, [selected, setBanned]);
+  const revoke = useCallback(() => {
+    if (selected) {
+      revokeSessions.mutate({ userId: selected.id });
+    }
+  }, [revokeSessions, selected]);
+  const columns = useMemo<BusinessColumn<UserItem>[]>(
+    () => [
+      {
+        header: "User",
+        render: (user) => (
+          <div>
+            <div className="font-medium">{user.name}</div>
+            <div className="text-muted-foreground text-xs">{user.email}</div>
+          </div>
+        ),
+      },
+      {
+        header: "Status",
+        render: (user) => (
+          <Badge variant={user.banned ? "destructive" : "outline"}>
+            {user.banned ? "Suspended" : "Active"}
+          </Badge>
+        ),
+      },
+      {
+        header: "Roles",
+        render: (user) => (
+          <div className="flex flex-wrap gap-1">
+            {user.roles.length
+              ? user.roles.map((role) => (
+                  <Badge key={role.roleId} variant="secondary">
+                    {role.roleName}
+                  </Badge>
+                ))
+              : "No role"}
+          </div>
+        ),
+      },
+      {
+        className: "w-16 text-right",
+        header: "Actions",
+        render: (user) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button aria-label={\`Manage \${user.name}\`} size="icon" variant="ghost">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setSelected(user)}>Manage access</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => revokeSessions.mutate({ userId: user.id })}>
+                Revoke sessions
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+      },
+    ],
+    [revokeSessions],
+  );
+
+  return (
+    <>
+      <Header fixed>
+        <Search className="me-auto" />
+        <ThemeSwitch />
+        <ConfigDrawer />
+        <ProfileDropdown />
+      </Header>
+      <Main className="flex flex-1 flex-col gap-4 sm:gap-6">
+        <div>
+          <h2 className="font-bold text-2xl tracking-tight">User List</h2>
+          <p className="text-muted-foreground">
+            Manage users, roles, account status, and sessions.
+          </p>
+        </div>
+        <BusinessDataTable
+          columns={columns}
+          data={users}
+          empty="No users found."
+          filter={filterUser}
+          getRowId={(user) => user.id}
+          placeholder="Filter users..."
+        />
+      </Main>
+      <Dialog onOpenChange={handleOpenChange} open={selected !== null}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage {selected?.name}</DialogTitle>
+            <DialogDescription>Assign roles and control account access.</DialogDescription>
+          </DialogHeader>
+          <div className="divide-y rounded-md border">
+            {roles.map((role) => (
+              <div className="flex min-h-12 items-center gap-3 px-3" key={role.id}>
+                <Checkbox
+                  checked={selected?.roles.some((item) => item.roleId === role.id)}
+                  onCheckedChange={(checked) => toggleRole(role.id, checked === true)}
+                />
+                <span>{role.name}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={revoke} variant="outline">
+              Revoke sessions
+            </Button>
+            <Button onClick={toggleBan} variant={selected?.banned ? "secondary" : "destructive"}>
+              {selected?.banned ? "Enable account" : "Suspend account"}
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={closeDialog}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/hooks/use-dialog-state.tsx", `import { useState } from "react";
+
+/**
+ * Custom hook for confirm dialog
+ * @param initialState string | null
+ * @returns A stateful value, and a function to update it.
+ * @example const [open, setOpen] = useDialogState<"approve" | "reject">()
+ */
+export default function useDialogState<T extends string | boolean>(initialState: T | null = null) {
+  const [open, _setOpen] = useState<T | null>(initialState);
+
+  const setOpen = (str: T | null) => _setOpen((prev) => (prev === str ? null : str));
+
+  return [open, setOpen] as const;
+}
+`],
+  ["addons/admin/apps/web/src/hooks/use-mobile.tsx", `import * as React from "react";
+
+const MOBILE_BREAKPOINT = 768;
+const MOBILE_QUERY = \`(max-width: \${MOBILE_BREAKPOINT - 1}px)\`;
+
+export function useIsMobile() {
+  return React.useSyncExternalStore(
+    (callback) => {
+      const mql = window.matchMedia(MOBILE_QUERY);
+      mql.addEventListener("change", callback);
+      return () => mql.removeEventListener("change", callback);
+    },
+    () => window.matchMedia(MOBILE_QUERY).matches,
+    () => false,
+  );
+}
+`],
+  ["addons/admin/apps/web/src/hooks/use-table-url-state.test.ts", `import { type Mock, describe, expect, it, vi } from "vitest";
+import { renderHook } from "vitest-browser-react";
+
+import { type NavigateFn, useTableUrlState } from "@/hooks/use-table-url-state";
+
+function lastNavigateOpts(navigate: Mock<NavigateFn>) {
+  const calls = navigate.mock.calls;
+  return calls[calls.length - 1]?.[0];
+}
+
+function applyLastSearchFn(navigate: Mock<NavigateFn>, prev: Record<string, unknown>) {
+  const opts = lastNavigateOpts(navigate);
+  if (!opts) return undefined;
+  const s = opts.search;
+  if (typeof s === "function") {
+    return s(prev) as Record<string, unknown>;
+  }
+  return s as Record<string, unknown>;
+}
+
+describe("useTableUrlState", () => {
+  it("derives pagination from search with defaults", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result } = await renderHook(() =>
+      useTableUrlState({
+        search: { page: 3, pageSize: 25 },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+      }),
+    );
+
+    expect(result.current.pagination).toEqual({
+      pageIndex: 2,
+      pageSize: 25,
+    });
+  });
+
+  it("uses default page and pageSize when search omits them", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result } = await renderHook(() =>
+      useTableUrlState({
+        search: {},
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+      }),
+    );
+
+    expect(result.current.pagination).toEqual({
+      pageIndex: 0,
+      pageSize: 10,
+    });
+  });
+
+  it("clamps negative effective page via pageIndex", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result } = await renderHook(() =>
+      useTableUrlState({
+        search: { page: 0 },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+      }),
+    );
+
+    expect(result.current.pagination.pageIndex).toBe(0);
+  });
+
+  it("onPaginationChange omits page and pageSize from search when they match defaults", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const prev = { page: 2, pageSize: 20, filter: "q" };
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: prev,
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+      }),
+    );
+
+    await act(() => {
+      result.current.onPaginationChange({
+        pageIndex: 0,
+        pageSize: 10,
+      });
+    });
+
+    expect(applyLastSearchFn(navigate, prev)).toMatchObject({
+      page: undefined,
+      pageSize: undefined,
+      filter: "q",
+    });
+  });
+
+  it("onPaginationChange writes non-default page and pageSize", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const prev = { filter: "x" };
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: { ...prev, page: 1, pageSize: 10 },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+      }),
+    );
+
+    await act(() => {
+      result.current.onPaginationChange({
+        pageIndex: 2,
+        pageSize: 25,
+      });
+    });
+
+    expect(applyLastSearchFn(navigate, prev)).toMatchObject({
+      page: 3,
+      pageSize: 25,
+      filter: "x",
+    });
+  });
+
+  it("supports custom pagination search keys", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result } = await renderHook(() =>
+      useTableUrlState({
+        search: { p: 2, ps: 5 },
+        navigate,
+        pagination: {
+          pageKey: "p",
+          pageSizeKey: "ps",
+          defaultPage: 1,
+          defaultPageSize: 10,
+        },
+      }),
+    );
+
+    expect(result.current.pagination).toEqual({
+      pageIndex: 1,
+      pageSize: 5,
+    });
+  });
+
+  it("reads globalFilter from search and onGlobalFilterChange updates URL and clears page", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: { page: 2, filter: "hello" },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+        globalFilter: { enabled: true, key: "filter" },
+      }),
+    );
+
+    expect(result.current.globalFilter).toBe("hello");
+
+    await act(() => {
+      result.current.onGlobalFilterChange?.("  next  ");
+    });
+
+    expect(applyLastSearchFn(navigate, { page: 2, filter: "hello" })).toEqual({
+      page: undefined,
+      filter: "next",
+    });
+  });
+
+  it("clears filter key in URL when global filter becomes empty after trim", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: { filter: "x" },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+        globalFilter: { enabled: true, key: "filter" },
+      }),
+    );
+
+    await act(() => {
+      result.current.onGlobalFilterChange?.("   ");
+    });
+
+    expect(applyLastSearchFn(navigate, { filter: "x" })).toMatchObject({
+      filter: undefined,
+    });
+  });
+
+  it("does not trim global filter when trim is false", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: {},
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+        globalFilter: { enabled: true, key: "filter", trim: false },
+      }),
+    );
+
+    await act(() => {
+      result.current.onGlobalFilterChange?.("  spaced  ");
+    });
+
+    expect(applyLastSearchFn(navigate, {})).toMatchObject({
+      filter: "  spaced  ",
+    });
+  });
+
+  it("omits globalFilter and onGlobalFilterChange when global filter is disabled", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result } = await renderHook(() =>
+      useTableUrlState({
+        search: { filter: "ignored" },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+        globalFilter: { enabled: false },
+      }),
+    );
+
+    expect(result.current.globalFilter).toBeUndefined();
+    expect(result.current.onGlobalFilterChange).toBeUndefined();
+  });
+
+  it("builds array column filters from search", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result } = await renderHook(() =>
+      useTableUrlState({
+        search: { status: ["todo", "done"], priority: ["high"] },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+        columnFilters: [
+          { columnId: "status", searchKey: "status", type: "array" },
+          { columnId: "priority", searchKey: "priority", type: "array" },
+        ],
+      }),
+    );
+
+    expect(result.current.columnFilters).toEqual([
+      { id: "status", value: ["todo", "done"] },
+      { id: "priority", value: ["high"] },
+    ]);
+  });
+
+  it("builds string column filters from search", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result } = await renderHook(() =>
+      useTableUrlState({
+        search: { q: "  find me  " },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+        columnFilters: [{ columnId: "title", searchKey: "q", type: "string" }],
+      }),
+    );
+
+    expect(result.current.columnFilters).toEqual([{ id: "title", value: "  find me  " }]);
+  });
+
+  it("onColumnFiltersChange merges serialized filters into search and clears page", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const prev = { page: 3, status: ["old"], other: 1 };
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: prev,
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+        columnFilters: [
+          { columnId: "status", searchKey: "status", type: "array" },
+          { columnId: "priority", searchKey: "priority", type: "array" },
+        ],
+      }),
+    );
+
+    await act(() => {
+      result.current.onColumnFiltersChange([
+        { id: "status", value: ["todo"] },
+        { id: "priority", value: [] },
+      ]);
+    });
+
+    expect(applyLastSearchFn(navigate, prev)).toEqual({
+      page: undefined,
+      status: ["todo"],
+      priority: undefined,
+      other: 1,
+    });
+  });
+
+  it("ensurePageInRange navigates with replace when current page exceeds pageCount", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: { page: 5 },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+      }),
+    );
+
+    await act(() => {
+      result.current.ensurePageInRange(2);
+    });
+
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(lastNavigateOpts(navigate)?.replace).toBe(true);
+    expect(applyLastSearchFn(navigate, { page: 5, filter: "x" })).toMatchObject({
+      page: undefined,
+      filter: "x",
+    });
+  });
+
+  it("ensurePageInRange resets to last page when resetTo is last", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: { page: 9 },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+      }),
+    );
+
+    await act(() => {
+      result.current.ensurePageInRange(3, { resetTo: "last" });
+    });
+
+    expect(lastNavigateOpts(navigate)?.replace).toBe(true);
+    expect(applyLastSearchFn(navigate, { page: 9 })).toMatchObject({
+      page: 3,
+    });
+  });
+
+  it("ensurePageInRange does not navigate when page is in range", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: { page: 2 },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+      }),
+    );
+
+    await act(() => {
+      result.current.ensurePageInRange(5);
+    });
+
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("uses custom serialize and deserialize for column filters", async () => {
+    const navigate = vi.fn() as Mock<NavigateFn>;
+    const { result, act } = await renderHook(() =>
+      useTableUrlState({
+        search: { tag: "a|b" },
+        navigate,
+        pagination: { defaultPage: 1, defaultPageSize: 10 },
+        columnFilters: [
+          {
+            columnId: "tag",
+            searchKey: "tag",
+            type: "array",
+            deserialize: (v) => (typeof v === "string" ? v.split("|") : []),
+            serialize: (v) => (Array.isArray(v) ? v.join("|") : v),
+          },
+        ],
+      }),
+    );
+
+    expect(result.current.columnFilters).toEqual([{ id: "tag", value: ["a", "b"] }]);
+
+    await act(() => {
+      result.current.onColumnFiltersChange([{ id: "tag", value: ["x", "y"] }]);
+    });
+
+    expect(applyLastSearchFn(navigate, { tag: "a|b" })).toMatchObject({
+      tag: "x|y",
+    });
+  });
+});
+`],
+  ["addons/admin/apps/web/src/hooks/use-table-url-state.ts", `import type { ColumnFiltersState, OnChangeFn, PaginationState } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
+
+type SearchRecord = Record<string, unknown>;
+
+export type NavigateFn = (opts: {
+  search: true | SearchRecord | ((prev: SearchRecord) => Partial<SearchRecord> | SearchRecord);
+  replace?: boolean;
+}) => void;
+
+type UseTableUrlStateParams = {
+  search: SearchRecord;
+  navigate: NavigateFn;
+  pagination?: {
+    pageKey?: string;
+    pageSizeKey?: string;
+    defaultPage?: number;
+    defaultPageSize?: number;
+  };
+  globalFilter?: {
+    enabled?: boolean;
+    key?: string;
+    trim?: boolean;
+  };
+  columnFilters?: Array<
+    | {
+        columnId: string;
+        searchKey: string;
+        type?: "string";
+        // Optional transformers for custom types
+        serialize?: (value: unknown) => unknown;
+        deserialize?: (value: unknown) => unknown;
+      }
+    | {
+        columnId: string;
+        searchKey: string;
+        type: "array";
+        serialize?: (value: unknown) => unknown;
+        deserialize?: (value: unknown) => unknown;
+      }
+  >;
+};
+
+type UseTableUrlStateReturn = {
+  // Global filter
+  globalFilter?: string;
+  onGlobalFilterChange?: OnChangeFn<string>;
+  // Column filters
+  columnFilters: ColumnFiltersState;
+  onColumnFiltersChange: OnChangeFn<ColumnFiltersState>;
+  // Pagination
+  pagination: PaginationState;
+  onPaginationChange: OnChangeFn<PaginationState>;
+  // Helpers
+  ensurePageInRange: (pageCount: number, opts?: { resetTo?: "first" | "last" }) => void;
+};
+
+export function useTableUrlState(params: UseTableUrlStateParams): UseTableUrlStateReturn {
+  const {
+    search,
+    navigate,
+    pagination: paginationCfg,
+    globalFilter: globalFilterCfg,
+    columnFilters: columnFiltersCfg = [],
+  } = params;
+
+  const pageKey = paginationCfg?.pageKey ?? ("page" as string);
+  const pageSizeKey = paginationCfg?.pageSizeKey ?? ("pageSize" as string);
+  const defaultPage = paginationCfg?.defaultPage ?? 1;
+  const defaultPageSize = paginationCfg?.defaultPageSize ?? 10;
+
+  const globalFilterKey = globalFilterCfg?.key ?? ("filter" as string);
+  const globalFilterEnabled = globalFilterCfg?.enabled ?? true;
+  const trimGlobal = globalFilterCfg?.trim ?? true;
+
+  // Build initial column filters from the current search params
+  const initialColumnFilters: ColumnFiltersState = useMemo(() => {
+    const collected: ColumnFiltersState = [];
+    for (const cfg of columnFiltersCfg) {
+      const raw = (search as SearchRecord)[cfg.searchKey];
+      const deserialize = cfg.deserialize ?? ((v: unknown) => v);
+      if (cfg.type === "string") {
+        const value = (deserialize(raw) as string) ?? "";
+        if (typeof value === "string" && value.trim() !== "") {
+          collected.push({ id: cfg.columnId, value });
+        }
+      } else {
+        // default to array type
+        const value = (deserialize(raw) as unknown[]) ?? [];
+        if (Array.isArray(value) && value.length > 0) {
+          collected.push({ id: cfg.columnId, value });
+        }
+      }
+    }
+    return collected;
+  }, [columnFiltersCfg, search]);
+
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(initialColumnFilters);
+
+  const pagination: PaginationState = useMemo(() => {
+    const rawPage = (search as SearchRecord)[pageKey];
+    const rawPageSize = (search as SearchRecord)[pageSizeKey];
+    const pageNum = typeof rawPage === "number" ? rawPage : defaultPage;
+    const pageSizeNum = typeof rawPageSize === "number" ? rawPageSize : defaultPageSize;
+    return { pageIndex: Math.max(0, pageNum - 1), pageSize: pageSizeNum };
+  }, [search, pageKey, pageSizeKey, defaultPage, defaultPageSize]);
+
+  const onPaginationChange: OnChangeFn<PaginationState> = (updater) => {
+    const next = typeof updater === "function" ? updater(pagination) : updater;
+    const nextPage = next.pageIndex + 1;
+    const nextPageSize = next.pageSize;
+    navigate({
+      search: (prev) => ({
+        ...(prev as SearchRecord),
+        [pageKey]: nextPage <= defaultPage ? undefined : nextPage,
+        [pageSizeKey]: nextPageSize === defaultPageSize ? undefined : nextPageSize,
+      }),
+    });
+  };
+
+  const [globalFilter, setGlobalFilter] = useState<string | undefined>(() => {
+    if (!globalFilterEnabled) return undefined;
+    const raw = (search as SearchRecord)[globalFilterKey];
+    return typeof raw === "string" ? raw : "";
+  });
+
+  const onGlobalFilterChange: OnChangeFn<string> | undefined = globalFilterEnabled
+    ? (updater) => {
+        const next = typeof updater === "function" ? updater(globalFilter ?? "") : updater;
+        const value = trimGlobal ? next.trim() : next;
+        setGlobalFilter(value);
+        navigate({
+          search: (prev) => ({
+            ...(prev as SearchRecord),
+            [pageKey]: undefined,
+            [globalFilterKey]: value ? value : undefined,
+          }),
+        });
+      }
+    : undefined;
+
+  const onColumnFiltersChange: OnChangeFn<ColumnFiltersState> = (updater) => {
+    const next = typeof updater === "function" ? updater(columnFilters) : updater;
+    setColumnFilters(next);
+
+    const patch: Record<string, unknown> = {};
+
+    for (const cfg of columnFiltersCfg) {
+      const found = next.find((f) => f.id === cfg.columnId);
+      const serialize = cfg.serialize ?? ((v: unknown) => v);
+      if (cfg.type === "string") {
+        const value = typeof found?.value === "string" ? (found.value as string) : "";
+        patch[cfg.searchKey] = value.trim() !== "" ? serialize(value) : undefined;
+      } else {
+        const value = Array.isArray(found?.value) ? (found!.value as unknown[]) : [];
+        patch[cfg.searchKey] = value.length > 0 ? serialize(value) : undefined;
+      }
+    }
+
+    navigate({
+      search: (prev) => ({
+        ...(prev as SearchRecord),
+        [pageKey]: undefined,
+        ...patch,
+      }),
+    });
+  };
+
+  const ensurePageInRange = (
+    pageCount: number,
+    opts: { resetTo?: "first" | "last" } = { resetTo: "first" },
+  ) => {
+    const currentPage = (search as SearchRecord)[pageKey];
+    const pageNum = typeof currentPage === "number" ? currentPage : defaultPage;
+    if (pageCount > 0 && pageNum > pageCount) {
+      navigate({
+        replace: true,
+        search: (prev) => ({
+          ...(prev as SearchRecord),
+          [pageKey]: opts.resetTo === "last" ? pageCount : undefined,
+        }),
+      });
+    }
+  };
+
+  return {
+    globalFilter: globalFilterEnabled ? (globalFilter ?? "") : undefined,
+    onGlobalFilterChange,
+    columnFilters,
+    onColumnFiltersChange,
+    pagination,
+    onPaginationChange,
+    ensurePageInRange,
+  };
+}
+`],
+  ["addons/admin/apps/web/src/lib/auth-client.ts.hbs", `import { env } from "@{{projectName}}/env/web";
+import { adminClient } from "better-auth/client/plugins";
+import { createAuthClient } from "better-auth/react";
+
+const getServerUrl = (url: string) => {
+  const normalized = url.endsWith("/") ? url.slice(0, -1) : url;
+  if (!normalized.startsWith("/")) {
+    return normalized;
+  }
+  return typeof window === "undefined"
+    ? \`http://localhost:3000\${normalized}\`
+    : \`\${window.location.origin}\${normalized}\`;
+};
+
+export const authClient = createAuthClient({
+  baseURL: new URL("/api/auth", getServerUrl(env.VITE_SERVER_URL)).toString(),
+  plugins: [adminClient()],
+});
+`],
+  ["addons/admin/apps/web/src/lib/cookies.test.ts", `import { beforeEach, describe, expect, it } from "vitest";
+
+import { clearCookies } from "@/test-utils/cookies";
+
+import { getCookie, removeCookie, setCookie } from "./cookies";
+
+const COOKIE_PREFIX = "test_cookie_";
+
+describe("cookies", () => {
+  const uniqueName = () => \`\${COOKIE_PREFIX}\${Math.random().toString(36).slice(2)}\`;
+
+  beforeEach(() => {
+    clearCookies(COOKIE_PREFIX);
+  });
+
+  it("stores a value that can be read back", () => {
+    const name = uniqueName();
+    const value = "hello-world";
+
+    setCookie(name, value);
+
+    expect(getCookie(name)).toBe(value);
+  });
+
+  it("clears a value so it is no longer readable", () => {
+    const name = uniqueName();
+
+    setCookie(name, "x");
+    expect(getCookie(name)).toBe("x");
+
+    removeCookie(name);
+
+    expect(getCookie(name)).toBeUndefined();
+  });
+});
+`],
+  ["addons/admin/apps/web/src/lib/cookies.ts", `/**
+ * Cookie utility functions using manual document.cookie approach
+ * Replaces js-cookie dependency for better consistency
+ */
+
+const DEFAULT_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+
+/**
+ * Get a cookie value by name
+ */
+export function getCookie(name: string): string | undefined {
+  if (typeof document === "undefined") return undefined;
+
+  const value = \`; \${document.cookie}\`;
+  const parts = value.split(\`; \${name}=\`);
+  if (parts.length === 2) {
+    const cookieValue = parts.pop()?.split(";").shift();
+    return cookieValue;
+  }
+  return undefined;
+}
+
+/**
+ * Set a cookie with name, value, and optional max age
+ */
+export function setCookie(name: string, value: string, maxAge: number = DEFAULT_MAX_AGE): void {
+  if (typeof document === "undefined") return;
+
+  document.cookie = \`\${name}=\${value}; path=/; max-age=\${maxAge}\`;
+}
+
+/**
+ * Remove a cookie by setting its max age to 0
+ */
+export function removeCookie(name: string): void {
+  if (typeof document === "undefined") return;
+
+  document.cookie = \`\${name}=; path=/; max-age=0\`;
+}
+`],
+  ["addons/admin/apps/web/src/lib/handle-server-error.test.ts", `import { AxiosError } from "axios";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { handleServerError } from "./handle-server-error";
+
+const toastError = vi.hoisted(() => vi.fn());
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: toastError,
+  },
+}));
+
+beforeEach(() => {
+  vi.mocked(toastError).mockClear();
+});
+
+describe("handleServerError", () => {
+  it("shows a generic message when the error is not recognised", () => {
+    handleServerError(new Error("network"));
+
+    expect(toastError).toHaveBeenCalledWith("Something went wrong!");
+  });
+
+  it("maps a plain object with status 204 to the no-content message", () => {
+    handleServerError({ status: 204 });
+
+    expect(toastError).toHaveBeenCalledWith("No content.");
+  });
+
+  it("prefers the API title when the error is an Axios error with response data", () => {
+    const error = new AxiosError("Bad request");
+    error.response = {
+      status: 422,
+      data: { title: "Validation failed" },
+    } as AxiosError["response"];
+
+    handleServerError(error);
+
+    expect(toastError).toHaveBeenCalledWith("Validation failed");
+  });
+
+  it("falls back to the generic message when Axios response has no data.title", () => {
+    const error = new AxiosError("Request failed");
+    error.response = {
+      status: 500,
+      data: {},
+    } as AxiosError["response"];
+
+    handleServerError(error);
+
+    expect(toastError).toHaveBeenCalledWith("Something went wrong!");
+  });
+
+  it("falls back to the generic message when Axios data.title is an empty string", () => {
+    const error = new AxiosError("Bad request");
+    error.response = {
+      status: 400,
+      data: { title: "" },
+    } as AxiosError["response"];
+
+    handleServerError(error);
+
+    expect(toastError).toHaveBeenCalledWith("Something went wrong!");
+  });
+
+  it("logs the error to the console in development", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const err = new Error("logged");
+
+    handleServerError(err);
+
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(err);
+
+    log.mockRestore();
+  });
+
+  it("does not log the error to the console in production", () => {
+    vi.stubEnv("DEV", false);
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const err = new Error("not logged");
+
+    handleServerError(err);
+
+    expect(log).not.toHaveBeenCalled();
+
+    log.mockRestore();
+  });
+});
+`],
+  ["addons/admin/apps/web/src/lib/handle-server-error.ts", `import { AxiosError } from "axios";
+import { toast } from "sonner";
+
+export function handleServerError(error: unknown) {
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.log(error);
+  }
+
+  let errMsg = "Something went wrong!";
+
+  if (error && typeof error === "object" && "status" in error && Number(error.status) === 204) {
+    errMsg = "No content.";
+  }
+
+  if (error instanceof AxiosError) {
+    const title = error.response?.data?.title;
+    if (typeof title === "string" && title.length > 0) {
+      errMsg = title;
+    }
+  }
+
+  toast.error(errMsg);
+}
+`],
+  ["addons/admin/apps/web/src/lib/show-submitted-data.tsx", `import { toast } from "sonner";
+
+export function showSubmittedData(
+  data: unknown,
+  title: string = "You submitted the following values:",
+) {
+  toast.message(title, {
+    description: (
+      <pre className="mt-2 w-full overflow-x-auto rounded-md bg-slate-950 p-4">
+        <code className="text-white">{JSON.stringify(data, null, 2)}</code>
+      </pre>
+    ),
+  });
+}
+`],
+  ["addons/admin/apps/web/src/lib/trpc.ts.hbs", `import type { AppRouter } from "@{{projectName}}/api/routers/index";
+import { env } from "@{{projectName}}/env/web";
+import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { createTRPCContext } from "@trpc/tanstack-react-query";
+
+const serverUrl = env.VITE_SERVER_URL.endsWith("/")
+  ? env.VITE_SERVER_URL.slice(0, -1)
+  : env.VITE_SERVER_URL;
+
+export const trpcClient = createTRPCClient<AppRouter>({
+  links: [
+    httpBatchLink({
+      fetch: (url, options) =>
+        fetch(url, { ...options, credentials: "include" }),
+      url: \`\${serverUrl}/trpc\`,
+    }),
+  ],
+});
+
+export const { TRPCProvider, useTRPC } = createTRPCContext<AppRouter>();
+`],
+  ["addons/admin/apps/web/src/lib/utils.test.ts", `import { describe, expect, it } from "vitest";
+
+import { getPageNumbers } from "./utils";
+
+describe("getPageNumbers", () => {
+  it("returns all pages when total is at most 5", () => {
+    expect(getPageNumbers(1, 3)).toEqual([1, 2, 3]);
+    expect(getPageNumbers(3, 5)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("shows ellipsis near the beginning", () => {
+    expect(getPageNumbers(1, 10)).toEqual([1, 2, 3, 4, "...", 10]);
+    expect(getPageNumbers(3, 10)).toEqual([1, 2, 3, 4, "...", 10]);
+  });
+
+  it("shows ellipsis near the end", () => {
+    expect(getPageNumbers(10, 10)).toEqual([1, "...", 7, 8, 9, 10]);
+    expect(getPageNumbers(9, 10)).toEqual([1, "...", 7, 8, 9, 10]);
+  });
+
+  it("shows ellipsis on both side in the middle", () => {
+    expect(getPageNumbers(5, 10)).toEqual([1, "...", 4, 5, 6, "...", 10]);
+  });
+
+  it("handles current page greater than total pages", () => {
+    expect(getPageNumbers(6, 5)).toEqual([1, 2, 3, 4, 5]);
+    expect(getPageNumbers(11, 10)).toEqual([1, "...", 7, 8, 9, 10]);
+  });
+});
+`],
+  ["addons/admin/apps/web/src/lib/utils.ts", `import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export function sleep(ms: number = 1000) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Generates page numbers for pagination with ellipsis
+ * @param currentPage - Current page number (1-based)
+ * @param totalPages - Total number of pages
+ * @returns Array of page numbers and ellipsis strings
+ *
+ * Examples:
+ * - Small dataset (≤5 pages): [1, 2, 3, 4, 5]
+ * - Near beginning: [1, 2, 3, 4, '...', 10]
+ * - In middle: [1, '...', 4, 5, 6, '...', 10]
+ * - Near end: [1, '...', 7, 8, 9, 10]
+ */
+export function getPageNumbers(currentPage: number, totalPages: number) {
+  const maxVisiblePages = 5; // Maximum number of page buttons to show
+  const rangeWithDots = [];
+
+  if (totalPages <= maxVisiblePages) {
+    // If total pages is 5 or less, show all pages
+    for (let i = 1; i <= totalPages; i++) {
+      rangeWithDots.push(i);
+    }
+  } else {
+    // Always show first page
+    rangeWithDots.push(1);
+
+    if (currentPage <= 3) {
+      // Near the beginning: [1] [2] [3] [4] ... [10]
+      for (let i = 2; i <= 4; i++) {
+        rangeWithDots.push(i);
+      }
+      rangeWithDots.push("...", totalPages);
+    } else if (currentPage >= totalPages - 2) {
+      // Near the end: [1] ... [7] [8] [9] [10]
+      rangeWithDots.push("...");
+      for (let i = totalPages - 3; i <= totalPages; i++) {
+        rangeWithDots.push(i);
+      }
+    } else {
+      // In the middle: [1] ... [4] [5] [6] ... [10]
+      rangeWithDots.push("...");
+      for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+        rangeWithDots.push(i);
+      }
+      rangeWithDots.push("...", totalPages);
+    }
+  }
+
+  return rangeWithDots;
+}
+
+/**
+ * Initials from a display name: first character of the first word + first
+ * character of the last word. One word only: first two characters. Empty: \`?\`.
+ */
+export function getDisplayNameInitials(displayName: string): string {
+  const parts = displayName.trim().split(/\\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  const first = parts[0][0] ?? "";
+  const last = parts[parts.length - 1]?.[0] ?? "";
+  return (first + last).toUpperCase();
+}
+`],
+  ["addons/admin/apps/web/src/main.tsx.hbs", `import "@{{projectName}}/i18n";
+import {
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import { createRouter, RouterProvider } from "@tanstack/react-router";
+import { AxiosError } from "axios";
+import { StrictMode } from "react";
+import ReactDOM from "react-dom/client";
+import { toast } from "sonner";
+import { handleServerError } from "@/lib/handle-server-error";
+import { TRPCProvider, trpcClient } from "@/lib/trpc";
+import { useAuthStore } from "@/stores/auth-store";
+import { DirectionProvider } from "./context/direction-provider";
+import { FontProvider } from "./context/font-provider";
+import { ThemeProvider } from "./context/theme-provider";
+// Generated Routes
+import { routeTree } from "./routeTree.gen";
+// Styles
+import "./styles/index.css";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    mutations: {
+      onError: (error) => {
+        handleServerError(error);
+
+        if (error instanceof AxiosError && error.response?.status === 304) {
+          toast.error("Content not modified!");
+        }
+      },
+    },
+    queries: {
+      refetchOnWindowFocus: import.meta.env.PROD,
+      retry: (failureCount, error) => {
+        // eslint-disable-next-line no-console
+        if (import.meta.env.DEV) {
+          console.log({ error, failureCount });
+        }
+
+        if (failureCount >= 0 && import.meta.env.DEV) {
+          return false;
+        }
+        if (failureCount > 3 && import.meta.env.PROD) {
+          return false;
+        }
+
+        return !(
+          error instanceof AxiosError &&
+          [401, 403].includes(error.response?.status ?? 0)
+        );
+      },
+      staleTime: 10 * 1000, // 10s
+    },
+  },
+  queryCache: new QueryCache({
+    onError: (error) => {
+      if (error instanceof AxiosError) {
+        if (error.response?.status === 401) {
+          toast.error("Session expired!");
+          useAuthStore.getState().auth.reset();
+          const redirect = \`\${router.history.location.href}\`;
+          router.navigate({ search: { redirect }, to: "/sign-in" });
+        }
+        if (error.response?.status === 500) {
+          toast.error("Internal Server Error!");
+          // Only navigate to error page in production to avoid disrupting HMR in development
+          if (import.meta.env.PROD) {
+            router.navigate({ to: "/500" });
+          }
+        }
+        if (error.response?.status === 403) {
+          // router.navigate("/forbidden", { replace: true });
+        }
+      }
+    },
+  }),
+});
+
+// Create a new router instance
+const router = createRouter({
+  context: { queryClient },
+  defaultPreload: "intent",
+  defaultPreloadStaleTime: 0,
+  routeTree,
+});
+
+// Register the router instance for type safety
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
+
+// Render the app
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Root element not found");
+}
+if (!rootElement.innerHTML) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <TRPCProvider queryClient={queryClient} trpcClient={trpcClient}>
+          <ThemeProvider>
+            <FontProvider>
+              <DirectionProvider>
+                <RouterProvider router={router} />
+              </DirectionProvider>
+            </FontProvider>
+          </ThemeProvider>
+        </TRPCProvider>
+      </QueryClientProvider>
+    </StrictMode>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/routes/__root.tsx", `import { type QueryClient } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
+import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+
+import { NavigationProgress } from "@/components/navigation-progress";
+import { Toaster } from "@/components/ui/sonner";
+import { GeneralError } from "@/features/errors/general-error";
+import { NotFoundError } from "@/features/errors/not-found-error";
+
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient;
+}>()({
+  component: () => {
+    return (
+      <>
+        <NavigationProgress />
+        <Outlet />
+        <Toaster duration={5000} />
+        {import.meta.env.MODE === "development" && (
+          <>
+            <ReactQueryDevtools buttonPosition="bottom-left" />
+            <TanStackRouterDevtools position="bottom-right" />
+          </>
+        )}
+      </>
+    );
+  },
+  notFoundComponent: NotFoundError,
+  errorComponent: GeneralError,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/apps/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+import z from "zod";
+
+import { Apps } from "@/features/apps";
+
+const appsSearchSchema = z.object({
+  type: z.enum(["all", "connected", "notConnected"]).optional().catch(undefined),
+  filter: z.string().optional().catch(""),
+  sort: z.enum(["asc", "desc"]).optional().catch(undefined),
+});
+
+export const Route = createFileRoute("/_authenticated/apps/")({
+  validateSearch: appsSearchSchema,
+  component: Apps,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/chats/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { Chats } from "@/features/chats";
+
+export const Route = createFileRoute("/_authenticated/chats/")({
+  component: Chats,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/errors/$error.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { ConfigDrawer } from "@/components/config-drawer";
+import { Header } from "@/components/layout/header";
+import { ProfileDropdown } from "@/components/profile-dropdown";
+import { Search } from "@/components/search";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { ForbiddenError } from "@/features/errors/forbidden";
+import { GeneralError } from "@/features/errors/general-error";
+import { MaintenanceError } from "@/features/errors/maintenance-error";
+import { NotFoundError } from "@/features/errors/not-found-error";
+import { UnauthorisedError } from "@/features/errors/unauthorized-error";
+
+export const Route = createFileRoute("/_authenticated/errors/$error")({
+  component: RouteComponent,
+});
+
+// eslint-disable-next-line react-refresh/only-export-components
+function RouteComponent() {
+  const { error } = Route.useParams();
+
+  const errorMap: Record<string, React.ComponentType> = {
+    unauthorized: UnauthorisedError,
+    forbidden: ForbiddenError,
+    "not-found": NotFoundError,
+    "internal-server-error": GeneralError,
+    "maintenance-error": MaintenanceError,
+  };
+  const ErrorComponent = errorMap[error] || NotFoundError;
+
+  return (
+    <>
+      <Header fixed className="border-b">
+        <Search className="me-auto" />
+        <ThemeSwitch />
+        <ConfigDrawer />
+        <ProfileDropdown />
+      </Header>
+      <div className="flex-1 [&>div]:h-full">
+        <ErrorComponent />
+      </div>
+    </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/help-center/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { ComingSoon } from "@/components/coming-soon";
+
+export const Route = createFileRoute("/_authenticated/help-center/")({
+  component: ComingSoon,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { Dashboard } from "@/features/dashboard";
+
+export const Route = createFileRoute("/_authenticated/")({
+  component: Dashboard,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/route.tsx", `import { createFileRoute, redirect } from "@tanstack/react-router";
+
+import { AuthenticatedLayout } from "@/components/layout/authenticated-layout";
+import { authClient } from "@/lib/auth-client";
+
+export const Route = createFileRoute("/_authenticated")({
+  beforeLoad: async ({ location }) => {
+    const { data } = await authClient.getSession();
+    if (!data?.session) {
+      throw redirect({
+        search: { redirect: location.href },
+        to: "/sign-in",
+      });
+    }
+  },
+  component: AuthenticatedLayout,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/settings/account.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { SettingsAccount } from "@/features/settings/account";
+
+export const Route = createFileRoute("/_authenticated/settings/account")({
+  component: SettingsAccount,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/settings/appearance.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { SettingsAppearance } from "@/features/settings/appearance";
+
+export const Route = createFileRoute("/_authenticated/settings/appearance")({
+  component: SettingsAppearance,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/settings/display.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { SettingsDisplay } from "@/features/settings/display";
+
+export const Route = createFileRoute("/_authenticated/settings/display")({
+  component: SettingsDisplay,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/settings/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { SettingsProfile } from "@/features/settings/profile";
+
+export const Route = createFileRoute("/_authenticated/settings/")({
+  component: SettingsProfile,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/settings/notifications.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { SettingsNotifications } from "@/features/settings/notifications";
+
+export const Route = createFileRoute("/_authenticated/settings/notifications")({
+  component: SettingsNotifications,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/settings/route.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { Settings } from "@/features/settings";
+
+export const Route = createFileRoute("/_authenticated/settings")({
+  component: Settings,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/tasks/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+import z from "zod";
+
+import { Tasks } from "@/features/tasks";
+import { priorities, statuses } from "@/features/tasks/data/data";
+
+const taskSearchSchema = z.object({
+  page: z.number().optional().catch(1),
+  pageSize: z.number().optional().catch(10),
+  status: z
+    .array(z.enum(statuses.map((status) => status.value)))
+    .optional()
+    .catch([]),
+  priority: z
+    .array(z.enum(priorities.map((priority) => priority.value)))
+    .optional()
+    .catch([]),
+  filter: z.string().optional().catch(""),
+});
+
+export const Route = createFileRoute("/_authenticated/tasks/")({
+  validateSearch: taskSearchSchema,
+  component: Tasks,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/users/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+import z from "zod";
+
+import { Users } from "@/features/users";
+import { roles } from "@/features/users/data/data";
+
+const usersSearchSchema = z.object({
+  page: z.number().optional().catch(1),
+  pageSize: z.number().optional().catch(10),
+  // Facet filters
+  status: z
+    .array(
+      z.union([
+        z.literal("active"),
+        z.literal("inactive"),
+        z.literal("invited"),
+        z.literal("suspended"),
+      ]),
+    )
+    .optional()
+    .catch([]),
+  role: z
+    .array(z.enum(roles.map((r) => r.value as (typeof roles)[number]["value"])))
+    .optional()
+    .catch([]),
+  // Per-column text filter (example for username)
+  username: z.string().optional().catch(""),
+});
+
+export const Route = createFileRoute("/_authenticated/users/")({
+  validateSearch: usersSearchSchema,
+  component: Users,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(auth)/forgot-password.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { ForgotPassword } from "@/features/auth/forgot-password";
+
+export const Route = createFileRoute("/(auth)/forgot-password")({
+  component: ForgotPassword,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(auth)/otp.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { Otp } from "@/features/auth/otp";
+
+export const Route = createFileRoute("/(auth)/otp")({
+  component: Otp,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(auth)/sign-in-2.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { SignIn2 } from "@/features/auth/sign-in/sign-in-2";
+
+export const Route = createFileRoute("/(auth)/sign-in-2")({
+  component: SignIn2,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(auth)/sign-in.tsx", `import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
+
+import { SignIn } from "@/features/auth/sign-in";
+
+const searchSchema = z.object({
+  redirect: z.string().optional(),
+});
+
+export const Route = createFileRoute("/(auth)/sign-in")({
+  component: SignIn,
+  validateSearch: searchSchema,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(auth)/sign-up.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { SignUp } from "@/features/auth/sign-up";
+
+export const Route = createFileRoute("/(auth)/sign-up")({
+  component: SignUp,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(errors)/401.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { UnauthorisedError } from "@/features/errors/unauthorized-error";
+
+export const Route = createFileRoute("/(errors)/401")({
+  component: UnauthorisedError,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(errors)/403.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { ForbiddenError } from "@/features/errors/forbidden";
+
+export const Route = createFileRoute("/(errors)/403")({
+  component: ForbiddenError,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(errors)/404.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { NotFoundError } from "@/features/errors/not-found-error";
+
+export const Route = createFileRoute("/(errors)/404")({
+  component: NotFoundError,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(errors)/500.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { GeneralError } from "@/features/errors/general-error";
+
+export const Route = createFileRoute("/(errors)/500")({
+  component: GeneralError,
+});
+`],
+  ["addons/admin/apps/web/src/routes/(errors)/503.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { MaintenanceError } from "@/features/errors/maintenance-error";
+
+export const Route = createFileRoute("/(errors)/503")({
+  component: MaintenanceError,
+});
+`],
+  ["addons/admin/apps/web/src/routes/clerk/_authenticated/route.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { AuthenticatedLayout } from "@/components/layout/authenticated-layout";
+
+export const Route = createFileRoute("/clerk/_authenticated")({
+  component: AuthenticatedLayout,
+});
+`],
+  ["addons/admin/apps/web/src/routes/clerk/_authenticated/user-management.tsx", `import { useAuth, UserButton } from "@clerk/react";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { ExternalLink, Loader2 } from "lucide-react";
+/* eslint-disable react-refresh/only-export-components */
+import { useEffect, useState } from "react";
+
+import { ClerkLogo } from "@/assets/clerk-logo";
+import { ConfigDrawer } from "@/components/config-drawer";
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { LearnMore } from "@/components/learn-more";
+import { Search } from "@/components/search";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Button } from "@/components/ui/button";
+import { UsersDialogs } from "@/features/users/components/users-dialogs";
+import { UsersPrimaryButtons } from "@/features/users/components/users-primary-buttons";
+import { UsersProvider } from "@/features/users/components/users-provider";
+import { UsersTable } from "@/features/users/components/users-table";
+import { users } from "@/features/users/data/users";
+
+export const Route = createFileRoute("/clerk/_authenticated/user-management")({
+  component: UserManagement,
+});
+
+function UserManagement() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+
+  const [opened, setOpened] = useState(true);
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return (
+      <div className="flex h-svh items-center justify-center">
+        <Loader2 className="size-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <Unauthorized />;
+  }
+
+  return (
+    <UsersProvider>
+      <Header fixed>
+        <Search className="me-auto" />
+        <ThemeSwitch />
+        <ConfigDrawer />
+        <UserButton />
+      </Header>
+
+      <Main className="flex flex-1 flex-col gap-4 sm:gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">User List</h2>
+            <div className="flex gap-1">
+              <p className="text-muted-foreground">Manage your users and their roles here.</p>
+              <LearnMore open={opened} onOpenChange={setOpened} contentProps={{ side: "right" }}>
+                <p>
+                  This is the same as{" "}
+                  <Link
+                    to="/users"
+                    className="text-blue-500 underline decoration-dashed underline-offset-2"
+                  >
+                    '/users'
+                  </Link>
+                </p>
+
+                <p className="mt-4">
+                  You can sign out or manage/delete your account via the User Profile menu in the
+                  top-right corner of the page.
+                  <ExternalLink className="inline-block size-4" />
+                </p>
+              </LearnMore>
+            </div>
+          </div>
+          <UsersPrimaryButtons />
+        </div>
+        <UsersTable data={users} navigate={navigate} search={search} />
+      </Main>
+
+      <UsersDialogs />
+    </UsersProvider>
+  );
+}
+
+const COUNTDOWN = 5; // Countdown second
+
+function Unauthorized() {
+  const navigate = useNavigate();
+  const { history } = useRouter();
+
+  const [opened, setOpened] = useState(true);
+  const [cancelled, setCancelled] = useState(false);
+  const [countdown, setCountdown] = useState(COUNTDOWN);
+
+  // Set and run the countdown conditionally
+  useEffect(() => {
+    if (cancelled || opened) return;
+    const interval = setInterval(() => {
+      setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cancelled, opened]);
+
+  // Navigate to sign-in page when countdown hits 0
+  useEffect(() => {
+    if (countdown > 0) return;
+    navigate({ to: "/clerk/sign-in" });
+  }, [countdown, navigate]);
+
+  return (
+    <div className="h-svh">
+      <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
+        <h1 className="text-[7rem] leading-tight font-bold">401</h1>
+        <span className="font-medium">Unauthorized Access</span>
+        <p className="text-center text-muted-foreground">
+          You must be authenticated via Clerk{" "}
+          <sup>
+            <LearnMore open={opened} onOpenChange={setOpened}>
+              <p>
+                This is the same as{" "}
+                <Link
+                  to="/users"
+                  className="text-blue-500 underline decoration-dashed underline-offset-2"
+                >
+                  '/users'
+                </Link>
+                .{" "}
+              </p>
+              <p>You must first sign in using Clerk to access this route. </p>
+
+              <p className="mt-4">
+                After signing in, you'll be able to sign out or delete your account via the User
+                Profile dropdown on this page.
+              </p>
+            </LearnMore>
+          </sup>
+          <br />
+          to access this resource.
+        </p>
+        <div className="mt-6 flex gap-4">
+          <Button variant="outline" onClick={() => history.go(-1)}>
+            Go Back
+          </Button>
+          <Button onClick={() => navigate({ to: "/clerk/sign-in" })}>
+            <ClerkLogo className="invert" /> Sign in
+          </Button>
+        </div>
+        <div className="mt-4 h-8 text-center">
+          {!cancelled && !opened && (
+            <>
+              <p>
+                {countdown > 0 ? \`Redirecting to Sign In page in \${countdown}s\` : \`Redirecting...\`}
+              </p>
+              <Button variant="link" onClick={() => setCancelled(true)}>
+                Cancel Redirect
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/routes/clerk/(auth)/route.tsx.hbs", `import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import { ClerkFullLogo } from '@/assets/clerk-full-logo'
+import { Logo } from '@/assets/logo'
+import { LearnMore } from '@/components/learn-more'
+
+export const Route = createFileRoute('/clerk/(auth)')({
+  component: ClerkAuthLayout,
+})
+
+// eslint-disable-next-line react-refresh/only-export-components
+function ClerkAuthLayout() {
+  return (
+    <div className='relative container grid h-svh flex-col items-center justify-center lg:max-w-none lg:grid-cols-2 lg:px-0'>
+      <div className='relative hidden h-full flex-col bg-muted p-10 text-white lg:flex dark:border-e'>
+        <div className='absolute inset-0 bg-slate-500' />
+        <Link
+          to='/'
+          className='relative z-20 flex items-center text-lg font-medium'
+        >
+          <Logo className='me-2' />
+          {{projectName}}
+        </Link>
+
+        <ClerkFullLogo className='relative m-auto size-96' />
+
+        <div className='relative z-20 mt-auto'>
+          <blockquote className='space-y-2'>
+            <p className='text-lg'>
+              &ldquo; Lorem ipsum dolor sit amet consectetur adipisicing elit.
+              Sint, magni debitis inventore asperiores velit! &rdquo;
+            </p>
+            <footer className='text-sm'>John Doe</footer>
+          </blockquote>
+        </div>
+      </div>
+      <div className='lg:p-8'>
+        <div className='relative mx-auto flex w-full flex-col items-center justify-center gap-4'>
+          <LearnMore
+            defaultOpen
+            triggerProps=\\{{
+              className: 'absolute -top-12 inset-e-0 sm:inset-e-20 size-6',
+            }}
+            contentProps=\\{{ side: 'top', align: 'end', className: 'w-auto' }}
+          >
+            Welcome to the example Clerk auth page. <br />
+            Back to{' '}
+            <Link
+              to='/'
+              className='underline decoration-dashed underline-offset-2'
+            >
+              Dashboard
+            </Link>{' '}
+            ?
+          </LearnMore>
+          <Outlet />
+        </div>
+      </div>
+    </div>
+  )
+}
+`],
+  ["addons/admin/apps/web/src/routes/clerk/(auth)/sign-in.tsx", `import { SignIn } from "@clerk/react";
+import { createFileRoute } from "@tanstack/react-router";
+
+import { Skeleton } from "@/components/ui/skeleton";
+
+export const Route = createFileRoute("/clerk/(auth)/sign-in")({
+  component: () => (
+    <SignIn
+      initialValues={{
+        emailAddress: "your_mail+shadcn_admin@gmail.com",
+      }}
+      fallback={<Skeleton className="h-120 w-100" />}
+    />
+  ),
+});
+`],
+  ["addons/admin/apps/web/src/routes/clerk/(auth)/sign-up.tsx", `import { SignUp } from "@clerk/react";
+import { createFileRoute } from "@tanstack/react-router";
+
+import { Skeleton } from "@/components/ui/skeleton";
+
+export const Route = createFileRoute("/clerk/(auth)/sign-up")({
+  component: () => <SignUp fallback={<Skeleton className="h-120 w-100" />} />,
+});
+`],
+  ["addons/admin/apps/web/src/routes/clerk/route.tsx", `import { ClerkProvider } from "@clerk/react";
+/* eslint-disable react-refresh/only-export-components */
+import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { ExternalLink, Key } from "lucide-react";
+
+import { ConfigDrawer } from "@/components/config-drawer";
+import { AuthenticatedLayout } from "@/components/layout/authenticated-layout";
+import { Main } from "@/components/layout/main";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+
+export const Route = createFileRoute("/clerk")({
+  component: RouteComponent,
+});
+
+// Import your Publishable Key
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+function RouteComponent() {
+  if (!PUBLISHABLE_KEY) {
+    return <MissingClerkPubKey />;
+  }
+
+  return (
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      afterSignOutUrl="/clerk/sign-in"
+      signInUrl="/clerk/sign-in"
+      signUpUrl="/clerk/sign-up"
+      signInFallbackRedirectUrl="/clerk/user-management"
+      signUpFallbackRedirectUrl="/clerk/user-management"
+    >
+      <Outlet />
+    </ClerkProvider>
+  );
+}
+
+function MissingClerkPubKey() {
+  const codeBlock = "bg-foreground/10 rounded-sm py-0.5 px-1 text-xs text-foreground font-bold";
+  return (
+    <AuthenticatedLayout>
+      <div className="bg-backgroundh-16 flex justify-between p-4">
+        <SidebarTrigger variant="outline" className="scale-125 sm:scale-100" />
+        <div className="space-x-4">
+          <ThemeSwitch />
+          <ConfigDrawer />
+        </div>
+      </div>
+      <Main className="flex flex-col items-center justify-start">
+        <div className="max-w-2xl">
+          <Alert>
+            <Key className="size-4" />
+            <AlertTitle>No Publishable Key Found!</AlertTitle>
+            <AlertDescription>
+              <p className="text-balance">
+                You need to generate a publishable key from Clerk and put it inside the{" "}
+                <code className={codeBlock}>.env</code> file.
+              </p>
+            </AlertDescription>
+          </Alert>
+
+          <h1 className="mt-4 text-2xl font-bold">Set your Clerk API key</h1>
+          <div className="mt-4 flex flex-col gap-y-4 text-foreground/75">
+            <ol className="list-inside list-decimal space-y-1.5">
+              <li>
+                In the{" "}
+                <a
+                  href="https://go.clerk.com/GttUAaK"
+                  target="_blank"
+                  className="underline decoration-dashed underline-offset-4 hover:decoration-solid"
+                >
+                  Clerk
+                  <sup>
+                    <ExternalLink className="inline-block size-4" />
+                  </sup>
+                </a>{" "}
+                Dashboard, navigate to the API keys page.
+              </li>
+              <li>
+                In the <strong>Quick Copy</strong> section, copy your Clerk Publishable Key.
+              </li>
+              <li>
+                Rename <code className={codeBlock}>.env.example</code> to{" "}
+                <code className={codeBlock}>.env</code>
+              </li>
+              <li>
+                Paste your key into your <code className={codeBlock}>.env</code> file.
+              </li>
+            </ol>
+            <p>The final result should resemble the following:</p>
+
+            <div className="@container space-y-2 rounded-md bg-slate-800 px-3 py-3 text-sm text-slate-200">
+              <span className="ps-1">.env</span>
+              <pre className="overflow-auto overscroll-x-contain rounded bg-slate-950 px-2 py-1 text-xs">
+                <code>
+                  <span className='before:text-slate-400 md:before:pe-2 md:before:content-["1."]'>
+                    VITE_CLERK_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+                  </span>
+                </code>
+              </pre>
+            </div>
+          </div>
+
+          <Separator className="my-4 w-full" />
+
+          <Alert>
+            <AlertTitle>Clerk Integration is Optional</AlertTitle>
+            <AlertDescription>
+              <p className="text-balance">
+                The Clerk integration lives entirely inside{" "}
+                <code className={codeBlock}>src/routes/clerk</code>. If you plan to use Clerk as
+                your auth service, you might want to place{" "}
+                <code className={codeBlock}>ClerkProvider</code> at the root route.
+              </p>
+              <p>
+                However, if you don't plan to use Clerk, you can safely remove this directory and
+                related dependency_ <code className={codeBlock}>@clerk/react</code>.
+              </p>
+              <p className="mt-2 text-sm">
+                This setup is modular by design and won't affect the rest of the application.
+              </p>
+            </AlertDescription>
+          </Alert>
+        </div>
+      </Main>
+    </AuthenticatedLayout>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/routeTree.gen.ts", `/* eslint-disable */
+
+// @ts-nocheck
+
+// noinspection JSUnusedGlobalSymbols
+
+// This file was automatically generated by TanStack Router.
+// You should NOT make any changes in this file as it will be overwritten.
+// Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
+
+import { Route as authForgotPasswordRouteImport } from "./routes/(auth)/forgot-password";
+import { Route as authOtpRouteImport } from "./routes/(auth)/otp";
+import { Route as authSignInRouteImport } from "./routes/(auth)/sign-in";
+import { Route as authSignIn2RouteImport } from "./routes/(auth)/sign-in-2";
+import { Route as authSignUpRouteImport } from "./routes/(auth)/sign-up";
+import { Route as errors401RouteImport } from "./routes/(errors)/401";
+import { Route as errors403RouteImport } from "./routes/(errors)/403";
+import { Route as errors404RouteImport } from "./routes/(errors)/404";
+import { Route as errors500RouteImport } from "./routes/(errors)/500";
+import { Route as errors503RouteImport } from "./routes/(errors)/503";
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as AuthenticatedAppsIndexRouteImport } from "./routes/_authenticated/apps/index";
+import { Route as AuthenticatedChatsIndexRouteImport } from "./routes/_authenticated/chats/index";
+import { Route as AuthenticatedErrorsErrorRouteImport } from "./routes/_authenticated/errors/$error";
+import { Route as AuthenticatedHelpCenterIndexRouteImport } from "./routes/_authenticated/help-center/index";
+import { Route as AuthenticatedIndexRouteImport } from "./routes/_authenticated/index";
+import { Route as AuthenticatedRouteRouteImport } from "./routes/_authenticated/route";
+import { Route as AuthenticatedSettingsAccountRouteImport } from "./routes/_authenticated/settings/account";
+import { Route as AuthenticatedSettingsAppearanceRouteImport } from "./routes/_authenticated/settings/appearance";
+import { Route as AuthenticatedSettingsDisplayRouteImport } from "./routes/_authenticated/settings/display";
+import { Route as AuthenticatedSettingsIndexRouteImport } from "./routes/_authenticated/settings/index";
+import { Route as AuthenticatedSettingsNotificationsRouteImport } from "./routes/_authenticated/settings/notifications";
+import { Route as AuthenticatedSettingsRouteRouteImport } from "./routes/_authenticated/settings/route";
+import { Route as AuthenticatedTasksIndexRouteImport } from "./routes/_authenticated/tasks/index";
+import { Route as AuthenticatedUsersIndexRouteImport } from "./routes/_authenticated/users/index";
+import { Route as ClerkauthRouteRouteImport } from "./routes/clerk/(auth)/route";
+import { Route as ClerkauthSignInRouteImport } from "./routes/clerk/(auth)/sign-in";
+import { Route as ClerkauthSignUpRouteImport } from "./routes/clerk/(auth)/sign-up";
+import { Route as ClerkAuthenticatedRouteRouteImport } from "./routes/clerk/_authenticated/route";
+import { Route as ClerkAuthenticatedUserManagementRouteImport } from "./routes/clerk/_authenticated/user-management";
+import { Route as ClerkRouteRouteImport } from "./routes/clerk/route";
+
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: "/_authenticated",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ClerkRouteRoute = ClerkRouteRouteImport.update({
+  id: "/clerk",
+  path: "/clerk",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const authForgotPasswordRoute = authForgotPasswordRouteImport.update({
+  id: "/(auth)/forgot-password",
+  path: "/forgot-password",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const authOtpRoute = authOtpRouteImport.update({
+  id: "/(auth)/otp",
+  path: "/otp",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const authSignInRoute = authSignInRouteImport.update({
+  id: "/(auth)/sign-in",
+  path: "/sign-in",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const authSignIn2Route = authSignIn2RouteImport.update({
+  id: "/(auth)/sign-in-2",
+  path: "/sign-in-2",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const authSignUpRoute = authSignUpRouteImport.update({
+  id: "/(auth)/sign-up",
+  path: "/sign-up",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const errors401Route = errors401RouteImport.update({
+  id: "/(errors)/401",
+  path: "/401",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const errors403Route = errors403RouteImport.update({
+  id: "/(errors)/403",
+  path: "/403",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const errors404Route = errors404RouteImport.update({
+  id: "/(errors)/404",
+  path: "/404",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const errors500Route = errors500RouteImport.update({
+  id: "/(errors)/500",
+  path: "/500",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const errors503Route = errors503RouteImport.update({
+  id: "/(errors)/503",
+  path: "/503",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any);
+const AuthenticatedSettingsRouteRoute = AuthenticatedSettingsRouteRouteImport.update({
+  id: "/settings",
+  path: "/settings",
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any);
+const ClerkauthRouteRoute = ClerkauthRouteRouteImport.update({
+  id: "/(auth)",
+  getParentRoute: () => ClerkRouteRoute,
+} as any);
+const ClerkAuthenticatedRouteRoute = ClerkAuthenticatedRouteRouteImport.update({
+  id: "/_authenticated",
+  getParentRoute: () => ClerkRouteRoute,
+} as any);
+const AuthenticatedAppsIndexRoute = AuthenticatedAppsIndexRouteImport.update({
+  id: "/apps/",
+  path: "/apps/",
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any);
+const AuthenticatedChatsIndexRoute = AuthenticatedChatsIndexRouteImport.update({
+  id: "/chats/",
+  path: "/chats/",
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any);
+const AuthenticatedErrorsErrorRoute = AuthenticatedErrorsErrorRouteImport.update({
+  id: "/errors/$error",
+  path: "/errors/$error",
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any);
+const AuthenticatedHelpCenterIndexRoute = AuthenticatedHelpCenterIndexRouteImport.update({
+  id: "/help-center/",
+  path: "/help-center/",
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any);
+const AuthenticatedSettingsIndexRoute = AuthenticatedSettingsIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => AuthenticatedSettingsRouteRoute,
+} as any);
+const AuthenticatedSettingsAccountRoute = AuthenticatedSettingsAccountRouteImport.update({
+  id: "/account",
+  path: "/account",
+  getParentRoute: () => AuthenticatedSettingsRouteRoute,
+} as any);
+const AuthenticatedSettingsAppearanceRoute = AuthenticatedSettingsAppearanceRouteImport.update({
+  id: "/appearance",
+  path: "/appearance",
+  getParentRoute: () => AuthenticatedSettingsRouteRoute,
+} as any);
+const AuthenticatedSettingsDisplayRoute = AuthenticatedSettingsDisplayRouteImport.update({
+  id: "/display",
+  path: "/display",
+  getParentRoute: () => AuthenticatedSettingsRouteRoute,
+} as any);
+const AuthenticatedSettingsNotificationsRoute =
+  AuthenticatedSettingsNotificationsRouteImport.update({
+    id: "/notifications",
+    path: "/notifications",
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any);
+const AuthenticatedTasksIndexRoute = AuthenticatedTasksIndexRouteImport.update({
+  id: "/tasks/",
+  path: "/tasks/",
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any);
+const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
+  id: "/users/",
+  path: "/users/",
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any);
+const ClerkauthSignInRoute = ClerkauthSignInRouteImport.update({
+  id: "/sign-in",
+  path: "/sign-in",
+  getParentRoute: () => ClerkauthRouteRoute,
+} as any);
+const ClerkauthSignUpRoute = ClerkauthSignUpRouteImport.update({
+  id: "/sign-up",
+  path: "/sign-up",
+  getParentRoute: () => ClerkauthRouteRoute,
+} as any);
+const ClerkAuthenticatedUserManagementRoute = ClerkAuthenticatedUserManagementRouteImport.update({
+  id: "/user-management",
+  path: "/user-management",
+  getParentRoute: () => ClerkAuthenticatedRouteRoute,
+} as any);
+
+export interface FileRoutesByFullPath {
+  "/": typeof AuthenticatedIndexRoute;
+  "/clerk": typeof ClerkauthRouteRouteWithChildren;
+  "/settings": typeof AuthenticatedSettingsRouteRouteWithChildren;
+  "/forgot-password": typeof authForgotPasswordRoute;
+  "/otp": typeof authOtpRoute;
+  "/sign-in": typeof authSignInRoute;
+  "/sign-in-2": typeof authSignIn2Route;
+  "/sign-up": typeof authSignUpRoute;
+  "/401": typeof errors401Route;
+  "/403": typeof errors403Route;
+  "/404": typeof errors404Route;
+  "/500": typeof errors500Route;
+  "/503": typeof errors503Route;
+  "/errors/$error": typeof AuthenticatedErrorsErrorRoute;
+  "/settings/account": typeof AuthenticatedSettingsAccountRoute;
+  "/settings/appearance": typeof AuthenticatedSettingsAppearanceRoute;
+  "/settings/display": typeof AuthenticatedSettingsDisplayRoute;
+  "/settings/notifications": typeof AuthenticatedSettingsNotificationsRoute;
+  "/clerk/sign-in": typeof ClerkauthSignInRoute;
+  "/clerk/sign-up": typeof ClerkauthSignUpRoute;
+  "/clerk/user-management": typeof ClerkAuthenticatedUserManagementRoute;
+  "/apps/": typeof AuthenticatedAppsIndexRoute;
+  "/chats/": typeof AuthenticatedChatsIndexRoute;
+  "/help-center/": typeof AuthenticatedHelpCenterIndexRoute;
+  "/settings/": typeof AuthenticatedSettingsIndexRoute;
+  "/tasks/": typeof AuthenticatedTasksIndexRoute;
+  "/users/": typeof AuthenticatedUsersIndexRoute;
+}
+export interface FileRoutesByTo {
+  "/clerk": typeof ClerkauthRouteRouteWithChildren;
+  "/forgot-password": typeof authForgotPasswordRoute;
+  "/otp": typeof authOtpRoute;
+  "/sign-in": typeof authSignInRoute;
+  "/sign-in-2": typeof authSignIn2Route;
+  "/sign-up": typeof authSignUpRoute;
+  "/401": typeof errors401Route;
+  "/403": typeof errors403Route;
+  "/404": typeof errors404Route;
+  "/500": typeof errors500Route;
+  "/503": typeof errors503Route;
+  "/": typeof AuthenticatedIndexRoute;
+  "/errors/$error": typeof AuthenticatedErrorsErrorRoute;
+  "/settings/account": typeof AuthenticatedSettingsAccountRoute;
+  "/settings/appearance": typeof AuthenticatedSettingsAppearanceRoute;
+  "/settings/display": typeof AuthenticatedSettingsDisplayRoute;
+  "/settings/notifications": typeof AuthenticatedSettingsNotificationsRoute;
+  "/clerk/sign-in": typeof ClerkauthSignInRoute;
+  "/clerk/sign-up": typeof ClerkauthSignUpRoute;
+  "/clerk/user-management": typeof ClerkAuthenticatedUserManagementRoute;
+  "/apps": typeof AuthenticatedAppsIndexRoute;
+  "/chats": typeof AuthenticatedChatsIndexRoute;
+  "/help-center": typeof AuthenticatedHelpCenterIndexRoute;
+  "/settings": typeof AuthenticatedSettingsIndexRoute;
+  "/tasks": typeof AuthenticatedTasksIndexRoute;
+  "/users": typeof AuthenticatedUsersIndexRoute;
+}
+export interface FileRoutesById {
+  __root__: typeof rootRouteImport;
+  "/_authenticated": typeof AuthenticatedRouteRouteWithChildren;
+  "/clerk": typeof ClerkRouteRouteWithChildren;
+  "/_authenticated/settings": typeof AuthenticatedSettingsRouteRouteWithChildren;
+  "/clerk/(auth)": typeof ClerkauthRouteRouteWithChildren;
+  "/clerk/_authenticated": typeof ClerkAuthenticatedRouteRouteWithChildren;
+  "/(auth)/forgot-password": typeof authForgotPasswordRoute;
+  "/(auth)/otp": typeof authOtpRoute;
+  "/(auth)/sign-in": typeof authSignInRoute;
+  "/(auth)/sign-in-2": typeof authSignIn2Route;
+  "/(auth)/sign-up": typeof authSignUpRoute;
+  "/(errors)/401": typeof errors401Route;
+  "/(errors)/403": typeof errors403Route;
+  "/(errors)/404": typeof errors404Route;
+  "/(errors)/500": typeof errors500Route;
+  "/(errors)/503": typeof errors503Route;
+  "/_authenticated/": typeof AuthenticatedIndexRoute;
+  "/_authenticated/errors/$error": typeof AuthenticatedErrorsErrorRoute;
+  "/_authenticated/settings/account": typeof AuthenticatedSettingsAccountRoute;
+  "/_authenticated/settings/appearance": typeof AuthenticatedSettingsAppearanceRoute;
+  "/_authenticated/settings/display": typeof AuthenticatedSettingsDisplayRoute;
+  "/_authenticated/settings/notifications": typeof AuthenticatedSettingsNotificationsRoute;
+  "/clerk/(auth)/sign-in": typeof ClerkauthSignInRoute;
+  "/clerk/(auth)/sign-up": typeof ClerkauthSignUpRoute;
+  "/clerk/_authenticated/user-management": typeof ClerkAuthenticatedUserManagementRoute;
+  "/_authenticated/apps/": typeof AuthenticatedAppsIndexRoute;
+  "/_authenticated/chats/": typeof AuthenticatedChatsIndexRoute;
+  "/_authenticated/help-center/": typeof AuthenticatedHelpCenterIndexRoute;
+  "/_authenticated/settings/": typeof AuthenticatedSettingsIndexRoute;
+  "/_authenticated/tasks/": typeof AuthenticatedTasksIndexRoute;
+  "/_authenticated/users/": typeof AuthenticatedUsersIndexRoute;
+}
+export interface FileRouteTypes {
+  fileRoutesByFullPath: FileRoutesByFullPath;
+  fullPaths:
+    | "/"
+    | "/clerk"
+    | "/settings"
+    | "/forgot-password"
+    | "/otp"
+    | "/sign-in"
+    | "/sign-in-2"
+    | "/sign-up"
+    | "/401"
+    | "/403"
+    | "/404"
+    | "/500"
+    | "/503"
+    | "/errors/$error"
+    | "/settings/account"
+    | "/settings/appearance"
+    | "/settings/display"
+    | "/settings/notifications"
+    | "/clerk/sign-in"
+    | "/clerk/sign-up"
+    | "/clerk/user-management"
+    | "/apps/"
+    | "/chats/"
+    | "/help-center/"
+    | "/settings/"
+    | "/tasks/"
+    | "/users/";
+  fileRoutesByTo: FileRoutesByTo;
+  to:
+    | "/clerk"
+    | "/forgot-password"
+    | "/otp"
+    | "/sign-in"
+    | "/sign-in-2"
+    | "/sign-up"
+    | "/401"
+    | "/403"
+    | "/404"
+    | "/500"
+    | "/503"
+    | "/"
+    | "/errors/$error"
+    | "/settings/account"
+    | "/settings/appearance"
+    | "/settings/display"
+    | "/settings/notifications"
+    | "/clerk/sign-in"
+    | "/clerk/sign-up"
+    | "/clerk/user-management"
+    | "/apps"
+    | "/chats"
+    | "/help-center"
+    | "/settings"
+    | "/tasks"
+    | "/users";
+  id:
+    | "__root__"
+    | "/_authenticated"
+    | "/clerk"
+    | "/_authenticated/settings"
+    | "/clerk/(auth)"
+    | "/clerk/_authenticated"
+    | "/(auth)/forgot-password"
+    | "/(auth)/otp"
+    | "/(auth)/sign-in"
+    | "/(auth)/sign-in-2"
+    | "/(auth)/sign-up"
+    | "/(errors)/401"
+    | "/(errors)/403"
+    | "/(errors)/404"
+    | "/(errors)/500"
+    | "/(errors)/503"
+    | "/_authenticated/"
+    | "/_authenticated/errors/$error"
+    | "/_authenticated/settings/account"
+    | "/_authenticated/settings/appearance"
+    | "/_authenticated/settings/display"
+    | "/_authenticated/settings/notifications"
+    | "/clerk/(auth)/sign-in"
+    | "/clerk/(auth)/sign-up"
+    | "/clerk/_authenticated/user-management"
+    | "/_authenticated/apps/"
+    | "/_authenticated/chats/"
+    | "/_authenticated/help-center/"
+    | "/_authenticated/settings/"
+    | "/_authenticated/tasks/"
+    | "/_authenticated/users/";
+  fileRoutesById: FileRoutesById;
+}
+export interface RootRouteChildren {
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren;
+  ClerkRouteRoute: typeof ClerkRouteRouteWithChildren;
+  authForgotPasswordRoute: typeof authForgotPasswordRoute;
+  authOtpRoute: typeof authOtpRoute;
+  authSignInRoute: typeof authSignInRoute;
+  authSignIn2Route: typeof authSignIn2Route;
+  authSignUpRoute: typeof authSignUpRoute;
+  errors401Route: typeof errors401Route;
+  errors403Route: typeof errors403Route;
+  errors404Route: typeof errors404Route;
+  errors500Route: typeof errors500Route;
+  errors503Route: typeof errors503Route;
+}
+
+declare module "@tanstack/react-router" {
+  interface FileRoutesByPath {
+    "/_authenticated": {
+      id: "/_authenticated";
+      path: "";
+      fullPath: "/";
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/clerk": {
+      id: "/clerk";
+      path: "/clerk";
+      fullPath: "/clerk";
+      preLoaderRoute: typeof ClerkRouteRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(auth)/forgot-password": {
+      id: "/(auth)/forgot-password";
+      path: "/forgot-password";
+      fullPath: "/forgot-password";
+      preLoaderRoute: typeof authForgotPasswordRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(auth)/otp": {
+      id: "/(auth)/otp";
+      path: "/otp";
+      fullPath: "/otp";
+      preLoaderRoute: typeof authOtpRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(auth)/sign-in": {
+      id: "/(auth)/sign-in";
+      path: "/sign-in";
+      fullPath: "/sign-in";
+      preLoaderRoute: typeof authSignInRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(auth)/sign-in-2": {
+      id: "/(auth)/sign-in-2";
+      path: "/sign-in-2";
+      fullPath: "/sign-in-2";
+      preLoaderRoute: typeof authSignIn2RouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(auth)/sign-up": {
+      id: "/(auth)/sign-up";
+      path: "/sign-up";
+      fullPath: "/sign-up";
+      preLoaderRoute: typeof authSignUpRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(errors)/401": {
+      id: "/(errors)/401";
+      path: "/401";
+      fullPath: "/401";
+      preLoaderRoute: typeof errors401RouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(errors)/403": {
+      id: "/(errors)/403";
+      path: "/403";
+      fullPath: "/403";
+      preLoaderRoute: typeof errors403RouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(errors)/404": {
+      id: "/(errors)/404";
+      path: "/404";
+      fullPath: "/404";
+      preLoaderRoute: typeof errors404RouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(errors)/500": {
+      id: "/(errors)/500";
+      path: "/500";
+      fullPath: "/500";
+      preLoaderRoute: typeof errors500RouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/(errors)/503": {
+      id: "/(errors)/503";
+      path: "/503";
+      fullPath: "/503";
+      preLoaderRoute: typeof errors503RouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/_authenticated/": {
+      id: "/_authenticated/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof AuthenticatedIndexRouteImport;
+      parentRoute: typeof AuthenticatedRouteRoute;
+    };
+    "/_authenticated/settings": {
+      id: "/_authenticated/settings";
+      path: "/settings";
+      fullPath: "/settings";
+      preLoaderRoute: typeof AuthenticatedSettingsRouteRouteImport;
+      parentRoute: typeof AuthenticatedRouteRoute;
+    };
+    "/clerk/(auth)": {
+      id: "/clerk/(auth)";
+      path: "";
+      fullPath: "/clerk";
+      preLoaderRoute: typeof ClerkauthRouteRouteImport;
+      parentRoute: typeof ClerkRouteRoute;
+    };
+    "/clerk/_authenticated": {
+      id: "/clerk/_authenticated";
+      path: "";
+      fullPath: "/clerk";
+      preLoaderRoute: typeof ClerkAuthenticatedRouteRouteImport;
+      parentRoute: typeof ClerkRouteRoute;
+    };
+    "/_authenticated/apps/": {
+      id: "/_authenticated/apps/";
+      path: "/apps";
+      fullPath: "/apps/";
+      preLoaderRoute: typeof AuthenticatedAppsIndexRouteImport;
+      parentRoute: typeof AuthenticatedRouteRoute;
+    };
+    "/_authenticated/chats/": {
+      id: "/_authenticated/chats/";
+      path: "/chats";
+      fullPath: "/chats/";
+      preLoaderRoute: typeof AuthenticatedChatsIndexRouteImport;
+      parentRoute: typeof AuthenticatedRouteRoute;
+    };
+    "/_authenticated/errors/$error": {
+      id: "/_authenticated/errors/$error";
+      path: "/errors/$error";
+      fullPath: "/errors/$error";
+      preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport;
+      parentRoute: typeof AuthenticatedRouteRoute;
+    };
+    "/_authenticated/help-center/": {
+      id: "/_authenticated/help-center/";
+      path: "/help-center";
+      fullPath: "/help-center/";
+      preLoaderRoute: typeof AuthenticatedHelpCenterIndexRouteImport;
+      parentRoute: typeof AuthenticatedRouteRoute;
+    };
+    "/_authenticated/settings/": {
+      id: "/_authenticated/settings/";
+      path: "/";
+      fullPath: "/settings/";
+      preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport;
+      parentRoute: typeof AuthenticatedSettingsRouteRoute;
+    };
+    "/_authenticated/settings/account": {
+      id: "/_authenticated/settings/account";
+      path: "/account";
+      fullPath: "/settings/account";
+      preLoaderRoute: typeof AuthenticatedSettingsAccountRouteImport;
+      parentRoute: typeof AuthenticatedSettingsRouteRoute;
+    };
+    "/_authenticated/settings/appearance": {
+      id: "/_authenticated/settings/appearance";
+      path: "/appearance";
+      fullPath: "/settings/appearance";
+      preLoaderRoute: typeof AuthenticatedSettingsAppearanceRouteImport;
+      parentRoute: typeof AuthenticatedSettingsRouteRoute;
+    };
+    "/_authenticated/settings/display": {
+      id: "/_authenticated/settings/display";
+      path: "/display";
+      fullPath: "/settings/display";
+      preLoaderRoute: typeof AuthenticatedSettingsDisplayRouteImport;
+      parentRoute: typeof AuthenticatedSettingsRouteRoute;
+    };
+    "/_authenticated/settings/notifications": {
+      id: "/_authenticated/settings/notifications";
+      path: "/notifications";
+      fullPath: "/settings/notifications";
+      preLoaderRoute: typeof AuthenticatedSettingsNotificationsRouteImport;
+      parentRoute: typeof AuthenticatedSettingsRouteRoute;
+    };
+    "/_authenticated/tasks/": {
+      id: "/_authenticated/tasks/";
+      path: "/tasks";
+      fullPath: "/tasks/";
+      preLoaderRoute: typeof AuthenticatedTasksIndexRouteImport;
+      parentRoute: typeof AuthenticatedRouteRoute;
+    };
+    "/_authenticated/users/": {
+      id: "/_authenticated/users/";
+      path: "/users";
+      fullPath: "/users/";
+      preLoaderRoute: typeof AuthenticatedUsersIndexRouteImport;
+      parentRoute: typeof AuthenticatedRouteRoute;
+    };
+    "/clerk/(auth)/sign-in": {
+      id: "/clerk/(auth)/sign-in";
+      path: "/sign-in";
+      fullPath: "/clerk/sign-in";
+      preLoaderRoute: typeof ClerkauthSignInRouteImport;
+      parentRoute: typeof ClerkauthRouteRoute;
+    };
+    "/clerk/(auth)/sign-up": {
+      id: "/clerk/(auth)/sign-up";
+      path: "/sign-up";
+      fullPath: "/clerk/sign-up";
+      preLoaderRoute: typeof ClerkauthSignUpRouteImport;
+      parentRoute: typeof ClerkauthRouteRoute;
+    };
+    "/clerk/_authenticated/user-management": {
+      id: "/clerk/_authenticated/user-management";
+      path: "/user-management";
+      fullPath: "/clerk/user-management";
+      preLoaderRoute: typeof ClerkAuthenticatedUserManagementRouteImport;
+      parentRoute: typeof ClerkAuthenticatedRouteRoute;
+    };
+  }
+}
+
+interface AuthenticatedSettingsRouteRouteChildren {
+  AuthenticatedSettingsAccountRoute: typeof AuthenticatedSettingsAccountRoute;
+  AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute;
+  AuthenticatedSettingsDisplayRoute: typeof AuthenticatedSettingsDisplayRoute;
+  AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute;
+  AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute;
+}
+
+const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteChildren = {
+  AuthenticatedSettingsAccountRoute: AuthenticatedSettingsAccountRoute,
+  AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
+  AuthenticatedSettingsDisplayRoute: AuthenticatedSettingsDisplayRoute,
+  AuthenticatedSettingsNotificationsRoute: AuthenticatedSettingsNotificationsRoute,
+  AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
+};
+
+const AuthenticatedSettingsRouteRouteWithChildren =
+  AuthenticatedSettingsRouteRoute._addFileChildren(AuthenticatedSettingsRouteRouteChildren);
+
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren;
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute;
+  AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute;
+  AuthenticatedAppsIndexRoute: typeof AuthenticatedAppsIndexRoute;
+  AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute;
+  AuthenticatedHelpCenterIndexRoute: typeof AuthenticatedHelpCenterIndexRoute;
+  AuthenticatedTasksIndexRoute: typeof AuthenticatedTasksIndexRoute;
+  AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute;
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
+  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
+  AuthenticatedAppsIndexRoute: AuthenticatedAppsIndexRoute,
+  AuthenticatedChatsIndexRoute: AuthenticatedChatsIndexRoute,
+  AuthenticatedHelpCenterIndexRoute: AuthenticatedHelpCenterIndexRoute,
+  AuthenticatedTasksIndexRoute: AuthenticatedTasksIndexRoute,
+  AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
+};
+
+const AuthenticatedRouteRouteWithChildren = AuthenticatedRouteRoute._addFileChildren(
+  AuthenticatedRouteRouteChildren,
+);
+
+interface ClerkauthRouteRouteChildren {
+  ClerkauthSignInRoute: typeof ClerkauthSignInRoute;
+  ClerkauthSignUpRoute: typeof ClerkauthSignUpRoute;
+}
+
+const ClerkauthRouteRouteChildren: ClerkauthRouteRouteChildren = {
+  ClerkauthSignInRoute: ClerkauthSignInRoute,
+  ClerkauthSignUpRoute: ClerkauthSignUpRoute,
+};
+
+const ClerkauthRouteRouteWithChildren = ClerkauthRouteRoute._addFileChildren(
+  ClerkauthRouteRouteChildren,
+);
+
+interface ClerkAuthenticatedRouteRouteChildren {
+  ClerkAuthenticatedUserManagementRoute: typeof ClerkAuthenticatedUserManagementRoute;
+}
+
+const ClerkAuthenticatedRouteRouteChildren: ClerkAuthenticatedRouteRouteChildren = {
+  ClerkAuthenticatedUserManagementRoute: ClerkAuthenticatedUserManagementRoute,
+};
+
+const ClerkAuthenticatedRouteRouteWithChildren = ClerkAuthenticatedRouteRoute._addFileChildren(
+  ClerkAuthenticatedRouteRouteChildren,
+);
+
+interface ClerkRouteRouteChildren {
+  ClerkauthRouteRoute: typeof ClerkauthRouteRouteWithChildren;
+  ClerkAuthenticatedRouteRoute: typeof ClerkAuthenticatedRouteRouteWithChildren;
+}
+
+const ClerkRouteRouteChildren: ClerkRouteRouteChildren = {
+  ClerkauthRouteRoute: ClerkauthRouteRouteWithChildren,
+  ClerkAuthenticatedRouteRoute: ClerkAuthenticatedRouteRouteWithChildren,
+};
+
+const ClerkRouteRouteWithChildren = ClerkRouteRoute._addFileChildren(ClerkRouteRouteChildren);
+
+const rootRouteChildren: RootRouteChildren = {
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  ClerkRouteRoute: ClerkRouteRouteWithChildren,
+  authForgotPasswordRoute: authForgotPasswordRoute,
+  authOtpRoute: authOtpRoute,
+  authSignInRoute: authSignInRoute,
+  authSignIn2Route: authSignIn2Route,
+  authSignUpRoute: authSignUpRoute,
+  errors401Route: errors401Route,
+  errors403Route: errors403Route,
+  errors404Route: errors404Route,
+  errors500Route: errors500Route,
+  errors503Route: errors503Route,
+};
+export const routeTree = rootRouteImport
+  ._addFileChildren(rootRouteChildren)
+  ._addFileTypes<FileRouteTypes>();
+
+import type { createStart } from "@tanstack/react-start";
+
+import type { getRouter } from "./router.tsx";
+declare module "@tanstack/react-start" {
+  interface Register {
+    ssr: true;
+    router: Awaited<ReturnType<typeof getRouter>>;
+  }
+}
+`],
+  ["addons/admin/apps/web/src/stores/auth-store.test.ts", `import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { clearCookies } from "@/test-utils/cookies";
+
+async function importAuthStore() {
+  const { useAuthStore } = await import("./auth-store");
+  return useAuthStore;
+}
+
+const sampleUser = {
+  accountNo: "ACC-1",
+  email: "user@example.com",
+  role: ["user"],
+  exp: 1_700_000_000,
+};
+
+describe("useAuthStore", () => {
+  beforeEach(() => {
+    clearCookies();
+    vi.resetModules();
+  });
+
+  it("starts with an empty access token when nothing is persisted", async () => {
+    const useAuthStore = await importAuthStore();
+
+    expect(useAuthStore.getState().auth.accessToken).toBe("");
+    expect(useAuthStore.getState().auth.user).toBeNull();
+  });
+
+  it("persists access token so a new store instance reads it back", async () => {
+    const useAuthStore = await importAuthStore();
+    useAuthStore.getState().auth.setAccessToken("session-token");
+
+    vi.resetModules();
+    const useAuthStoreAfterReload = await importAuthStore();
+
+    expect(useAuthStoreAfterReload.getState().auth.accessToken).toBe("session-token");
+  });
+
+  it("clears persisted access token when resetAccessToken is used", async () => {
+    const useAuthStore = await importAuthStore();
+    useAuthStore.getState().auth.setAccessToken("to-clear");
+    useAuthStore.getState().auth.resetAccessToken();
+
+    vi.resetModules();
+    const useAuthStoreAfterReload = await importAuthStore();
+
+    expect(useAuthStoreAfterReload.getState().auth.accessToken).toBe("");
+  });
+
+  it("updates the signed-in user via setUser", async () => {
+    const useAuthStore = await importAuthStore();
+
+    useAuthStore.getState().auth.setUser({ ...sampleUser });
+
+    expect(useAuthStore.getState().auth.user).toEqual(sampleUser);
+  });
+
+  it("reset clears user and access token and drops persistence", async () => {
+    const useAuthStore = await importAuthStore();
+    useAuthStore.getState().auth.setAccessToken("will-be-cleared");
+    useAuthStore.getState().auth.setUser({ ...sampleUser });
+
+    useAuthStore.getState().auth.reset();
+
+    expect(useAuthStore.getState().auth.user).toBeNull();
+    expect(useAuthStore.getState().auth.accessToken).toBe("");
+
+    vi.resetModules();
+    const useAuthStoreAfterReload = await importAuthStore();
+
+    expect(useAuthStoreAfterReload.getState().auth.user).toBeNull();
+    expect(useAuthStoreAfterReload.getState().auth.accessToken).toBe("");
+  });
+});
+`],
+  ["addons/admin/apps/web/src/stores/auth-store.ts", `import { create } from "zustand";
+
+import { getCookie, setCookie, removeCookie } from "@/lib/cookies";
+
+const ACCESS_TOKEN = "thisisjustarandomstring";
+
+interface AuthUser {
+  accountNo: string;
+  email: string;
+  role: string[];
+  exp: number;
+}
+
+interface AuthState {
+  auth: {
+    user: AuthUser | null;
+    setUser: (user: AuthUser | null) => void;
+    accessToken: string;
+    setAccessToken: (accessToken: string) => void;
+    resetAccessToken: () => void;
+    reset: () => void;
+  };
+}
+
+export const useAuthStore = create<AuthState>()((set) => {
+  const cookieState = getCookie(ACCESS_TOKEN);
+  const initToken = cookieState ? JSON.parse(cookieState) : "";
+  return {
+    auth: {
+      user: null,
+      setUser: (user) => set((state) => ({ ...state, auth: { ...state.auth, user } })),
+      accessToken: initToken,
+      setAccessToken: (accessToken) =>
+        set((state) => {
+          setCookie(ACCESS_TOKEN, JSON.stringify(accessToken));
+          return { ...state, auth: { ...state.auth, accessToken } };
+        }),
+      resetAccessToken: () =>
+        set((state) => {
+          removeCookie(ACCESS_TOKEN);
+          return { ...state, auth: { ...state.auth, accessToken: "" } };
+        }),
+      reset: () =>
+        set((state) => {
+          removeCookie(ACCESS_TOKEN);
+          return {
+            ...state,
+            auth: { ...state.auth, user: null, accessToken: "" },
+          };
+        }),
+    },
+  };
+});
+`],
+  ["addons/admin/apps/web/src/styles/index.css", `@import "tailwindcss";
+@import "tw-animate-css";
+@import "./theme.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  html {
+    @apply overflow-x-hidden;
+  }
+  body {
+    @apply min-h-svh w-full bg-background text-foreground has-[div[data-variant='inset']]:bg-sidebar;
+  }
+
+  /* Override Radix scroll locking for sticky headers */
+  body[data-scroll-locked] {
+    overflow: unset !important;
+  }
+
+  /* Cursor pointer for buttons */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* Prevent focus zoom on mobile devices */
+  @media screen and (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+}
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+}
+
+@utility no-scrollbar {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  /* Hide scrollbar for IE, Edge and Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+@utility faded-bottom {
+  @apply after:pointer-events-none after:absolute after:inset-s-0 after:bottom-0 after:hidden after:h-32 after:w-full after:rounded-b-2xl after:bg-[linear-gradient(180deg,transparent_10%,var(--background)_70%)] md:after:block;
+}
+
+/* styles.css */
+.CollapsibleContent {
+  overflow: hidden;
+}
+.CollapsibleContent[data-state="open"] {
+  animation: slideDown 300ms ease-out;
+}
+.CollapsibleContent[data-state="closed"] {
+  animation: slideUp 300ms ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+`],
+  ["addons/admin/apps/web/src/styles/theme.css", `:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.922 0 0);
+  --sidebar-primary-foreground: oklch(0.205 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@theme inline {
+  --font-inter: "Inter", "sans-serif";
+  --font-manrope: "Manrope", "sans-serif";
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+`],
+  ["addons/admin/apps/web/src/tanstack-table.d.ts", `import "@tanstack/react-table";
+
+declare module "@tanstack/react-table" {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData, TValue> {
+    className?: string; // apply to both th and td
+    tdClassName?: string;
+    thClassName?: string;
+  }
+}
+`],
+  ["addons/admin/apps/web/src/test-utils/cookies.ts", `import { removeCookie } from "@/lib/cookies";
+
+/**
+ * Remove cookies visible on \`document.cookie\` for test isolation.
+ *
+ * - No \`filter\`: remove every cookie.
+ * - \`string\`: remove only names that **start with** that string (prefix).
+ * - \`RegExp\`: remove only names where \`filter.test(name)\` is true.
+ */
+export function clearCookies(filter?: string | RegExp): void {
+  if (typeof document === "undefined") return;
+
+  for (const part of document.cookie.split(";")) {
+    const name = part.split("=")[0]?.trim();
+    if (!name) continue;
+
+    const shouldRemove =
+      filter === undefined
+        ? true
+        : typeof filter === "string"
+          ? name.startsWith(filter)
+          : filter.test(name);
+
+    if (shouldRemove) {
+      removeCookie(name);
+    }
+  }
+}
+`],
+  ["addons/admin/apps/web/src/test-utils/tanstack-table.ts", `import { type Table } from "@tanstack/react-table";
+import { vi } from "vitest";
+
+/**
+ * Minimal TanStack Table mock for tests that only need selected row count and
+ * \`resetRowSelection\` (e.g. multi-delete dialogs).
+ */
+export function createTableMock(rowCount = 2) {
+  const rows = Array.from({ length: rowCount }, () => ({}));
+  const resetRowSelection = vi.fn();
+  const table = {
+    getFilteredSelectedRowModel: () => ({ rows }),
+    resetRowSelection,
+  } as unknown as Table<Record<string, unknown>>;
+  return { table, resetRowSelection };
+}
+`],
+  ["addons/admin/apps/web/src/vite-env.d.ts", `/// <reference types="vite/client" />
+`],
+  ["addons/admin/apps/web/tsconfig.json.hbs", `{
+  "include": ["**/*.ts", "**/*.tsx"],
+  "compilerOptions": {
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+
+    /* Linting */
+    "skipLibCheck": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@{{projectName}}/ui/*": ["../../packages/ui/src/*"]
+    }
+  }
+}
+`],
+  ["addons/admin/apps/web/tsconfig.tsbuildinfo", `{"root":["./vite.config.ts","./src/routetree.gen.ts","./src/tanstack-table.d.ts","./src/vite-env.d.ts","./src/assets/brand-icons/index.ts","./src/components/data-table/index.ts","./src/components/layout/types.ts","./src/components/layout/data/sidebar-data.ts","./src/config/fonts.ts","./src/features/chats/data/chat-types.ts","./src/features/tasks/data/schema.ts","./src/features/tasks/data/tasks.ts","./src/features/users/data/data.ts","./src/features/users/data/schema.ts","./src/features/users/data/users.ts","./src/hooks/use-table-url-state.test.ts","./src/hooks/use-table-url-state.ts","./src/lib/auth-client.ts","./src/lib/cookies.test.ts","./src/lib/cookies.ts","./src/lib/handle-server-error.test.ts","./src/lib/handle-server-error.ts","./src/lib/trpc.ts","./src/lib/utils.test.ts","./src/lib/utils.ts","./src/stores/auth-store.test.ts","./src/stores/auth-store.ts","./src/test-utils/cookies.ts","./src/test-utils/tanstack-table.ts","./src/main.tsx","./src/assets/clerk-full-logo.tsx","./src/assets/clerk-logo.tsx","./src/assets/logo.tsx","./src/assets/brand-icons/icon-discord.tsx","./src/assets/brand-icons/icon-docker.tsx","./src/assets/brand-icons/icon-facebook.tsx","./src/assets/brand-icons/icon-figma.tsx","./src/assets/brand-icons/icon-github.tsx","./src/assets/brand-icons/icon-gitlab.tsx","./src/assets/brand-icons/icon-gmail.tsx","./src/assets/brand-icons/icon-medium.tsx","./src/assets/brand-icons/icon-notion.tsx","./src/assets/brand-icons/icon-skype.tsx","./src/assets/brand-icons/icon-slack.tsx","./src/assets/brand-icons/icon-stripe.tsx","./src/assets/brand-icons/icon-telegram.tsx","./src/assets/brand-icons/icon-trello.tsx","./src/assets/brand-icons/icon-whatsapp.tsx","./src/assets/brand-icons/icon-zoom.tsx","./src/assets/custom/icon-dir.tsx","./src/assets/custom/icon-layout-compact.tsx","./src/assets/custom/icon-layout-default.tsx","./src/assets/custom/icon-layout-full.tsx","./src/assets/custom/icon-sidebar-floating.tsx","./src/assets/custom/icon-sidebar-inset.tsx","./src/assets/custom/icon-sidebar-sidebar.tsx","./src/assets/custom/icon-theme-dark.tsx","./src/assets/custom/icon-theme-light.tsx","./src/assets/custom/icon-theme-system.tsx","./src/components/business-data-table.tsx","./src/components/coming-soon.tsx","./src/components/command-menu.tsx","./src/components/config-drawer.test.tsx","./src/components/config-drawer.tsx","./src/components/confirm-dialog.test.tsx","./src/components/confirm-dialog.tsx","./src/components/date-picker.tsx","./src/components/learn-more.tsx","./src/components/long-text.tsx","./src/components/navigation-progress.tsx","./src/components/password-input.test.tsx","./src/components/password-input.tsx","./src/components/profile-dropdown.tsx","./src/components/search.tsx","./src/components/select-dropdown.tsx","./src/components/sign-out-dialog.test.tsx","./src/components/sign-out-dialog.tsx","./src/components/skip-to-main.tsx","./src/components/theme-switch.tsx","./src/components/data-table/bulk-actions.tsx","./src/components/data-table/column-header.tsx","./src/components/data-table/faceted-filter.tsx","./src/components/data-table/pagination.tsx","./src/components/data-table/toolbar.tsx","./src/components/data-table/view-options.tsx","./src/components/layout/app-sidebar.tsx","./src/components/layout/app-title.tsx","./src/components/layout/authenticated-layout.tsx","./src/components/layout/header.tsx","./src/components/layout/main.tsx","./src/components/layout/nav-group.tsx","./src/components/layout/nav-user.tsx","./src/components/layout/team-switcher.tsx","./src/components/layout/top-nav.tsx","./src/components/ui/alert-dialog.tsx","./src/components/ui/alert.tsx","./src/components/ui/avatar.tsx","./src/components/ui/badge.tsx","./src/components/ui/button.tsx","./src/components/ui/calendar.tsx","./src/components/ui/card.tsx","./src/components/ui/checkbox.tsx","./src/components/ui/collapsible.tsx","./src/components/ui/command.tsx","./src/components/ui/dialog.tsx","./src/components/ui/dropdown-menu.tsx","./src/components/ui/form.tsx","./src/components/ui/input-otp.tsx","./src/components/ui/input.tsx","./src/components/ui/label.tsx","./src/components/ui/popover.tsx","./src/components/ui/radio-group.tsx","./src/components/ui/scroll-area.tsx","./src/components/ui/select.tsx","./src/components/ui/separator.tsx","./src/components/ui/sheet.tsx","./src/components/ui/sidebar.tsx","./src/components/ui/skeleton.tsx","./src/components/ui/sonner.tsx","./src/components/ui/switch.tsx","./src/components/ui/table.tsx","./src/components/ui/tabs.tsx","./src/components/ui/textarea.tsx","./src/components/ui/tooltip.tsx","./src/context/direction-provider.tsx","./src/context/font-provider.tsx","./src/context/layout-provider.tsx","./src/context/search-provider.test.tsx","./src/context/search-provider.tsx","./src/context/theme-provider.tsx","./src/features/apps/index.tsx","./src/features/apps/data/apps.tsx","./src/features/auth/auth-layout.tsx","./src/features/auth/forgot-password/index.tsx","./src/features/auth/forgot-password/components/forgot-password-form.test.tsx","./src/features/auth/forgot-password/components/forgot-password-form.tsx","./src/features/auth/otp/index.tsx","./src/features/auth/otp/components/otp-form.test.tsx","./src/features/auth/otp/components/otp-form.tsx","./src/features/auth/sign-in/index.tsx","./src/features/auth/sign-in/sign-in-2.tsx","./src/features/auth/sign-in/components/user-auth-form.test.tsx","./src/features/auth/sign-in/components/user-auth-form.tsx","./src/features/auth/sign-up/index.tsx","./src/features/auth/sign-up/components/sign-up-form.test.tsx","./src/features/auth/sign-up/components/sign-up-form.tsx","./src/features/chats/index.tsx","./src/features/chats/components/new-chat.tsx","./src/features/dashboard/index.tsx","./src/features/dashboard/components/analytics-chart.tsx","./src/features/dashboard/components/analytics.tsx","./src/features/dashboard/components/overview.tsx","./src/features/dashboard/components/recent-sales.tsx","./src/features/errors/forbidden.tsx","./src/features/errors/general-error.tsx","./src/features/errors/maintenance-error.tsx","./src/features/errors/not-found-error.tsx","./src/features/errors/unauthorized-error.tsx","./src/features/settings/index.tsx","./src/features/settings/account/account-form.tsx","./src/features/settings/account/index.tsx","./src/features/settings/appearance/appearance-form.tsx","./src/features/settings/appearance/index.tsx","./src/features/settings/components/content-section.tsx","./src/features/settings/components/sidebar-nav.tsx","./src/features/settings/display/display-form.tsx","./src/features/settings/display/index.tsx","./src/features/settings/notifications/index.tsx","./src/features/settings/notifications/notifications-form.tsx","./src/features/settings/profile/index.tsx","./src/features/settings/profile/profile-form.tsx","./src/features/tasks/index.tsx","./src/features/tasks/components/data-table-bulk-actions.tsx","./src/features/tasks/components/data-table-row-actions.tsx","./src/features/tasks/components/tasks-columns.tsx","./src/features/tasks/components/tasks-dialogs.tsx","./src/features/tasks/components/tasks-import-dialog.test.tsx","./src/features/tasks/components/tasks-import-dialog.tsx","./src/features/tasks/components/tasks-multi-delete-dialog.test.tsx","./src/features/tasks/components/tasks-multi-delete-dialog.tsx","./src/features/tasks/components/tasks-mutate-drawer.test.tsx","./src/features/tasks/components/tasks-mutate-drawer.tsx","./src/features/tasks/components/tasks-primary-buttons.tsx","./src/features/tasks/components/tasks-provider.tsx","./src/features/tasks/components/tasks-table.tsx","./src/features/tasks/data/data.tsx","./src/features/users/index.tsx","./src/features/users/components/data-table-bulk-actions.tsx","./src/features/users/components/data-table-row-actions.tsx","./src/features/users/components/users-action-dialog.test.tsx","./src/features/users/components/users-action-dialog.tsx","./src/features/users/components/users-columns.tsx","./src/features/users/components/users-delete-dialog.test.tsx","./src/features/users/components/users-delete-dialog.tsx","./src/features/users/components/users-dialogs.tsx","./src/features/users/components/users-invite-dialog.test.tsx","./src/features/users/components/users-invite-dialog.tsx","./src/features/users/components/users-multi-delete-dialog.test.tsx","./src/features/users/components/users-multi-delete-dialog.tsx","./src/features/users/components/users-primary-buttons.tsx","./src/features/users/components/users-provider.tsx","./src/features/users/components/users-table.tsx","./src/hooks/use-dialog-state.tsx","./src/hooks/use-mobile.tsx","./src/lib/show-submitted-data.tsx","./src/routes/__root.tsx","./src/routes/(auth)/forgot-password.tsx","./src/routes/(auth)/otp.tsx","./src/routes/(auth)/sign-in-2.tsx","./src/routes/(auth)/sign-in.tsx","./src/routes/(auth)/sign-up.tsx","./src/routes/(errors)/401.tsx","./src/routes/(errors)/403.tsx","./src/routes/(errors)/404.tsx","./src/routes/(errors)/500.tsx","./src/routes/(errors)/503.tsx","./src/routes/_authenticated/index.tsx","./src/routes/_authenticated/route.tsx","./src/routes/_authenticated/apps/index.tsx","./src/routes/_authenticated/chats/index.tsx","./src/routes/_authenticated/errors/$error.tsx","./src/routes/_authenticated/help-center/index.tsx","./src/routes/_authenticated/settings/account.tsx","./src/routes/_authenticated/settings/appearance.tsx","./src/routes/_authenticated/settings/display.tsx","./src/routes/_authenticated/settings/index.tsx","./src/routes/_authenticated/settings/notifications.tsx","./src/routes/_authenticated/settings/route.tsx","./src/routes/_authenticated/tasks/index.tsx","./src/routes/_authenticated/users/index.tsx","./src/routes/clerk/route.tsx","./src/routes/clerk/(auth)/route.tsx","./src/routes/clerk/(auth)/sign-in.tsx","./src/routes/clerk/(auth)/sign-up.tsx","./src/routes/clerk/_authenticated/route.tsx","./src/routes/clerk/_authenticated/user-management.tsx"],"version":"6.0.3"}`],
+  ["addons/admin/apps/web/vite.config.ts", `import path from "node:path";
+
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "./src"),
+    },
+  },
+  server: {
+    port: 3001,
+  },
+});
+`],
+  ["addons/admin/docker-compose.yml.hbs", `name: {{projectName}}
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    init: true
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: apps/server/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://postgres:\${POSTGRES_PASSWORD:-password}@postgres:5432/{{projectName}}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:3000/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18
+    container_name: {{projectName}}-postgres
+    environment:
+      POSTGRES_DB: {{projectName}}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - {{projectName}}_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  {{projectName}}_postgres_data:
+`],
+  ["addons/admin/package.json.hbs", `{
+  "name": "{{projectName}}",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "check-types": "turbo run check-types",
+    "dev:web": "turbo run dev -F web --",
+    "dev:server": "turbo run dev -F server --",
+    "db:push": "turbo run db:push -F @{{projectName}}/db --",
+    "db:studio": "turbo run db:studio -F @{{projectName}}/db --",
+    "db:generate": "turbo run db:generate -F @{{projectName}}/db --",
+    "db:migrate": "turbo run db:migrate -F @{{projectName}}/db --",
+    "db:start": "docker compose up -d postgres",
+    "db:watch": "docker compose up postgres",
+    "db:stop": "docker compose stop postgres",
+    "db:down": "docker compose down postgres",
+    "deploy": "turbo run deploy -F @{{projectName}}/infra --",
+    "destroy": "turbo run destroy -F @{{projectName}}/infra --",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "check": "ultracite check",
+    "fix": "ultracite fix",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@{{projectName}}/env": "workspace:*",
+    "dotenv": "^17.4.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.3",
+    "@cloudflare/workers-types": "^5.20260728.1",
+    "@{{projectName}}/config": "workspace:*",
+    "@types/bun": "^1.3.14",
+    "husky": "latest",
+    "turbo": "^2.10.7",
+    "typescript": "^6.0.3",
+    "ultracite": "7.9.4"
+  },
+  "packageManager": "pnpm@11.18.0"
+}
+`],
+  ["addons/admin/packages/api/.gitignore", `# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+`],
+  ["addons/admin/packages/api/package.json.hbs", `{
+  "name": "@{{projectName}}/api",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@{{projectName}}/auth": "workspace:*",
+    "@{{projectName}}/db": "workspace:*",
+    "@{{projectName}}/env": "workspace:*",
+    "@trpc/client": "^11.18.0",
+    "@trpc/server": "^11.18.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@{{projectName}}/config": "workspace:*",
+    "hono": "^4.12.32",
+    "typescript": "^6.0.3"
+  }
+}
+`],
+  ["addons/admin/packages/api/src/context.ts.hbs", `import { auth } from "@{{projectName}}/auth";
+import type { Context as HonoContext } from "hono";
+
+export interface CreateContextOptions {
+  context: HonoContext;
+}
+
+export async function createContext({ context }: CreateContextOptions) {
+  const session = await auth.api.getSession({
+    headers: context.req.raw.headers,
+  });
+  return {
+    request: {
+      ipAddress:
+        context.req.header("cf-connecting-ip") ??
+        context.req.header("x-forwarded-for"),
+      userAgent: context.req.header("user-agent"),
+    },
+    session,
+  };
+}
+
+export type Context = Awaited<ReturnType<typeof createContext>>;
+`],
+  ["addons/admin/packages/api/src/index.ts", `import { initTRPC, TRPCError } from "@trpc/server";
+
+import type { Context } from "./context";
+import type { PermissionKey } from "./permissions";
+import { hasPermission } from "./rbac";
+
+const t = initTRPC.context<Context>().create();
+
+export const { procedure: publicProcedure, router } = t;
+
+export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.session) {
+    throw new TRPCError({
+      cause: "No session",
+      code: "UNAUTHORIZED",
+      message: "Authentication required",
+    });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      session: ctx.session,
+    },
+  });
+});
+
+export const permissionProcedure = (permission: PermissionKey) =>
+  protectedProcedure.use(async ({ ctx, next }) => {
+    const allowed = await hasPermission(ctx.session.user.id, permission);
+    if (!allowed) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Permission denied" });
+    }
+    return next({ ctx });
+  });
+`],
+  ["addons/admin/packages/api/src/permissions.ts", `export const PERMISSIONS = [
+  {
+    action: "read",
+    description: "View the dashboard",
+    key: "dashboard:read",
+    resource: "Dashboard",
+  },
+  {
+    action: "read",
+    description: "View users",
+    key: "user:read",
+    resource: "Users",
+  },
+  {
+    action: "update",
+    description: "Update users and account status",
+    key: "user:update",
+    resource: "Users",
+  },
+  {
+    action: "assign-role",
+    description: "Assign roles to users",
+    key: "user:assign-role",
+    resource: "Users",
+  },
+  {
+    action: "revoke-session",
+    description: "Revoke user sessions",
+    key: "user:revoke-session",
+    resource: "Users",
+  },
+  {
+    action: "read",
+    description: "View roles and permissions",
+    key: "role:read",
+    resource: "Roles",
+  },
+  {
+    action: "create",
+    description: "Create roles",
+    key: "role:create",
+    resource: "Roles",
+  },
+  {
+    action: "update",
+    description: "Update roles and permissions",
+    key: "role:update",
+    resource: "Roles",
+  },
+  {
+    action: "delete",
+    description: "Delete roles",
+    key: "role:delete",
+    resource: "Roles",
+  },
+  {
+    action: "read",
+    description: "View audit logs",
+    key: "audit:read",
+    resource: "Audit",
+  },
+] as const;
+
+export type PermissionKey = (typeof PERMISSIONS)[number]["key"];
+
+export const ALL_PERMISSION_KEYS = PERMISSIONS.map(({ key }) => key);
+`],
+  ["addons/admin/packages/api/src/rbac.ts.hbs", `import { db } from "@{{projectName}}/db";
+import {
+  auditLog,
+  permission,
+  role,
+  rolePermission,
+  userRole,
+} from "@{{projectName}}/db/schema/rbac";
+import { and, eq, inArray } from "drizzle-orm";
+
+import {
+  ALL_PERMISSION_KEYS,
+  PERMISSIONS,
+  type PermissionKey,
+} from "./permissions";
+
+export const SUPER_ADMIN_SLUG = "super-admin";
+
+const DEFAULT_ROLES: ReadonlyArray<{
+  description: string;
+  name: string;
+  permissionKeys: readonly PermissionKey[];
+  slug: string;
+}> = [
+  {
+    description:
+      "Full administrative access without super-administrator status.",
+    name: "Administrator",
+    permissionKeys: ALL_PERMISSION_KEYS,
+    slug: "administrator",
+  },
+  {
+    description: "Manage users, their roles, account status, and sessions.",
+    name: "User Manager",
+    permissionKeys: [
+      "dashboard:read",
+      "user:read",
+      "user:update",
+      "user:assign-role",
+      "user:revoke-session",
+      "role:read",
+    ],
+    slug: "user-manager",
+  },
+  {
+    description: "Read-only access to users, roles, and audit history.",
+    name: "Auditor",
+    permissionKeys: ["dashboard:read", "user:read", "role:read", "audit:read"],
+    slug: "auditor",
+  },
+  {
+    description: "Read-only access to the dashboard.",
+    name: "Viewer",
+    permissionKeys: ["dashboard:read"],
+    slug: "viewer",
+  },
+];
+
+export async function ensureRbacSeed(userId?: string) {
+  await db
+    .insert(permission)
+    .values(
+      PERMISSIONS.map((item) => ({
+        id: item.key,
+        ...item,
+      }))
+    )
+    .onConflictDoNothing();
+
+  await db
+    .insert(role)
+    .values({
+      description: "Full system access. This protected role cannot be deleted.",
+      id: SUPER_ADMIN_SLUG,
+      isSystem: true,
+      name: "Super Administrator",
+      slug: SUPER_ADMIN_SLUG,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(role)
+    .values(
+      DEFAULT_ROLES.map(({ description, name, slug }) => ({
+        description,
+        id: slug,
+        isSystem: true,
+        name,
+        slug,
+      }))
+    )
+    .onConflictDoNothing();
+
+  await db
+    .insert(rolePermission)
+    .values(
+      ALL_PERMISSION_KEYS.map((permissionId) => ({
+        permissionId,
+        roleId: SUPER_ADMIN_SLUG,
+      }))
+    )
+    .onConflictDoNothing();
+
+  await db
+    .insert(rolePermission)
+    .values(
+      DEFAULT_ROLES.flatMap(({ permissionKeys, slug }) =>
+        permissionKeys.map((permissionId) => ({
+          permissionId,
+          roleId: slug,
+        }))
+      )
+    )
+    .onConflictDoNothing();
+
+  if (userId) {
+    const existingSuperAdmins = await db
+      .select({ userId: userRole.userId })
+      .from(userRole)
+      .where(eq(userRole.roleId, SUPER_ADMIN_SLUG))
+      .limit(1);
+    if (existingSuperAdmins.length === 0) {
+      await db
+        .insert(userRole)
+        .values({ roleId: SUPER_ADMIN_SLUG, userId })
+        .onConflictDoNothing();
+    }
+  }
+}
+
+export async function getUserAccess(userId: string) {
+  await ensureRbacSeed(userId);
+
+  const rows = await db
+    .select({
+      permissionKey: permission.key,
+      roleId: role.id,
+      roleName: role.name,
+      roleSlug: role.slug,
+    })
+    .from(userRole)
+    .innerJoin(role, eq(userRole.roleId, role.id))
+    .leftJoin(rolePermission, eq(rolePermission.roleId, role.id))
+    .leftJoin(permission, eq(rolePermission.permissionId, permission.id))
+    .where(eq(userRole.userId, userId));
+
+  const roleMap = new Map<string, { id: string; name: string; slug: string }>();
+  const permissionSet = new Set<PermissionKey>();
+
+  for (const row of rows) {
+    roleMap.set(row.roleId, {
+      id: row.roleId,
+      name: row.roleName,
+      slug: row.roleSlug,
+    });
+    if (
+      row.permissionKey &&
+      ALL_PERMISSION_KEYS.includes(row.permissionKey as PermissionKey)
+    ) {
+      permissionSet.add(row.permissionKey as PermissionKey);
+    }
+  }
+
+  return {
+    isSuperAdmin: [...roleMap.values()].some(
+      ({ slug }) => slug === SUPER_ADMIN_SLUG
+    ),
+    permissions: [...permissionSet],
+    roles: [...roleMap.values()],
+  };
+}
+
+export async function hasPermission(userId: string, required: PermissionKey) {
+  const access = await getUserAccess(userId);
+  return access.isSuperAdmin || access.permissions.includes(required);
+}
+
+export async function replaceRolePermissions(
+  roleId: string,
+  permissionKeys: PermissionKey[]
+) {
+  await db.transaction(async (tx) => {
+    await tx.delete(rolePermission).where(eq(rolePermission.roleId, roleId));
+    if (permissionKeys.length > 0) {
+      await tx
+        .insert(rolePermission)
+        .values(
+          permissionKeys.map((permissionId) => ({ permissionId, roleId }))
+        );
+    }
+  });
+}
+
+export async function replaceUserRoles(userId: string, roleIds: string[]) {
+  await db.transaction(async (tx) => {
+    await tx.delete(userRole).where(eq(userRole.userId, userId));
+    if (roleIds.length > 0) {
+      await tx
+        .insert(userRole)
+        .values(roleIds.map((roleId) => ({ roleId, userId })));
+    }
+  });
+}
+
+export async function countSuperAdmins() {
+  const rows = await db
+    .select({ userId: userRole.userId })
+    .from(userRole)
+    .innerJoin(
+      role,
+      and(eq(userRole.roleId, role.id), eq(role.slug, SUPER_ADMIN_SLUG))
+    );
+  return new Set(rows.map(({ userId }) => userId)).size;
+}
+
+export async function isSuperAdmin(userId: string) {
+  const rows = await db
+    .select({ id: userRole.userId })
+    .from(userRole)
+    .innerJoin(
+      role,
+      and(eq(userRole.roleId, role.id), eq(role.slug, SUPER_ADMIN_SLUG))
+    )
+    .where(eq(userRole.userId, userId))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function writeAudit(input: {
+  actorId: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
+}) {
+  await db.insert(auditLog).values({ id: crypto.randomUUID(), ...input });
+}
+
+export function assertPermissionKeys(keys: string[]): PermissionKey[] {
+  const allowed = new Set<string>(ALL_PERMISSION_KEYS);
+  if (keys.some((key) => !allowed.has(key))) {
+    throw new Error("Unknown permission key");
+  }
+  return keys as PermissionKey[];
+}
+
+export async function existingRoleIds(ids: string[]) {
+  if (ids.length === 0) {
+    return [];
+  }
+  const rows = await db
+    .select({ id: role.id })
+    .from(role)
+    .where(inArray(role.id, ids));
+  return rows.map(({ id }) => id);
+}
+`],
+  ["addons/admin/packages/api/src/routers/admin.ts.hbs", `import { db } from "@{{projectName}}/db";
+import { user } from "@{{projectName}}/db/schema/auth";
+import {
+  auditLog,
+  permission,
+  role,
+  rolePermission,
+  userRole,
+} from "@{{projectName}}/db/schema/rbac";
+import { TRPCError } from "@trpc/server";
+import { asc, count, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { z } from "zod";
+
+import { permissionProcedure, protectedProcedure, router } from "../index";
+import { ALL_PERMISSION_KEYS } from "../permissions";
+import {
+  assertPermissionKeys,
+  countSuperAdmins,
+  ensureRbacSeed,
+  existingRoleIds,
+  getUserAccess,
+  isSuperAdmin,
+  replaceRolePermissions,
+  replaceUserRoles,
+  SUPER_ADMIN_SLUG,
+  writeAudit,
+} from "../rbac";
+
+const auditContext = (ctx: {
+  session: { user: { id: string } };
+  request: { ipAddress?: string; userAgent?: string };
+}) => ({
+  actorId: ctx.session.user.id,
+  ipAddress: ctx.request.ipAddress,
+  userAgent: ctx.request.userAgent,
+});
+
+export const adminRouter = router({
+  access: protectedProcedure.query(async ({ ctx }) => {
+    const access = await getUserAccess(ctx.session.user.id);
+    const allowed =
+      access.isSuperAdmin ||
+      access.permissions.some(
+        (key) =>
+          key.startsWith("user:") ||
+          key.startsWith("role:") ||
+          key.startsWith("audit:")
+      );
+    return { ...access, allowed };
+  }),
+
+  auditLogs: permissionProcedure("audit:read").query(async () =>
+    db
+      .select({
+        action: auditLog.action,
+        actorEmail: user.email,
+        actorName: user.name,
+        createdAt: auditLog.createdAt,
+        id: auditLog.id,
+        ipAddress: auditLog.ipAddress,
+        metadata: auditLog.metadata,
+        targetId: auditLog.targetId,
+        targetType: auditLog.targetType,
+        userAgent: auditLog.userAgent,
+      })
+      .from(auditLog)
+      .leftJoin(user, eq(auditLog.actorId, user.id))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(200)
+  ),
+
+  createRole: permissionProcedure("role:create")
+    .input(
+      z.object({
+        description: z.string().trim().max(240),
+        name: z.string().trim().min(2).max(60),
+        permissionKeys: z.array(z.string()),
+        slug: z
+          .string()
+          .trim()
+          .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+          .max(60),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const permissionKeys = assertPermissionKeys(input.permissionKeys);
+      const id = crypto.randomUUID();
+      try {
+        await db.transaction(async (tx) => {
+          await tx.insert(role).values({
+            description: input.description,
+            id,
+            name: input.name,
+            slug: input.slug,
+          });
+          if (permissionKeys.length > 0) {
+            await tx.insert(rolePermission).values(
+              permissionKeys.map((permissionId) => ({
+                permissionId,
+                roleId: id,
+              }))
+            );
+          }
+          await tx.insert(auditLog).values({
+            ...auditContext(ctx),
+            action: "role.created",
+            id: crypto.randomUUID(),
+            metadata: { name: input.name, permissionKeys },
+            targetId: id,
+            targetType: "role",
+          });
+        });
+      } catch (error) {
+        throw new TRPCError({
+          cause: error,
+          code: "CONFLICT",
+          message: "Role slug already exists",
+        });
+      }
+      return { id };
+    }),
+
+  deleteRole: permissionProcedure("role:delete")
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await db
+        .select()
+        .from(role)
+        .where(eq(role.id, input.id))
+        .limit(1);
+      if (!existing[0]) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
+      }
+      if (existing[0].isSystem) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "System roles cannot be deleted",
+        });
+      }
+      await db.delete(role).where(eq(role.id, input.id));
+      await writeAudit({
+        ...auditContext(ctx),
+        action: "role.deleted",
+        metadata: { name: existing[0].name },
+        targetId: input.id,
+        targetType: "role",
+      });
+      return { success: true };
+    }),
+
+  permissions: permissionProcedure("role:read").query(async () => {
+    await ensureRbacSeed();
+    return db
+      .select()
+      .from(permission)
+      .orderBy(asc(permission.resource), asc(permission.action));
+  }),
+
+  revokeUserSessions: permissionProcedure("user:revoke-session")
+    .input(z.object({ userId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      await db.execute(
+        sql\`delete from "session" where "user_id" = \${input.userId}\`
+      );
+      await writeAudit({
+        ...auditContext(ctx),
+        action: "user.sessions.revoked",
+        targetId: input.userId,
+        targetType: "user",
+      });
+      return { success: true };
+    }),
+
+  roles: permissionProcedure("role:read").query(async () => {
+    await ensureRbacSeed();
+    const roles = await db
+      .select({
+        createdAt: role.createdAt,
+        description: role.description,
+        id: role.id,
+        isSystem: role.isSystem,
+        name: role.name,
+        slug: role.slug,
+        userCount: count(userRole.userId),
+      })
+      .from(role)
+      .leftJoin(userRole, eq(userRole.roleId, role.id))
+      .groupBy(role.id)
+      .orderBy(asc(role.name));
+    const grants = await db.select().from(rolePermission);
+    return roles.map((item) => ({
+      ...item,
+      permissionKeys: grants
+        .filter(({ roleId }) => roleId === item.id)
+        .map(({ permissionId }) => permissionId),
+    }));
+  }),
+
+  setUserBanned: permissionProcedure("user:update")
+    .input(z.object({ banned: z.boolean(), userId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.userId === ctx.session.user.id && input.banned) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "You cannot ban yourself",
+        });
+      }
+      await db
+        .update(user)
+        .set({
+          banExpires: null,
+          banned: input.banned,
+          banReason: input.banned ? "Disabled by administrator" : null,
+        })
+        .where(eq(user.id, input.userId));
+      await writeAudit({
+        ...auditContext(ctx),
+        action: input.banned ? "user.banned" : "user.unbanned",
+        targetId: input.userId,
+        targetType: "user",
+      });
+      return { success: true };
+    }),
+
+  setUserRoles: permissionProcedure("user:assign-role")
+    .input(
+      z.object({
+        roleIds: z.array(z.string()).max(20),
+        userId: z.string().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const validRoleIds = await existingRoleIds(input.roleIds);
+      if (validRoleIds.length !== input.roleIds.length) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown role" });
+      }
+      const targetIsSuperAdmin = await isSuperAdmin(input.userId);
+      const keepsSuperAdmin = validRoleIds.includes(SUPER_ADMIN_SLUG);
+      if (
+        targetIsSuperAdmin &&
+        !keepsSuperAdmin &&
+        (await countSuperAdmins()) <= 1
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "The final super administrator cannot be removed",
+        });
+      }
+      await replaceUserRoles(input.userId, validRoleIds);
+      await writeAudit({
+        ...auditContext(ctx),
+        action: "user.roles.updated",
+        metadata: { roleIds: validRoleIds },
+        targetId: input.userId,
+        targetType: "user",
+      });
+      return { success: true };
+    }),
+
+  updateRole: permissionProcedure("role:update")
+    .input(
+      z.object({
+        description: z.string().trim().max(240),
+        id: z.string().min(1),
+        name: z.string().trim().min(2).max(60),
+        permissionKeys: z.array(z.string()),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [current] = await db
+        .select()
+        .from(role)
+        .where(eq(role.id, input.id))
+        .limit(1);
+      if (!current) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
+      }
+      const permissionKeys = current.isSystem
+        ? [...ALL_PERMISSION_KEYS]
+        : assertPermissionKeys(input.permissionKeys);
+      await db
+        .update(role)
+        .set({ description: input.description, name: input.name })
+        .where(eq(role.id, input.id));
+      await replaceRolePermissions(input.id, permissionKeys);
+      await writeAudit({
+        ...auditContext(ctx),
+        action: "role.updated",
+        metadata: { name: input.name, permissionKeys },
+        targetId: input.id,
+        targetType: "role",
+      });
+      return { success: true };
+    }),
+
+  users: permissionProcedure("user:read")
+    .input(z.object({ search: z.string().trim().max(100).default("") }))
+    .query(async ({ input }) => {
+      await ensureRbacSeed();
+      const condition = input.search
+        ? or(
+            ilike(user.name, \`%\${input.search}%\`),
+            ilike(user.email, \`%\${input.search}%\`)
+          )
+        : undefined;
+      const users = await db
+        .select()
+        .from(user)
+        .where(condition)
+        .orderBy(desc(user.createdAt))
+        .limit(100);
+      const assignments = await db
+        .select({
+          roleId: role.id,
+          roleName: role.name,
+          roleSlug: role.slug,
+          userId: userRole.userId,
+        })
+        .from(userRole)
+        .innerJoin(role, eq(userRole.roleId, role.id));
+      return users.map((item) => ({
+        ...item,
+        roles: assignments.filter(({ userId }) => userId === item.id),
+      }));
+    }),
+});
+`],
+  ["addons/admin/packages/api/src/routers/index.ts", `import { protectedProcedure, publicProcedure, router } from "../index";
+import { adminRouter } from "./admin";
+export const appRouter = router({
+  admin: adminRouter,
+  healthCheck: publicProcedure.query(() => "OK"),
+  privateData: protectedProcedure.query(({ ctx }) => ({
+    message: "This is private",
+    user: ctx.session.user,
+  })),
+});
+export type AppRouter = typeof appRouter;
+`],
+  ["addons/admin/packages/api/tsconfig.json.hbs", `{
+  "extends": "@{{projectName}}/config/tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "composite": true,
+    "strictNullChecks": true
+  }
+}
+`],
+  ["addons/admin/packages/auth/.gitignore", `# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+`],
+  ["addons/admin/packages/auth/package.json.hbs", `{
+  "name": "@{{projectName}}/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@{{projectName}}/db": "workspace:*",
+    "@{{projectName}}/env": "workspace:*",
+    "better-auth": "1.6.27",
+    "dotenv": "^17.4.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@{{projectName}}/config": "workspace:*",
+    "typescript": "^6.0.3"
+  }
+}
+`],
+  ["addons/admin/packages/auth/src/index.ts.hbs", `import { createDb } from "@{{projectName}}/db";
+import {
+  account,
+  session,
+  user,
+  verification,
+} from "@{{projectName}}/db/schema/auth";
+import { env } from "@{{projectName}}/env/server";
+import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { admin } from "better-auth/plugins";
+
+export function createAuth() {
+  const db = createDb();
+
+  const isProduction = env.NODE_ENV === "production";
+
+  return betterAuth({
+    advanced: {
+      defaultCookieAttributes: {
+        httpOnly: true,
+        sameSite: isProduction ? "none" : "lax",
+        secure: isProduction,
+      },
+    },
+    baseURL: env.BETTER_AUTH_URL,
+    database: drizzleAdapter(db, {
+      provider: "pg",
+
+      schema: { account, session, user, verification },
+    }),
+    emailAndPassword: {
+      enabled: true,
+    },
+    plugins: [admin()],
+    secret: env.BETTER_AUTH_SECRET,
+    trustedOrigins: [env.CORS_ORIGIN],
+  });
+}
+
+export const auth = createAuth();
+`],
+  ["addons/admin/packages/auth/tsconfig.json.hbs", `{
+  "extends": "@{{projectName}}/config/tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "composite": true,
+    "strictNullChecks": true
+  }
+}
+`],
+  ["addons/admin/packages/config/package.json.hbs", `{
+  "name": "@{{projectName}}/config",
+  "version": "0.0.0",
+  "private": true
+}
+`],
+  ["addons/admin/packages/config/tsconfig.base.json", `{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["bun", "@cloudflare/workers-types"]
+  }
+}
+`],
+  ["addons/admin/packages/db/.gitignore", `# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+/prisma/generated
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+`],
+  ["addons/admin/packages/db/drizzle.config.ts", `import dotenv from "dotenv";
+import { defineConfig } from "drizzle-kit";
+
+dotenv.config({
+  path: "../../apps/server/.env",
+});
+
+export default defineConfig({
+  schema: "./src/schema",
+  out: "./src/migrations",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL || "",
+  },
+});
+`],
+  ["addons/admin/packages/db/package.json.hbs", `{
+  "name": "@{{projectName}}/db",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:deploy": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@{{projectName}}/env": "workspace:*",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.22.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@{{projectName}}/config": "workspace:*",
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^6.0.3"
+  }
+}
+`],
+  ["addons/admin/packages/db/src/index.ts.hbs", `import { env } from "@{{projectName}}/env/server";
+import { drizzle } from "drizzle-orm/node-postgres";
+
+import {
+  account,
+  accountRelations,
+  session,
+  sessionRelations,
+  user,
+  userRelations,
+  verification,
+} from "./schema/auth";
+import {
+  auditLog,
+  permission,
+  permissionRelations,
+  role,
+  rolePermission,
+  rolePermissionRelations,
+  roleRelations,
+  userRole,
+  userRoleRelations,
+} from "./schema/rbac";
+
+export function createDb() {
+  return drizzle(env.DATABASE_URL, {
+    schema: {
+      account,
+      accountRelations,
+      auditLog,
+      permission,
+      permissionRelations,
+      role,
+      rolePermission,
+      rolePermissionRelations,
+      roleRelations,
+      session,
+      sessionRelations,
+      user,
+      userRelations,
+      userRole,
+      userRoleRelations,
+      verification,
+    },
+  });
+}
+
+export const db = createDb();
+`],
+  ["addons/admin/packages/db/src/migrations/.gitkeep", `
+`],
+  ["addons/admin/packages/db/src/schema/auth.ts", `import { relations } from "drizzle-orm";
+import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+export const user = pgTable("user", {
+  banExpires: timestamp("ban_expires"),
+  banned: boolean("banned").default(false).notNull(),
+  banReason: text("ban_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").default(false).notNull(),
+  id: text("id").primaryKey(),
+  image: text("image"),
+  name: text("name").notNull(),
+  role: text("role").default("user").notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+});
+
+export const session = pgTable(
+  "session",
+  {
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    id: text("id").primaryKey(),
+    impersonatedBy: text("impersonated_by"),
+    ipAddress: text("ip_address"),
+    token: text("token").notNull().unique(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("session_userId_idx").on(table.userId)],
+);
+
+export const account = pgTable(
+  "account",
+  {
+    accessToken: text("access_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    accountId: text("account_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    id: text("id").primaryKey(),
+    idToken: text("id_token"),
+    password: text("password"),
+    providerId: text("provider_id").notNull(),
+    refreshToken: text("refresh_token"),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+    scope: text("scope"),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("account_userId_idx").on(table.userId)],
+);
+
+export const verification = pgTable(
+  "verification",
+  {
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    value: text("value").notNull(),
+  },
+  (table) => [index("verification_identifier_idx").on(table.identifier)],
+);
+
+export const userRelations = relations(user, ({ many }) => ({
+  accounts: many(account),
+  sessions: many(session),
+}));
+
+export const sessionRelations = relations(session, ({ one }) => ({
+  user: one(user, {
+    fields: [session.userId],
+    references: [user.id],
+  }),
+}));
+
+export const accountRelations = relations(account, ({ one }) => ({
+  user: one(user, {
+    fields: [account.userId],
+    references: [user.id],
+  }),
+}));
+`],
+  ["addons/admin/packages/db/src/schema/index.ts", `export * from "./auth";
+export * from "./rbac";
+`],
+  ["addons/admin/packages/db/src/schema/rbac.ts", `import { relations } from "drizzle-orm";
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+
+import { user } from "./auth";
+
+export const role = pgTable(
+  "role",
+  {
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    description: text("description"),
+    id: text("id").primaryKey(),
+    isSystem: boolean("is_system").default(false).notNull(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [uniqueIndex("role_slug_idx").on(table.slug)],
+);
+
+export const permission = pgTable(
+  "permission",
+  {
+    action: text("action").notNull(),
+    description: text("description").notNull(),
+    id: text("id").primaryKey(),
+    key: text("key").notNull(),
+    resource: text("resource").notNull(),
+  },
+  (table) => [uniqueIndex("permission_key_idx").on(table.key)],
+);
+
+export const userRole = pgTable(
+  "user_role",
+  {
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    roleId: text("role_id")
+      .notNull()
+      .references(() => role.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.roleId] }),
+    index("user_role_user_idx").on(table.userId),
+    index("user_role_role_idx").on(table.roleId),
+  ],
+);
+
+export const rolePermission = pgTable(
+  "role_permission",
+  {
+    permissionId: text("permission_id")
+      .notNull()
+      .references(() => permission.id, { onDelete: "cascade" }),
+    roleId: text("role_id")
+      .notNull()
+      .references(() => role.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.roleId, table.permissionId] }),
+    index("role_permission_role_idx").on(table.roleId),
+  ],
+);
+
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    action: text("action").notNull(),
+    actorId: text("actor_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    id: text("id").primaryKey(),
+    ipAddress: text("ip_address"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    targetId: text("target_id"),
+    targetType: text("target_type").notNull(),
+    userAgent: text("user_agent"),
+  },
+  (table) => [index("audit_log_created_at_idx").on(table.createdAt)],
+);
+
+export const roleRelations = relations(role, ({ many }) => ({
+  permissions: many(rolePermission),
+  users: many(userRole),
+}));
+
+export const permissionRelations = relations(permission, ({ many }) => ({
+  roles: many(rolePermission),
+}));
+
+export const userRoleRelations = relations(userRole, ({ one }) => ({
+  role: one(role, { fields: [userRole.roleId], references: [role.id] }),
+  user: one(user, { fields: [userRole.userId], references: [user.id] }),
+}));
+
+export const rolePermissionRelations = relations(rolePermission, ({ one }) => ({
+  permission: one(permission, {
+    fields: [rolePermission.permissionId],
+    references: [permission.id],
+  }),
+  role: one(role, { fields: [rolePermission.roleId], references: [role.id] }),
+}));
+`],
+  ["addons/admin/packages/db/tsconfig.json.hbs", `{
+  "extends": "@{{projectName}}/config/tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "composite": true,
+    "strictNullChecks": true
+  }
+}
+`],
+  ["addons/admin/packages/env/package.json.hbs", `{
+  "name": "@{{projectName}}/env",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./server": "./src/server.ts",
+    "./web": "./src/web.ts"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "^0.13.11",
+    "dotenv": "^17.4.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@{{projectName}}/config": "workspace:*",
+    "@{{projectName}}/infra": "workspace:*",
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}
+`],
+  ["addons/admin/packages/env/src/server.ts", `import "dotenv/config";
+import { createEnv } from "@t3-oss/env-core";
+import { z } from "zod";
+
+export const env = createEnv({
+  server: {
+    DATABASE_URL: z.string().min(1),
+    BETTER_AUTH_SECRET: z.string().min(32),
+    BETTER_AUTH_URL: z.url(),
+    CORS_ORIGIN: z.url(),
+    NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  },
+  runtimeEnv: process.env,
+  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
+  emptyStringAsUndefined: true,
+});
+`],
+  ["addons/admin/packages/env/src/web.ts", `import { createEnv } from "@t3-oss/env-core";
+import { z } from "zod";
+
+export const env = createEnv({
+  clientPrefix: "VITE_",
+  client: {
+    VITE_SERVER_URL: z.url(),
+  },
+  runtimeEnv: (import.meta as any).env,
+  emptyStringAsUndefined: true,
+});
+`],
+  ["addons/admin/packages/env/tsconfig.json.hbs", `{
+  "extends": "@{{projectName}}/config/tsconfig.base.json",
+  "compilerOptions": {
+    "strictNullChecks": true
+  }
+}
+`],
+  ["addons/admin/packages/i18n/package.json.hbs", `{
+  "name": "@{{projectName}}/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react.ts"
+  },
+  "dependencies": {
+    "i18next": "^26.3.1",
+    "i18next-browser-languagedetector": "^8.2.1",
+    "react-i18next": "^17.0.8"
+  },
+  "devDependencies": {
+    "@{{projectName}}/config": "workspace:*",
+    "typescript": "^6.0.3"
+  }
+}
+`],
+  ["addons/admin/packages/i18n/src/index.ts", `import i18next from "i18next";
+import LanguageDetector from "i18next-browser-languagedetector";
+import { initReactI18next } from "react-i18next";
+
+import en from "./locales/en.json";
+import zh from "./locales/zh.json";
+
+export const supportedLanguages = [
+  { label: "中文", value: "zh" },
+  { label: "English", value: "en" },
+] as const;
+
+export const resources = {
+  en: { translation: en },
+  zh: { translation: zh },
+} as const;
+
+if (!i18next.isInitialized) {
+  await i18next
+    .use(LanguageDetector)
+    .use(initReactI18next)
+    .init({
+      detection: {
+        caches: ["localStorage"],
+        order: ["localStorage", "navigator"],
+      },
+      fallbackLng: "en",
+      interpolation: {
+        escapeValue: false,
+      },
+      resources,
+      supportedLngs: supportedLanguages.map(({ value }) => value),
+    });
+}
+
+export const i18n = i18next;
+`],
+  ["addons/admin/packages/i18n/src/locales/en.json", `{
+  "sidebar": {
+    "general": "General",
+    "dashboard": "Dashboard",
+    "tasks": "Tasks",
+    "apps": "Apps",
+    "chats": "Chats",
+    "users": "Users",
+    "secured_by_clerk": "Secured by Clerk",
+    "sign_in": "Sign In",
+    "sign_up": "Sign Up",
+    "user_management": "User Management",
+    "pages": "Pages",
+    "auth": "Auth",
+    "sign_in_2col": "Sign In (2 Col)",
+    "forgot_password": "Forgot Password",
+    "otp": "OTP",
+    "errors": "Errors",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "not_found": "Not Found",
+    "internal_server_error": "Internal Server Error",
+    "maintenance_error": "Maintenance Error",
+    "other": "Other",
+    "settings": "Settings",
+    "profile": "Profile",
+    "account": "Account",
+    "appearance": "Appearance",
+    "notifications": "Notifications",
+    "display": "Display",
+    "help_center": "Help Center"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "download": "Download",
+    "overview": "Overview",
+    "analytics": "Analytics",
+    "reports": "Reports",
+    "notifications": "Notifications",
+    "total_revenue": "Total Revenue",
+    "subscriptions": "Subscriptions",
+    "sales": "Sales",
+    "active_now": "Active Now",
+    "from_last_month": "{{value}} from last month",
+    "since_last_hour": "+{{value}} since last hour",
+    "recent_sales": "Recent Sales",
+    "recent_sales_desc": "You made {{count}} sales this month.",
+    "customers": "Customers",
+    "products": "Products",
+    "settings": "Settings",
+    "traffic_overview": "Traffic Overview",
+    "weekly_clicks_visitors": "Weekly clicks and unique visitors",
+    "total_clicks": "Total Clicks",
+    "unique_visitors": "Unique Visitors",
+    "bounce_rate": "Bounce Rate",
+    "avg_session": "Avg. Session",
+    "vs_last_week": "{{value}} vs last week",
+    "referrers": "Referrers",
+    "top_sources": "Top sources driving traffic",
+    "devices": "Devices",
+    "how_users_access": "How users access your app"
+  },
+  "nav_user": {
+    "account": "Account",
+    "billing": "Billing",
+    "notifications": "Notifications",
+    "log_out": "Log out",
+    "upgrade_to_pro": "Upgrade to Pro"
+  },
+  "search": {
+    "placeholder": "Search...",
+    "type_command": "Type a command or search..."
+  },
+  "auth": {
+    "sign_in_title": "Sign In",
+    "sign_in_desc": "Enter your email and password below to log into your account",
+    "sign_up_title": "Create an account",
+    "sign_up_desc": "Enter your email and password to create an account.",
+    "forgot_password_title": "Forgot Password",
+    "forgot_password_desc": "Enter your registered email and we will send you a link to reset your password.",
+    "otp_title": "Two-factor Authentication",
+    "otp_desc": "Please enter the authentication code. We have sent the authentication code to your email.",
+    "email": "Email",
+    "password": "Password",
+    "confirm_password": "Confirm Password",
+    "username": "Username",
+    "remember_me": "Remember me",
+    "forgot_password_link": "Forgot password?",
+    "no_account": "Don't have an account?",
+    "have_account": "Already have an account?",
+    "continue": "Continue",
+    "send_link": "Send Link",
+    "verify": "Verify",
+    "back_to_login": "Back to Sign In",
+    "sign_in_btn": "Sign in",
+    "create_account_btn": "Create Account",
+    "or_continue_with": "Or continue with",
+    "terms_prefix": "By clicking sign in, you agree to our",
+    "terms_of_service": "Terms of Service",
+    "and": "and",
+    "privacy_policy": "Privacy Policy",
+    "terms_signup_prefix": "By creating an account, you agree to our",
+    "signing_in": "Signing in...",
+    "creating_account": "Creating account...",
+    "sending_email": "Sending email...",
+    "havent_received": "Haven't received it?",
+    "resend_code": "Resend a new code.",
+    "welcome_back": "Welcome back, {{email}}!",
+    "account_created": "Account created for {{email}}.",
+    "email_sent_to": "Email sent to {{email}}",
+    "error": "Error"
+  },
+  "errors": {
+    "unauthorized_title": "Unauthorized Access",
+    "unauthorized_desc": "Please log in with the appropriate credentials to access this resource.",
+    "forbidden_title": "Access Forbidden",
+    "forbidden_desc": "You don't have necessary permission to view this resource.",
+    "not_found_title": "Page Not Found",
+    "not_found_desc": "Sorry, the page you are looking for doesn't exist or might have been removed.",
+    "server_error_title": "Internal Server Error",
+    "server_error_desc": "Sorry, something went wrong on our server.",
+    "maintenance_title": "Website is under maintenance!",
+    "maintenance_desc": "The site is not available at the moment. We'll be back online shortly.",
+    "go_back": "Go Back",
+    "back_to_home": "Back to Home",
+    "learn_more": "Learn more",
+    "something_went_wrong": "Something went wrong!",
+    "no_content": "No content.",
+    "session_expired": "Session expired!",
+    "internal_server": "Internal Server Error!",
+    "content_not_modified": "Content not modified!"
+  },
+  "settings": {
+    "title": "Settings",
+    "desc": "Manage your account settings and set e-mail preferences.",
+    "profile": "Profile",
+    "profile_desc": "This is how others will see you on the site.",
+    "account": "Account",
+    "account_desc": "Update your account settings. Set your preferred language and timezone.",
+    "appearance": "Appearance",
+    "appearance_desc": "Customize the appearance of the app. Automatically switch between day and night themes.",
+    "notifications": "Notifications",
+    "notifications_desc": "Configure how you receive notifications.",
+    "display": "Display",
+    "display_desc": "Turn items on or off to control what's displayed in the app."
+  },
+  "tasks": {
+    "title": "Tasks",
+    "desc": "Here's a list of your tasks for this month!",
+    "import": "Import",
+    "create": "Create",
+    "import_title": "Import Tasks",
+    "import_desc": "Import tasks quickly from a CSV file.",
+    "file": "File",
+    "update_task": "Update Task",
+    "create_task": "Create Task",
+    "update_task_desc": "Update the task by providing necessary info.",
+    "create_task_desc": "Add a new task by providing necessary info.",
+    "click_save": "Click save when you're done.",
+    "task_title": "Title",
+    "task_id": "Task",
+    "enter_title": "Enter a title",
+    "status": "Status",
+    "select_status": "Select dropdown",
+    "label": "Label",
+    "priority": "Priority",
+    "in_progress": "In Progress",
+    "backlog": "Backlog",
+    "todo": "Todo",
+    "canceled": "Canceled",
+    "done": "Done",
+    "documentation": "Documentation",
+    "feature": "Feature",
+    "bug": "Bug",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "critical": "Critical",
+    "save_changes": "Save changes",
+    "filter_placeholder": "Filter by title or ID...",
+    "make_copy": "Make a copy",
+    "favorite": "Favorite",
+    "delete_task_title": "Delete this task: {{id}} ?",
+    "delete_task_desc": "You are about to delete a task with the ID {{id}}. This action cannot be undone.",
+    "delete_multi_title": "Delete {{count}} {{entity}}",
+    "delete_multi_confirm": "Are you sure you want to delete the selected tasks?",
+    "delete_multi_cannot_undo": "This action cannot be undone.",
+    "delete_multi_confirm_word": "Confirm by typing \\"{{word}}\\":",
+    "delete_multi_placeholder": "Type \\"{{word}}\\" to confirm.",
+    "delete_multi_success": "Deleted {{count}} {{entity}}",
+    "deleting_tasks": "Deleting tasks...",
+    "please_type_confirm": "Please type \\"{{word}}\\" to confirm.",
+    "update_status": "Update status",
+    "update_priority": "Update priority",
+    "export_tasks": "Export tasks",
+    "delete_selected": "Delete selected tasks",
+    "updating_status": "Updating status...",
+    "updating_priority": "Updating priority...",
+    "exporting_tasks": "Exporting tasks...",
+    "status_updated": "Status updated to \\"{{status}}\\" for {{count}} task(s).",
+    "priority_updated": "Priority updated to \\"{{priority}}\\" for {{count}} task(s).",
+    "exported_tasks": "Exported {{count}} task(s) to CSV."
+  },
+  "users": {
+    "title": "User List",
+    "desc": "Manage your users and their roles here.",
+    "invite_user": "Invite User",
+    "add_user": "Add User",
+    "edit_user": "Edit User",
+    "add_new_user": "Add New User",
+    "edit_user_desc": "Update the user here.",
+    "add_user_desc": "Create new user here.",
+    "click_save": "Click save when you're done.",
+    "first_name": "First Name",
+    "last_name": "Last Name",
+    "username": "Username",
+    "name": "Name",
+    "email": "Email",
+    "phone_number": "Phone Number",
+    "role": "Role",
+    "status": "Status",
+    "select_role": "Select a role",
+    "password": "Password",
+    "confirm_password": "Confirm Password",
+    "save_changes": "Save changes",
+    "delete_user": "Delete User",
+    "delete_confirm": "Are you sure you want to delete {{username}}?",
+    "delete_warning": "This action will permanently remove the user with the role of {{role}} from the system. This cannot be undone.",
+    "enter_username_confirm": "Enter username to confirm deletion.",
+    "warning": "Warning!",
+    "warning_desc": "Please be careful, this operation can not be rolled back.",
+    "invite_title": "Invite User",
+    "invite_desc": "Invite new user to join your team by sending them an email invitation. Assign a role to define their access level.",
+    "invite_email_placeholder": "eg: john.doe@gmail.com",
+    "description_optional": "Description (optional)",
+    "invite_note_placeholder": "Add a personal note to your invitation (optional)",
+    "invite_btn": "Invite",
+    "filter_placeholder": "Filter users...",
+    "delete_multi_title": "Delete {{count}} {{entity}}",
+    "delete_multi_confirm": "Are you sure you want to delete the selected users?",
+    "delete_multi_cannot_undo": "This action cannot be undone.",
+    "delete_multi_confirm_word": "Confirm by typing \\"{{word}}\\":",
+    "delete_multi_placeholder": "Type \\"{{word}}\\" to confirm.",
+    "delete_multi_success": "Deleted {{count}} {{entity}}",
+    "deleting_users": "Deleting users...",
+    "invite_selected": "Invite selected users",
+    "activate_selected": "Activate selected users",
+    "deactivate_selected": "Deactivate selected users",
+    "delete_selected": "Delete selected users",
+    "activating_users": "Activating users...",
+    "deactivating_users": "Deactivating users...",
+    "inviting_users": "Inviting users...",
+    "activated_users": "Activated {{count}} user(s)",
+    "deactivated_users": "Deactivated {{count}} user(s)",
+    "invited_users": "Invited {{count}} user(s)",
+    "error_activating": "Error activating users",
+    "error_deactivating": "Error deactivating users",
+    "error_inviting": "Error inviting users",
+    "deleted_message": "The following user has been deleted:",
+    "please_type_confirm": "Please type \\"{{word}}\\" to confirm.",
+    "role_superadmin": "Superadmin",
+    "role_admin": "Admin",
+    "role_manager": "Manager",
+    "role_cashier": "Cashier",
+    "status_active": "Active",
+    "status_inactive": "Inactive",
+    "status_invited": "Invited",
+    "status_suspended": "Suspended"
+  },
+  "apps": {
+    "title": "App Integrations",
+    "desc": "Here's a list of your apps for the integration!",
+    "all_apps": "All Apps",
+    "connected": "Connected",
+    "not_connected": "Not Connected",
+    "filter_apps": "Filter apps...",
+    "ascending": "Ascending",
+    "descending": "Descending",
+    "connect": "Connect",
+    "desc_telegram": "Connect with Telegram for real-time communication.",
+    "desc_notion": "Effortlessly sync Notion pages for seamless collaboration.",
+    "desc_figma": "View and collaborate on Figma designs in one place.",
+    "desc_trello": "Sync Trello cards for streamlined project management.",
+    "desc_slack": "Integrate Slack for efficient team communication.",
+    "desc_zoom": "Host Zoom meetings directly from the dashboard.",
+    "desc_stripe": "Easily manage Stripe transactions and payments.",
+    "desc_gmail": "Access and manage Gmail messages effortlessly.",
+    "desc_medium": "Explore and share Medium stories on your dashboard.",
+    "desc_skype": "Connect with Skype contacts seamlessly.",
+    "desc_docker": "Effortlessly manage Docker containers on your dashboard.",
+    "desc_github": "Streamline code management with GitHub integration.",
+    "desc_gitlab": "Efficiently manage code projects with GitLab integration.",
+    "desc_discord": "Connect with Discord for seamless team communication.",
+    "desc_whatsapp": "Easily integrate WhatsApp for direct messaging."
+  },
+  "chats": {
+    "inbox": "Inbox",
+    "search_chat": "Search chat...",
+    "your_messages": "Your messages",
+    "send_message_to_start": "Send a message to start a chat.",
+    "send_message": "Send message",
+    "type_messages": "Type your messages...",
+    "send": "Send",
+    "new_message": "New message",
+    "to": "To:",
+    "search_people": "Search people...",
+    "no_people_found": "No people found.",
+    "chat": "Chat"
+  },
+  "theme": {
+    "settings_title": "Theme Settings",
+    "settings_desc": "Adjust the appearance and layout to suit your preferences.",
+    "theme": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark",
+    "sidebar": "Sidebar",
+    "inset": "Inset",
+    "floating": "Floating",
+    "sidebar_style": "Sidebar",
+    "layout": "Layout",
+    "default": "Default",
+    "compact": "Compact",
+    "full_layout": "Full layout",
+    "direction": "Direction",
+    "ltr": "Left to Right",
+    "rtl": "Right to Left",
+    "reset": "Reset",
+    "toggle_theme": "Toggle theme",
+    "reset_theme_aria": "Reset theme preference to default",
+    "reset_sidebar_aria": "Reset sidebar style to default",
+    "reset_layout_aria": "Reset layout options to default",
+    "reset_direction_aria": "Reset text direction to default",
+    "theme_desc_aria": "Choose between system preference, light mode, or dark mode",
+    "sidebar_desc_aria": "Choose between inset, floating, or standard sidebar layout",
+    "layout_desc_aria": "Choose between default expanded, compact icon-only, or full layout mode",
+    "direction_desc_aria": "Choose between left-to-right or right-to-left site direction",
+    "open_settings_aria": "Open theme settings",
+    "reset_all_aria": "Reset all settings to default values",
+    "select_theme_aria": "Select theme preference",
+    "select_sidebar_aria": "Select sidebar style",
+    "select_layout_aria": "Select layout style",
+    "select_direction_aria": "Select site direction",
+    "select_option_aria": "Select {{option}}",
+    "option_preview_aria": "{{option}} option preview"
+  },
+  "profile_dropdown": {
+    "profile": "Profile",
+    "billing": "Billing",
+    "settings": "Settings",
+    "new_team": "New Team",
+    "sign_out": "Sign out"
+  },
+  "sign_out": {
+    "title": "Sign out",
+    "desc": "Are you sure you want to sign out? You will need to sign in again to access your account.",
+    "confirm": "Sign out"
+  },
+  "team_switcher": {
+    "teams": "Teams",
+    "add_team": "Add team"
+  },
+  "data_table": {
+    "page_of": "Page {{current}} of {{total}}",
+    "rows_per_page": "Rows per page",
+    "no_results": "No results found.",
+    "selected": "selected",
+    "clear_filters": "Clear filters",
+    "reset": "Reset",
+    "filter": "Filter...",
+    "view": "View",
+    "toggle_columns": "Toggle columns",
+    "asc": "Asc",
+    "desc": "Desc",
+    "hide": "Hide",
+    "clear_selection": "Clear selection",
+    "bulk_actions_aria": "Bulk actions for {{count}} selected {{entity}}",
+    "selected_announcement": "{{count}} {{entity}} selected. Bulk actions toolbar is available."
+  },
+  "coming_soon": {
+    "title": "Coming Soon!",
+    "desc": "This page has not been created yet. Stay tuned though!"
+  },
+  "confirm_dialog": {
+    "cancel": "Cancel",
+    "continue": "Continue"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "update": "Update",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "no_data": "No data",
+    "actions": "Actions",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "close": "Close",
+    "open": "Open",
+    "yes": "Yes",
+    "no": "No",
+    "language": "Language",
+    "pick_date": "Pick a date",
+    "select": "Select",
+    "skip_to_main": "Skip to Main",
+    "error": "Error",
+    "warning": "Warning!",
+    "warning_desc": "Please be careful, this operation can not be rolled back.",
+    "hide_password": "Hide password",
+    "show_password": "Show password",
+    "submitted_values": "You submitted the following values:",
+    "imported_file": "You have imported the following file:",
+    "task_deleted": "The following task has been deleted:"
+  },
+  "settings_form": {
+    "font": "Font",
+    "font_desc": "Set the font you want to use in the dashboard.",
+    "theme": "Theme",
+    "theme_desc": "Select the theme for the dashboard.",
+    "light": "Light",
+    "dark": "Dark",
+    "update_preferences": "Update preferences",
+    "name": "Name",
+    "name_desc": "This is the name that will be displayed on your profile and in emails.",
+    "dob": "Date of birth",
+    "dob_desc": "Your date of birth is used to calculate your age.",
+    "language": "Language",
+    "language_desc": "This is the language that will be used in the dashboard.",
+    "select_language": "Select language",
+    "search_language": "Search language...",
+    "no_language_found": "No language found.",
+    "update_account": "Update account",
+    "notify_about": "Notify me about...",
+    "all_new_messages": "All new messages",
+    "direct_messages_mentions": "Direct messages and mentions",
+    "nothing": "Nothing",
+    "email_notifications": "Email Notifications",
+    "communication_emails": "Communication emails",
+    "communication_emails_desc": "Receive emails about your account activity.",
+    "marketing_emails": "Marketing emails",
+    "marketing_emails_desc": "Receive emails about new products, features, and more.",
+    "social_emails": "Social emails",
+    "social_emails_desc": "Receive emails for friend requests, follows, and more.",
+    "security_emails": "Security emails",
+    "security_emails_desc": "Receive emails about your account activity and security.",
+    "mobile_settings": "Use different settings for my mobile devices",
+    "mobile_settings_desc": "You can manage your mobile notifications in the mobile settings page.",
+    "update_notifications": "Update notifications",
+    "sidebar_label": "Sidebar",
+    "sidebar_desc": "Select the items you want to display in the sidebar.",
+    "recents": "Recents",
+    "home": "Home",
+    "applications": "Applications",
+    "desktop": "Desktop",
+    "downloads": "Downloads",
+    "documents": "Documents",
+    "update_display": "Update display",
+    "username": "Username",
+    "username_desc": "This is your public display name. It can be your real name or a pseudonym. You can only change this once every 30 days.",
+    "email": "Email",
+    "email_desc": "You can manage verified email addresses in your email settings.",
+    "select_email": "Select a verified email to display",
+    "bio": "Bio",
+    "bio_placeholder": "Tell us a little bit about yourself",
+    "bio_desc": "You can @mention other users and organizations to link to them.",
+    "urls": "URLs",
+    "urls_desc": "Add links to your website, blog, or social media profiles.",
+    "add_url": "Add URL",
+    "update_profile": "Update profile",
+    "your_name": "Your name"
+  },
+  "validation": {
+    "email_required": "Please enter your email.",
+    "email_invalid": "Please enter a valid email address.",
+    "password_required": "Please enter your password.",
+    "password_min_length": "Password must be at least 7 characters long.",
+    "confirm_password_required": "Please confirm your password.",
+    "passwords_not_match": "Passwords don't match.",
+    "first_name_required": "First Name is required.",
+    "last_name_required": "Last Name is required.",
+    "username_required": "Username is required.",
+    "phone_required": "Phone number is required.",
+    "email_field_required": "Email is required.",
+    "role_required": "Role is required.",
+    "password_field_required": "Password is required.",
+    "password_min_8": "Password must be at least 8 characters long.",
+    "password_lowercase": "Password must contain at least one lowercase letter.",
+    "password_number": "Password must contain at least one number.",
+    "invite_email_required": "Please enter an email to invite.",
+    "forgot_email_required": "Please enter your email.",
+    "name_required": "Please enter your name.",
+    "name_min": "Name must be at least 2 characters.",
+    "name_max": "Name must not be longer than 30 characters.",
+    "dob_required": "Please select your date of birth.",
+    "language_required": "Please select a language.",
+    "username_min": "Username must be at least 2 characters.",
+    "username_max": "Username must not be longer than 30 characters.",
+    "select_email": "Please select an email to display.",
+    "url_invalid": "Please enter a valid URL.",
+    "select_one_item": "You have to select at least one item.",
+    "select_notification_type": "Please select a notification type.",
+    "otp_length": "Please enter the 6-digit code.",
+    "title_required": "Title is required.",
+    "select_status": "Please select a status.",
+    "select_label": "Please select a label.",
+    "select_priority": "Please choose a priority.",
+    "upload_file": "Please upload a file.",
+    "upload_csv": "Please upload csv format."
+  },
+  "clerk": {
+    "no_key_title": "No Publishable Key Found!",
+    "no_key_desc": "You need to generate a publishable key from Clerk and put it inside the .env file.",
+    "set_api_key": "Set your Clerk API key",
+    "step_1": "In the Clerk Dashboard, navigate to the API keys page.",
+    "step_2": "In the Quick Copy section, copy your Clerk Publishable Key.",
+    "step_3_prefix": "Rename",
+    "step_3_suffix": "to",
+    "step_4": "Paste your key into your .env file.",
+    "final_result": "The final result should resemble the following:",
+    "optional_title": "Clerk Integration is Optional",
+    "optional_desc_1": "The Clerk integration lives entirely inside src/routes/clerk. If you plan to use Clerk as your auth service, you might want to place ClerkProvider at the root route.",
+    "optional_desc_2": "However, if you don't plan to use Clerk, you can safely remove this directory and related dependency @clerk/react.",
+    "optional_desc_3": "This setup is modular by design and won't affect the rest of the application.",
+    "welcome_example": "Welcome to the example Clerk auth page.",
+    "back_to_dashboard": "Back to Dashboard",
+    "user_list": "User List",
+    "manage_users_desc": "Manage your users and their roles here.",
+    "same_as_users": "This is the same as '/users'",
+    "signout_tip": "You can sign out or manage/delete your account via the User Profile menu in the top-right corner of the page.",
+    "unauthorized": "Unauthorized Access",
+    "must_auth": "You must be authenticated via Clerk to access this resource.",
+    "must_signin_tip": "You must first sign in using Clerk to access this route.",
+    "after_signin_tip": "After signing in, you'll be able to sign out or delete your account via the User Profile dropdown on this page.",
+    "go_back": "Go Back",
+    "sign_in": "Sign in",
+    "redirecting_in": "Redirecting to Sign In page in {{count}}s",
+    "redirecting": "Redirecting...",
+    "cancel_redirect": "Cancel Redirect"
+  }
+}
+`],
+  ["addons/admin/packages/i18n/src/locales/zh.json", `{
+  "sidebar": {
+    "general": "通用",
+    "dashboard": "仪表盘",
+    "tasks": "任务",
+    "apps": "应用",
+    "chats": "聊天",
+    "users": "用户",
+    "secured_by_clerk": "Clerk 安全认证",
+    "sign_in": "登录",
+    "sign_up": "注册",
+    "user_management": "用户管理",
+    "pages": "页面",
+    "auth": "认证",
+    "sign_in_2col": "登录 (双栏)",
+    "forgot_password": "忘记密码",
+    "otp": "验证码",
+    "errors": "错误页",
+    "unauthorized": "未授权",
+    "forbidden": "禁止访问",
+    "not_found": "未找到",
+    "internal_server_error": "服务器内部错误",
+    "maintenance_error": "维护错误",
+    "other": "其他",
+    "settings": "设置",
+    "profile": "个人资料",
+    "account": "账户",
+    "appearance": "外观",
+    "notifications": "通知",
+    "display": "显示",
+    "help_center": "帮助中心"
+  },
+  "dashboard": {
+    "title": "仪表盘",
+    "download": "下载",
+    "overview": "概览",
+    "analytics": "分析",
+    "reports": "报告",
+    "notifications": "通知",
+    "total_revenue": "总收入",
+    "subscriptions": "订阅",
+    "sales": "销售额",
+    "active_now": "当前活跃",
+    "from_last_month": "较上月 {{value}}",
+    "since_last_hour": "较上小时 +{{value}}",
+    "recent_sales": "最近销售",
+    "recent_sales_desc": "本月完成 {{count}} 笔销售",
+    "customers": "客户",
+    "products": "产品",
+    "settings": "设置",
+    "traffic_overview": "流量概览",
+    "weekly_clicks_visitors": "每周点击量和独立访客",
+    "total_clicks": "总点击量",
+    "unique_visitors": "独立访客",
+    "bounce_rate": "跳出率",
+    "avg_session": "平均会话时长",
+    "vs_last_week": "较上周 {{value}}",
+    "referrers": "来源",
+    "top_sources": "驱动流量的主要来源",
+    "devices": "设备",
+    "how_users_access": "用户如何访问您的应用"
+  },
+  "nav_user": {
+    "account": "账户",
+    "billing": "账单",
+    "notifications": "通知",
+    "log_out": "退出登录",
+    "upgrade_to_pro": "升级到 Pro"
+  },
+  "search": {
+    "placeholder": "搜索...",
+    "type_command": "输入命令或搜索..."
+  },
+  "auth": {
+    "sign_in_title": "登录",
+    "sign_in_desc": "在下方输入您的邮箱和密码登录账户",
+    "sign_up_title": "创建账户",
+    "sign_up_desc": "输入您的邮箱和密码创建账户",
+    "forgot_password_title": "忘记密码",
+    "forgot_password_desc": "输入您的注册邮箱，我们将发送重置链接",
+    "otp_title": "双因素验证",
+    "otp_desc": "请输入验证码。我们已将验证码发送到您的邮箱。",
+    "email": "邮箱",
+    "password": "密码",
+    "confirm_password": "确认密码",
+    "username": "用户名",
+    "remember_me": "记住我",
+    "forgot_password_link": "忘记密码?",
+    "no_account": "还没有账户?",
+    "have_account": "已有账户?",
+    "continue": "继续",
+    "send_link": "发送链接",
+    "verify": "验证",
+    "back_to_login": "返回登录",
+    "sign_in_btn": "登录",
+    "create_account_btn": "创建账户",
+    "or_continue_with": "或通过以下方式继续",
+    "terms_prefix": "点击登录即表示您同意我们的",
+    "terms_of_service": "服务条款",
+    "and": "和",
+    "privacy_policy": "隐私政策",
+    "terms_signup_prefix": "创建账户即表示您同意我们的",
+    "signing_in": "登录中...",
+    "creating_account": "创建账户中...",
+    "sending_email": "发送邮件中...",
+    "havent_received": "没有收到?",
+    "resend_code": "重新发送验证码",
+    "welcome_back": "欢迎回来，{{email}}！",
+    "account_created": "已为 {{email}} 创建账户。",
+    "email_sent_to": "邮件已发送至 {{email}}",
+    "error": "错误"
+  },
+  "errors": {
+    "unauthorized_title": "未授权访问",
+    "unauthorized_desc": "请使用正确的凭证登录后查看此资源。",
+    "forbidden_title": "禁止访问",
+    "forbidden_desc": "您没有权限访问此资源。",
+    "not_found_title": "页面未找到",
+    "not_found_desc": "抱歉，您请求的页面不存在或已被移动。",
+    "server_error_title": "服务器内部错误",
+    "server_error_desc": "抱歉，服务器出了问题。",
+    "maintenance_title": "系统维护中",
+    "maintenance_desc": "网站目前正在维护中，我们很快就会恢复。",
+    "go_back": "返回",
+    "back_to_home": "返回首页",
+    "learn_more": "了解更多",
+    "something_went_wrong": "出了点问题！",
+    "no_content": "无内容。",
+    "session_expired": "会话已过期！",
+    "internal_server": "服务器内部错误！",
+    "content_not_modified": "内容未修改！"
+  },
+  "settings": {
+    "title": "设置",
+    "desc": "管理您的账户设置和偏好。",
+    "profile": "个人资料",
+    "profile_desc": "这是其他人在网站上看到您的方式。",
+    "account": "账户",
+    "account_desc": "更新账户设置。设置您的首选语言和时区。",
+    "appearance": "外观",
+    "appearance_desc": "自定义应用外观。自动切换日间和夜间主题。",
+    "notifications": "通知",
+    "notifications_desc": "配置您接收通知的方式。",
+    "display": "显示",
+    "display_desc": "打开或关闭项目以控制应用中显示的内容。"
+  },
+  "tasks": {
+    "title": "任务",
+    "desc": "这是您本月的任务列表！",
+    "import": "导入",
+    "create": "创建",
+    "import_title": "导入任务",
+    "import_desc": "从 CSV 文件快速导入任务。",
+    "file": "文件",
+    "update_task": "更新任务",
+    "create_task": "创建任务",
+    "update_task_desc": "更新任务信息。",
+    "create_task_desc": "添加新任务信息。",
+    "click_save": "完成后点击保存。",
+    "task_title": "标题",
+    "task_id": "任务",
+    "enter_title": "输入标题",
+    "status": "状态",
+    "select_status": "选择状态",
+    "label": "标签",
+    "priority": "优先级",
+    "in_progress": "进行中",
+    "backlog": "待办",
+    "todo": "计划中",
+    "canceled": "已取消",
+    "done": "已完成",
+    "documentation": "文档",
+    "feature": "功能",
+    "bug": "缺陷",
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+    "critical": "紧急",
+    "save_changes": "保存更改",
+    "filter_placeholder": "按标题或ID筛选...",
+    "make_copy": "复制",
+    "favorite": "收藏",
+    "delete_task_title": "删除任务: {{id}} ?",
+    "delete_task_desc": "您即将删除 ID 为 {{id}} 的任务。此操作不可撤销。",
+    "delete_multi_title": "删除 {{count}} 个{{entity}}",
+    "delete_multi_confirm": "确定要删除所选任务吗？",
+    "delete_multi_cannot_undo": "此操作不可撤销。",
+    "delete_multi_confirm_word": "输入 \\"{{word}}\\" 以确认：",
+    "delete_multi_placeholder": "输入 \\"{{word}}\\" 以确认。",
+    "delete_multi_success": "已删除 {{count}} 个{{entity}}",
+    "deleting_tasks": "正在删除任务...",
+    "please_type_confirm": "请输入 \\"{{word}}\\" 以确认。",
+    "update_status": "更新状态",
+    "update_priority": "更新优先级",
+    "export_tasks": "导出任务",
+    "delete_selected": "删除所选任务",
+    "updating_status": "正在更新状态...",
+    "updating_priority": "正在更新优先级...",
+    "exporting_tasks": "正在导出任务...",
+    "status_updated": "已将 {{count}} 个任务的状态更新为 \\"{{status}}\\"。",
+    "priority_updated": "已将 {{count}} 个任务的优先级更新为 \\"{{priority}}\\"。",
+    "exported_tasks": "已导出 {{count}} 个任务到 CSV。"
+  },
+  "users": {
+    "title": "用户列表",
+    "desc": "在此管理您的用户及其角色。",
+    "invite_user": "邀请用户",
+    "add_user": "添加用户",
+    "edit_user": "编辑用户",
+    "add_new_user": "添加新用户",
+    "edit_user_desc": "在此更新用户信息。",
+    "add_user_desc": "在此创建新用户。",
+    "click_save": "完成后点击保存。",
+    "first_name": "名",
+    "last_name": "姓",
+    "username": "用户名",
+    "name": "姓名",
+    "email": "邮箱",
+    "phone_number": "电话号码",
+    "role": "角色",
+    "status": "状态",
+    "select_role": "选择角色",
+    "password": "密码",
+    "confirm_password": "确认密码",
+    "save_changes": "保存更改",
+    "delete_user": "删除用户",
+    "delete_confirm": "确定要删除 {{username}} 吗？",
+    "delete_warning": "此操作将永久移除角色为 {{role}} 的用户。此操作不可撤销。",
+    "enter_username_confirm": "输入用户名以确认删除。",
+    "warning": "警告！",
+    "warning_desc": "请注意，此操作不可回滚。",
+    "invite_title": "邀请用户",
+    "invite_desc": "通过发送邮件邀请新用户加入您的团队。分配角色以定义其访问级别。",
+    "invite_email_placeholder": "例如: john.doe@gmail.com",
+    "description_optional": "描述 (可选)",
+    "invite_note_placeholder": "添加个人备注到邀请（可选）",
+    "invite_btn": "邀请",
+    "filter_placeholder": "筛选用户...",
+    "delete_multi_title": "删除 {{count}} 个{{entity}}",
+    "delete_multi_confirm": "确定要删除所选用户吗？",
+    "delete_multi_cannot_undo": "此操作不可撤销。",
+    "delete_multi_confirm_word": "输入 \\"{{word}}\\" 以确认：",
+    "delete_multi_placeholder": "输入 \\"{{word}}\\" 以确认。",
+    "delete_multi_success": "已删除 {{count}} 个{{entity}}",
+    "deleting_users": "正在删除用户...",
+    "invite_selected": "邀请所选用户",
+    "activate_selected": "激活所选用户",
+    "deactivate_selected": "停用所选用户",
+    "delete_selected": "删除所选用户",
+    "activating_users": "正在激活用户...",
+    "deactivating_users": "正在停用用户...",
+    "inviting_users": "正在邀请用户...",
+    "activated_users": "已激活 {{count}} 个用户",
+    "deactivated_users": "已停用 {{count}} 个用户",
+    "invited_users": "已邀请 {{count}} 个用户",
+    "error_activating": "激活用户时出错",
+    "error_deactivating": "停用用户时出错",
+    "error_inviting": "邀请用户时出错",
+    "deleted_message": "以下用户已被删除：",
+    "please_type_confirm": "请输入 \\"{{word}}\\" 以确认。",
+    "role_superadmin": "超级管理员",
+    "role_admin": "管理员",
+    "role_manager": "经理",
+    "role_cashier": "收银员",
+    "status_active": "活跃",
+    "status_inactive": "未激活",
+    "status_invited": "已邀请",
+    "status_suspended": "已暂停"
+  },
+  "apps": {
+    "title": "应用集成",
+    "desc": "这是您用于集成的应用列表！",
+    "all_apps": "所有应用",
+    "connected": "已连接",
+    "not_connected": "未连接",
+    "filter_apps": "筛选应用...",
+    "ascending": "升序",
+    "descending": "降序",
+    "connect": "连接",
+    "desc_telegram": "连接 Telegram 进行实时通讯。",
+    "desc_notion": "轻松同步 Notion 页面，实现无缝协作。",
+    "desc_figma": "在一个地方查看和协作 Figma 设计。",
+    "desc_trello": "同步 Trello 卡片，简化项目管理。",
+    "desc_slack": "集成 Slack，实现高效团队沟通。",
+    "desc_zoom": "直接从仪表盘主持 Zoom 会议。",
+    "desc_stripe": "轻松管理 Stripe 交易和支付。",
+    "desc_gmail": "轻松访问和管理 Gmail 邮件。",
+    "desc_medium": "在仪表盘上探索和分享 Medium 文章。",
+    "desc_skype": "无缝连接 Skype 联系人。",
+    "desc_docker": "在仪表盘上轻松管理 Docker 容器。",
+    "desc_github": "通过 GitHub 集成简化代码管理。",
+    "desc_gitlab": "通过 GitLab 集成高效管理代码项目。",
+    "desc_discord": "连接 Discord 实现无缝团队沟通。",
+    "desc_whatsapp": "轻松集成 WhatsApp 进行直接消息传递。"
+  },
+  "chats": {
+    "inbox": "收件箱",
+    "search_chat": "搜索聊天...",
+    "your_messages": "您的消息",
+    "send_message_to_start": "发送消息开始聊天。",
+    "send_message": "发送消息",
+    "type_messages": "输入您的消息...",
+    "send": "发送",
+    "new_message": "新消息",
+    "to": "收件人:",
+    "search_people": "搜索联系人...",
+    "no_people_found": "未找到联系人。",
+    "chat": "聊天"
+  },
+  "theme": {
+    "settings_title": "主题设置",
+    "settings_desc": "调整外观和布局以适应您的偏好。",
+    "theme": "主题",
+    "system": "跟随系统",
+    "light": "浅色",
+    "dark": "深色",
+    "sidebar": "侧边栏",
+    "inset": "内嵌",
+    "floating": "浮动",
+    "sidebar_style": "侧边栏",
+    "layout": "布局",
+    "default": "默认",
+    "compact": "紧凑",
+    "full_layout": "全屏",
+    "direction": "方向",
+    "ltr": "从左到右",
+    "rtl": "从右到左",
+    "reset": "重置",
+    "toggle_theme": "切换主题",
+    "reset_theme_aria": "重置主题偏好为默认",
+    "reset_sidebar_aria": "重置侧边栏样式为默认",
+    "reset_layout_aria": "重置布局选项为默认",
+    "reset_direction_aria": "重置文字方向为默认",
+    "theme_desc_aria": "选择跟随系统、浅色模式或深色模式",
+    "sidebar_desc_aria": "选择内嵌、浮动或标准侧边栏布局",
+    "layout_desc_aria": "选择默认展开、紧凑图标或全屏布局模式",
+    "direction_desc_aria": "选择从左到右或从右到左的方向",
+    "open_settings_aria": "打开主题设置",
+    "reset_all_aria": "重置所有设置为默认值",
+    "select_theme_aria": "选择主题偏好",
+    "select_sidebar_aria": "选择侧边栏样式",
+    "select_layout_aria": "选择布局样式",
+    "select_direction_aria": "选择站点方向",
+    "select_option_aria": "选择 {{option}}",
+    "option_preview_aria": "{{option}} 选项预览"
+  },
+  "profile_dropdown": {
+    "profile": "个人资料",
+    "billing": "账单",
+    "settings": "设置",
+    "new_team": "新建团队",
+    "sign_out": "退出登录"
+  },
+  "sign_out": {
+    "title": "退出登录",
+    "desc": "确定要退出登录吗？您需要重新登录才能访问账户。",
+    "confirm": "退出登录"
+  },
+  "team_switcher": {
+    "teams": "团队",
+    "add_team": "添加团队"
+  },
+  "data_table": {
+    "page_of": "第 {{current}} 页，共 {{total}} 页",
+    "rows_per_page": "每页行数",
+    "no_results": "无结果。",
+    "selected": "已选择",
+    "clear_filters": "清除筛选",
+    "reset": "重置",
+    "filter": "筛选...",
+    "view": "视图",
+    "toggle_columns": "切换列",
+    "asc": "升序",
+    "desc": "降序",
+    "hide": "隐藏",
+    "clear_selection": "清除选择",
+    "bulk_actions_aria": "{{count}} 个已选 {{entity}} 的批量操作",
+    "selected_announcement": "已选择 {{count}} 个 {{entity}}。批量操作工具栏已可用。"
+  },
+  "coming_soon": {
+    "title": "即将推出！",
+    "desc": "此页面尚未创建。敬请期待！"
+  },
+  "confirm_dialog": {
+    "cancel": "取消",
+    "continue": "继续"
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "create": "创建",
+    "update": "更新",
+    "confirm": "确认",
+    "loading": "加载中...",
+    "no_data": "暂无数据",
+    "actions": "操作",
+    "search": "搜索",
+    "filter": "筛选",
+    "export": "导出",
+    "import": "导入",
+    "close": "关闭",
+    "open": "打开",
+    "yes": "是",
+    "no": "否",
+    "language": "语言",
+    "pick_date": "选择日期",
+    "select": "请选择",
+    "skip_to_main": "跳转到主内容",
+    "error": "错误",
+    "warning": "警告！",
+    "warning_desc": "请注意，此操作不可回滚。",
+    "hide_password": "隐藏密码",
+    "show_password": "显示密码",
+    "submitted_values": "您提交了以下值：",
+    "imported_file": "您已导入以下文件：",
+    "task_deleted": "以下任务已被删除："
+  },
+  "settings_form": {
+    "font": "字体",
+    "font_desc": "设置仪表盘中使用的字体。",
+    "theme": "主题",
+    "theme_desc": "选择仪表盘的主题。",
+    "light": "浅色",
+    "dark": "深色",
+    "update_preferences": "更新偏好",
+    "name": "姓名",
+    "name_desc": "这是将在您的个人资料和邮件中显示的名称。",
+    "dob": "出生日期",
+    "dob_desc": "出生日期用于计算年龄。",
+    "language": "语言",
+    "language_desc": "这是将在仪表盘中使用的语言。",
+    "select_language": "选择语言",
+    "search_language": "搜索语言...",
+    "no_language_found": "未找到语言。",
+    "update_account": "更新账户",
+    "notify_about": "通知方式...",
+    "all_new_messages": "所有新消息",
+    "direct_messages_mentions": "私信和提及",
+    "nothing": "无",
+    "email_notifications": "邮件通知",
+    "communication_emails": "通讯邮件",
+    "communication_emails_desc": "接收有关您账户活动的邮件。",
+    "marketing_emails": "营销邮件",
+    "marketing_emails_desc": "接收有关新产品、功能等的邮件。",
+    "social_emails": "社交邮件",
+    "social_emails_desc": "接收好友请求、关注等邮件。",
+    "security_emails": "安全邮件",
+    "security_emails_desc": "接收有关账户活动和安全的邮件。",
+    "mobile_settings": "为移动设备使用不同的设置",
+    "mobile_settings_desc": "您可以在移动设置页面管理移动通知。",
+    "update_notifications": "更新通知",
+    "sidebar_label": "侧边栏",
+    "sidebar_desc": "选择要在侧边栏中显示的项目。",
+    "recents": "最近",
+    "home": "主页",
+    "applications": "应用程序",
+    "desktop": "桌面",
+    "downloads": "下载",
+    "documents": "文档",
+    "update_display": "更新显示",
+    "username": "用户名",
+    "username_desc": "这是您的公开显示名称。可以是真名或昵称。每 30 天只能更改一次。",
+    "email": "邮箱",
+    "email_desc": "您可以在邮箱设置中管理已验证的邮箱地址。",
+    "select_email": "选择要显示的已验证邮箱",
+    "bio": "简介",
+    "bio_placeholder": "简单介绍一下自己",
+    "bio_desc": "您可以 @提及 其他用户和组织以链接到他们。",
+    "urls": "链接",
+    "urls_desc": "添加您的网站、博客或社交媒体链接。",
+    "add_url": "添加链接",
+    "update_profile": "更新个人资料",
+    "your_name": "您的姓名"
+  },
+  "validation": {
+    "email_required": "请输入您的邮箱。",
+    "email_invalid": "请输入有效的邮箱地址。",
+    "password_required": "请输入您的密码。",
+    "password_min_length": "密码长度至少为 7 个字符。",
+    "confirm_password_required": "请确认您的密码。",
+    "passwords_not_match": "两次输入的密码不一致。",
+    "first_name_required": "名字为必填项。",
+    "last_name_required": "姓氏为必填项。",
+    "username_required": "用户名为必填项。",
+    "phone_required": "电话号码为必填项。",
+    "email_field_required": "邮箱为必填项。",
+    "role_required": "角色为必填项。",
+    "password_field_required": "密码为必填项。",
+    "password_min_8": "密码长度至少为 8 个字符。",
+    "password_lowercase": "密码必须包含至少一个小写字母。",
+    "password_number": "密码必须包含至少一个数字。",
+    "invite_email_required": "请输入要邀请的邮箱。",
+    "forgot_email_required": "请输入您的邮箱。",
+    "name_required": "请输入您的姓名。",
+    "name_min": "姓名至少为 2 个字符。",
+    "name_max": "姓名不得超过 30 个字符。",
+    "dob_required": "请选择您的出生日期。",
+    "language_required": "请选择一种语言。",
+    "username_min": "用户名至少为 2 个字符。",
+    "username_max": "用户名不得超过 30 个字符。",
+    "select_email": "请选择要显示的邮箱。",
+    "url_invalid": "请输入有效的 URL。",
+    "select_one_item": "必须至少选择一项。",
+    "select_notification_type": "请选择通知类型。",
+    "otp_length": "请输入 6 位验证码。",
+    "title_required": "标题为必填项。",
+    "select_status": "请选择状态。",
+    "select_label": "请选择标签。",
+    "select_priority": "请选择优先级。",
+    "upload_file": "请上传文件。",
+    "upload_csv": "请上传 CSV 格式文件。"
+  },
+  "clerk": {
+    "no_key_title": "未找到 Publishable Key！",
+    "no_key_desc": "您需要从 Clerk 生成一个 publishable key 并将其放入 .env 文件中。",
+    "set_api_key": "设置您的 Clerk API 密钥",
+    "step_1": "在 Clerk 仪表盘中，导航到 API 密钥页面。",
+    "step_2": "在 Quick Copy 部分，复制您的 Clerk Publishable Key。",
+    "step_3_prefix": "将",
+    "step_3_suffix": "重命名为",
+    "step_4": "将您的密钥粘贴到 .env 文件中。",
+    "final_result": "最终结果应如下所示：",
+    "optional_title": "Clerk 集成是可选的",
+    "optional_desc_1": "Clerk 集成完全位于 src/routes/clerk 内。如果您计划使用 Clerk 作为认证服务，您可能需要将 ClerkProvider 放在根路由。",
+    "optional_desc_2": "但是，如果您不打算使用 Clerk，您可以安全地删除此目录和相关依赖 @clerk/react。",
+    "optional_desc_3": "此设置是模块化的，不会影响应用的其余部分。",
+    "welcome_example": "欢迎来到示例 Clerk 认证页面。",
+    "back_to_dashboard": "返回仪表盘",
+    "user_list": "用户列表",
+    "manage_users_desc": "在此管理您的用户及其角色。",
+    "same_as_users": "这与 '/users' 页面相同",
+    "signout_tip": "您可以通过页面右上角的用户资料菜单退出登录或管理/删除您的账户。",
+    "unauthorized": "未授权访问",
+    "must_auth": "您必须通过 Clerk 认证才能访问此资源。",
+    "must_signin_tip": "您必须先使用 Clerk 登录才能访问此路由。",
+    "after_signin_tip": "登录后，您可以通过此页面的用户资料下拉菜单退出或删除账户。",
+    "go_back": "返回",
+    "sign_in": "登录",
+    "redirecting_in": "将在 {{count}} 秒后跳转到登录页面",
+    "redirecting": "跳转中...",
+    "cancel_redirect": "取消跳转"
+  }
+}
+`],
+  ["addons/admin/packages/i18n/src/react.ts", `// biome-ignore lint/performance/noBarrelFile: package entrypoint intentionally exposes the supported React integration.
+export { Trans, useTranslation } from "react-i18next";
+export { i18n, supportedLanguages } from "./index";
+`],
+  ["addons/admin/packages/i18n/tsconfig.json.hbs", `{
+  "extends": "@{{projectName}}/config/tsconfig.base.json",
+  "compilerOptions": {
+    "resolveJsonModule": true,
+    "strictNullChecks": true
+  }
+}
+`],
+  ["addons/admin/packages/infra/alchemy.run.ts.hbs", `import * as Alchemy from "alchemy";
+import * as Cloudflare from "alchemy/Cloudflare";
+import { config } from "dotenv";
+import * as Config from "effect/Config";
+import * as Effect from "effect/Effect";
+
+config({ path: "./.env" });
+config({ path: "../../apps/web/.env" });
+
+export default Alchemy.Stack(
+  "{{projectName}}",
+  {
+    providers: Cloudflare.providers(),
+    state: Cloudflare.state(),
+  },
+  Effect.gen(function* () {
+    const webWorker = yield* Cloudflare.Website.Vite("web", {
+      rootDir: "../../apps/web",
+      compatibility: {
+        flags: ["nodejs_compat"],
+      },
+      env: {
+        VITE_SERVER_URL: Config.string("VITE_SERVER_URL"),
+      },
+      dev: {
+        port: 3001,
+      },
+    });
+
+    return {
+      web: webWorker.url,
+    };
+  }),
+);
+`],
+  ["addons/admin/packages/infra/package.json.hbs", `{
+  "name": "@{{projectName}}/infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "dev:cloud": "alchemy dev",
+    "deploy": "alchemy deploy",
+    "destroy": "alchemy destroy"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@effect/platform-bun": "4.0.0-rc.108",
+    "@effect/platform-node": "4.0.0-rc.108",
+    "@{{projectName}}/config": "workspace:*",
+    "alchemy": "2.0.0-beta.72",
+    "effect": "4.0.0-rc.108",
+    "typescript": "^6.0.3"
+  }
+}
+`],
+  ["addons/admin/packages/infra/tsconfig.json.hbs", `{
+  "extends": "@{{projectName}}/config/tsconfig.base.json",
+  "include": ["alchemy.run.ts"],
+  "compilerOptions": {
+    "strictNullChecks": true
+  }
+}
+`],
+  ["addons/admin/packages/ui/components.json.hbs", `{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-lyra",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "aliases": {
+    "components": "@{{projectName}}/ui/components",
+    "utils": "@{{projectName}}/ui/lib/utils",
+    "hooks": "@{{projectName}}/ui/hooks",
+    "lib": "@{{projectName}}/ui/lib",
+    "ui": "@{{projectName}}/ui/components"
+  },
+  "menuColor": "default",
+  "menuAccent": "subtle",
+  "registries": {
+    "@shadcn": "https://ui.shadcn.com/r/{name}.json",
+    "@reui": "https://reui.io/r/{style}/{name}.json",
+    "@shadcnblocks": "https://www.shadcnblocks.com/r/{name}",
+    "@magicui": "https://magicui.design/r/{name}.json",
+    "@aceternity": "https://ui.aceternity.com/registry/{name}.json",
+    "@tailark": "https://tailark.com/r/{name}.json",
+    "@cult-ui": "https://cult-ui.com/r/{name}.json",
+    "@kibo-ui": "https://www.kibo-ui.com/r/{name}.json",
+    "@animate-ui": "https://animate-ui.com/r/{name}.json",
+    "@shadcnstore": "https://shadcnstore.com/r/{name}.json",
+    "@ai-elements": "https://ai-sdk.dev/elements/api/registry/{name}.json",
+    "@assistant-ui": "https://r.assistant-ui.com/styles/{style}/{name}.json",
+    "@shadcn-ui-blocks": "https://www.shadcn-ui-blocks.com/r/{name}.json",
+    "@7ovr": "https://7ovr.com/r/{name}.json",
+    "@blocks-so": "https://blocks.so/r/{name}.json",
+    "@kokonutui": "https://kokonutui.com/r/{name}.json",
+    "@shadcn-studio": "https://shadcnstudio.com/r/{name}.json"
+  }
+}
+`],
+  ["addons/admin/packages/ui/package.json.hbs", `{
+  "name": "@{{projectName}}/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./globals.css": "./src/styles/globals.css",
+    "./lib/*": "./src/lib/*.ts",
+    "./components/*": "./src/components/*.tsx",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./postcss.config": "./postcss.config.mjs"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.6.0",
+    "@shadcn/react": "^0.2.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.27.0",
+    "next-themes": "^0.4.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "shadcn": "^4.16.0",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0"
+  },
+  "devDependencies": {
+    "@{{projectName}}/config": "workspace:*",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3"
+  }
+}
+`],
+  ["addons/admin/packages/ui/postcss.config.mjs", `export default {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+`],
+  ["addons/admin/packages/ui/src/components/alert-dialog.tsx.hbs", `"use client";
+
+import { AlertDialog as Primitive } from "@base-ui/react/alert-dialog";
+import { Button } from "@{{projectName}}/ui/components/button";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import type * as React from "react";
+
+function AlertDialog(props: Primitive.Root.Props) {
+  return <Primitive.Root data-slot="alert-dialog" {...props} />;
+}
+function AlertDialogTrigger(props: Primitive.Trigger.Props) {
+  return <Primitive.Trigger data-slot="alert-dialog-trigger" {...props} />;
+}
+function AlertDialogPortal(props: Primitive.Portal.Props) {
+  return <Primitive.Portal data-slot="alert-dialog-portal" {...props} />;
+}
+function AlertDialogOverlay({ className, ...props }: Primitive.Backdrop.Props) {
+  return (
+    <Primitive.Backdrop
+      className={cn(
+        "data-open:fade-in-0 data-closed:fade-out-0 fixed inset-0 isolate z-50 bg-black/10 duration-100 data-closed:animate-out data-open:animate-in supports-backdrop-filter:backdrop-blur-xs",
+        className
+      )}
+      data-slot="alert-dialog-overlay"
+      {...props}
+    />
+  );
+}
+function AlertDialogContent({ className, ...props }: Primitive.Popup.Props) {
+  return (
+    <AlertDialogPortal>
+      <AlertDialogOverlay />
+      <Primitive.Popup
+        className={cn(
+          "data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-none bg-popover p-4 text-popover-foreground outline-none ring-1 ring-foreground/10 duration-100 data-closed:animate-out data-open:animate-in",
+          className
+        )}
+        data-slot="alert-dialog-content"
+        {...props}
+      />
+    </AlertDialogPortal>
+  );
+}
+function AlertDialogHeader({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("grid gap-1.5 text-center sm:text-left", className)}
+      data-slot="alert-dialog-header"
+      {...props}
+    />
+  );
+}
+function AlertDialogFooter({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        className
+      )}
+      data-slot="alert-dialog-footer"
+      {...props}
+    />
+  );
+}
+function AlertDialogTitle({ className, ...props }: Primitive.Title.Props) {
+  return (
+    <Primitive.Title
+      className={cn("cn-font-heading font-medium text-sm", className)}
+      data-slot="alert-dialog-title"
+      {...props}
+    />
+  );
+}
+function AlertDialogDescription({
+  className,
+  ...props
+}: Primitive.Description.Props) {
+  return (
+    <Primitive.Description
+      className={cn(
+        "text-balance text-muted-foreground text-xs/relaxed",
+        className
+      )}
+      data-slot="alert-dialog-description"
+      {...props}
+    />
+  );
+}
+function AlertDialogAction(props: React.ComponentProps<typeof Button>) {
+  return <Button data-slot="alert-dialog-action" {...props} />;
+}
+function AlertDialogCancel({
+  variant = "outline",
+  size = "default",
+  ...props
+}: Primitive.Close.Props &
+  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
+  return (
+    <Primitive.Close
+      data-slot="alert-dialog-cancel"
+      render={<Button size={size} variant={variant} />}
+      {...props}
+    />
+  );
+}
+
+export {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
+  AlertDialogPortal,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+};
+`],
+  ["addons/admin/packages/ui/src/components/attachment.tsx.hbs", `import { mergeProps } from "@base-ui/react/merge-props";
+import { useRender } from "@base-ui/react/use-render";
+import { Button } from "@{{projectName}}/ui/components/button";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
+import * as React from "react";
+
+const attachmentVariants = cva(
+  "group/attachment relative flex w-fit max-w-full min-w-0 shrink-0 flex-wrap rounded-none border bg-card text-card-foreground transition-colors focus-within:ring-1 focus-within:ring-ring/50 has-[>a,>button]:hover:bg-muted/50 data-[state=error]:border-destructive/30 data-[state=idle]:border-dashed",
+  {
+    variants: {
+      size: {
+        default:
+          "gap-2 text-xs has-data-[slot=attachment-content]:px-2 has-data-[slot=attachment-content]:py-1.5 has-data-[slot=attachment-media]:p-1.5",
+        sm: "gap-2.5 text-xs has-data-[slot=attachment-content]:px-1.5 has-data-[slot=attachment-content]:py-1 has-data-[slot=attachment-media]:p-1",
+        xs: "gap-1.5 rounded-none text-xs has-data-[slot=attachment-content]:px-1.5 has-data-[slot=attachment-content]:py-1 has-data-[slot=attachment-media]:p-1",
+      },
+      orientation: {
+        horizontal: "min-w-40 items-center",
+        vertical: "w-24 flex-col has-data-[slot=attachment-content]:w-30",
+      },
+    },
+  },
+);
+
+function Attachment({
+  className,
+  state = "done",
+  size = "default",
+  orientation = "horizontal",
+  ...props
+}: React.ComponentProps<"div"> &
+  VariantProps<typeof attachmentVariants> & {
+    state?: "idle" | "uploading" | "processing" | "error" | "done";
+  }) {
+  const resolvedOrientation = orientation ?? "horizontal";
+
+  return (
+    <div
+      data-slot="attachment"
+      data-state={state}
+      data-size={size}
+      data-orientation={resolvedOrientation}
+      className={cn(attachmentVariants({ size, orientation }), className)}
+      {...props}
+    />
+  );
+}
+
+const attachmentMediaVariants = cva(
+  "relative flex aspect-square w-10 shrink-0 items-center justify-center overflow-hidden rounded-none bg-muted text-foreground group-data-[orientation=vertical]/attachment:w-full group-data-[size=sm]/attachment:w-8 group-data-[size=xs]/attachment:w-7 group-data-[size=xs]/attachment:rounded-none group-data-[state=error]/attachment:bg-destructive/10 group-data-[state=error]/attachment:text-destructive group-data-[orientation=vertical]/attachment:*:data-[slot=spinner]:size-6! [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 group-data-[orientation=vertical]/attachment:[&_svg:not([class*='size-'])]:size-6 group-data-[size=xs]/attachment:[&_svg:not([class*='size-'])]:size-3.5",
+  {
+    variants: {
+      variant: {
+        icon: "",
+        image:
+          "opacity-60 group-data-[state=done]/attachment:opacity-100 group-data-[state=idle]/attachment:opacity-100 *:[img]:aspect-square *:[img]:w-full *:[img]:object-cover",
+      },
+    },
+    defaultVariants: {
+      variant: "icon",
+    },
+  },
+);
+
+function AttachmentMedia({
+  className,
+  variant = "icon",
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof attachmentMediaVariants>) {
+  return (
+    <div
+      data-slot="attachment-media"
+      data-variant={variant}
+      className={cn(attachmentMediaVariants({ variant }), className)}
+      {...props}
+    />
+  );
+}
+
+function AttachmentContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="attachment-content"
+      className={cn(
+        "max-w-full min-w-0 flex-1 leading-tight group-data-[orientation=vertical]/attachment:px-1",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function AttachmentTitle({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="attachment-title"
+      className={cn(
+        "block max-w-full min-w-0 truncate font-medium group-data-[state=processing]/attachment:shimmer group-data-[state=uploading]/attachment:shimmer",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function AttachmentDescription({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="attachment-description"
+      className={cn(
+        "mt-0.5 block min-w-0 truncate text-xs text-muted-foreground group-data-[state=error]/attachment:text-destructive/80",
+        "max-w-full",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function AttachmentActions({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="attachment-actions"
+      className={cn(
+        "relative z-20 flex shrink-0 items-center group-data-[orientation=vertical]/attachment:absolute group-data-[orientation=vertical]/attachment:top-3 group-data-[orientation=vertical]/attachment:right-3 group-data-[orientation=vertical]/attachment:gap-1",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function AttachmentAction({
+  className,
+  variant,
+  size = "icon-xs",
+  type = "button",
+  ...props
+}: React.ComponentProps<typeof Button>) {
+  return (
+    <Button
+      data-slot="attachment-action"
+      type={type}
+      variant={variant ?? "ghost"}
+      size={size}
+      className={cn(className)}
+      {...props}
+    />
+  );
+}
+
+function AttachmentTrigger({
+  className,
+  render,
+  type,
+  ...props
+}: useRender.ComponentProps<"button">) {
+  return useRender({
+    defaultTagName: "button",
+    props: mergeProps<"button">(
+      {
+        type: render ? type : (type ?? "button"),
+        className: cn("absolute inset-0 z-10 outline-none", className),
+      },
+      props,
+    ),
+    render,
+    state: {
+      slot: "attachment-trigger",
+    },
+  });
+}
+
+function AttachmentGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="attachment-group"
+      className={cn(
+        "flex min-w-0 scroll-fade-x snap-x snap-mandatory scroll-px-1 scrollbar-none gap-3 overflow-x-auto overscroll-x-contain py-1 *:data-[slot=attachment]:flex-none *:data-[slot=attachment]:snap-start",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export {
+  Attachment,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentContent,
+  AttachmentTitle,
+  AttachmentDescription,
+  AttachmentActions,
+  AttachmentAction,
+  AttachmentTrigger,
+};
+`],
+  ["addons/admin/packages/ui/src/components/avatar.tsx.hbs", `import * as React from "react"
+import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar"
+
+import { cn } from "@{{projectName}}/ui/lib/utils"
+
+function Avatar({
+  className,
+  size = "default",
+  ...props
+}: AvatarPrimitive.Root.Props & {
+  size?: "default" | "sm" | "lg"
+}) {
+  return (
+    <AvatarPrimitive.Root
+      data-slot="avatar"
+      data-size={size}
+      className={cn(
+        "group/avatar relative flex size-8 shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 dark:after:mix-blend-lighten",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function AvatarImage({ className, ...props }: AvatarPrimitive.Image.Props) {
+  return (
+    <AvatarPrimitive.Image
+      data-slot="avatar-image"
+      className={cn(
+        "aspect-square size-full rounded-full object-cover",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function AvatarFallback({
+  className,
+  ...props
+}: AvatarPrimitive.Fallback.Props) {
+  return (
+    <AvatarPrimitive.Fallback
+      data-slot="avatar-fallback"
+      className={cn(
+        "flex size-full items-center justify-center rounded-full bg-muted text-sm text-muted-foreground group-data-[size=sm]/avatar:text-xs",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function AvatarBadge({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="avatar-badge"
+      className={cn(
+        "absolute right-0 bottom-0 z-10 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground bg-blend-color ring-2 ring-background select-none",
+        "group-data-[size=sm]/avatar:size-2 group-data-[size=sm]/avatar:[&>svg]:hidden",
+        "group-data-[size=default]/avatar:size-2.5 group-data-[size=default]/avatar:[&>svg]:size-2",
+        "group-data-[size=lg]/avatar:size-3 group-data-[size=lg]/avatar:[&>svg]:size-2",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function AvatarGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="avatar-group"
+      className={cn(
+        "group/avatar-group flex -space-x-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:ring-background",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function AvatarGroupCount({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="avatar-group-count"
+      className={cn(
+        "relative flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground ring-2 ring-background group-has-data-[size=lg]/avatar-group:size-10 group-has-data-[size=sm]/avatar-group:size-6 [&>svg]:size-4 group-has-data-[size=lg]/avatar-group:[&>svg]:size-5 group-has-data-[size=sm]/avatar-group:[&>svg]:size-3",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export {
+  Avatar,
+  AvatarImage,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarGroupCount,
+  AvatarBadge,
+}
+`],
+  ["addons/admin/packages/ui/src/components/badge.tsx.hbs", `import { cn } from "@{{projectName}}/ui/lib/utils";
+import type * as React from "react";
+
+function Badge({
+  className,
+  variant = "default",
+  ...props
+}: React.ComponentProps<"span"> & {
+  variant?: "default" | "secondary" | "outline" | "destructive";
+}) {
+  const variants = {
+    default: "bg-primary text-primary-foreground",
+    destructive: "bg-destructive/15 text-destructive",
+    outline: "border border-border text-foreground",
+    secondary: "bg-secondary text-secondary-foreground",
+  } as const;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 font-medium text-xs",
+        variants[variant],
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Badge };
+`],
+  ["addons/admin/packages/ui/src/components/breadcrumb.tsx.hbs", `import * as React from "react"
+import { mergeProps } from "@base-ui/react/merge-props"
+import { useRender } from "@base-ui/react/use-render"
+
+import { cn } from "@{{projectName}}/ui/lib/utils"
+import { ChevronRightIcon, MoreHorizontalIcon } from "lucide-react"
+
+function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
+  return (
+    <nav
+      aria-label="breadcrumb"
+      data-slot="breadcrumb"
+      className={cn(className)}
+      {...props}
+    />
+  )
+}
+
+function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
+  return (
+    <ol
+      data-slot="breadcrumb-list"
+      className={cn(
+        "flex flex-wrap items-center gap-1.5 text-xs wrap-break-word text-muted-foreground",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
+  return (
+    <li
+      data-slot="breadcrumb-item"
+      className={cn("inline-flex items-center gap-1", className)}
+      {...props}
+    />
+  )
+}
+
+function BreadcrumbLink({
+  className,
+  render,
+  ...props
+}: useRender.ComponentProps<"a">) {
+  return useRender({
+    defaultTagName: "a",
+    props: mergeProps<"a">(
+      {
+        className: cn("transition-colors hover:text-foreground", className),
+      },
+      props
+    ),
+    render,
+    state: {
+      slot: "breadcrumb-link",
+    },
+  })
+}
+
+function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="breadcrumb-page"
+      role="link"
+      aria-disabled="true"
+      aria-current="page"
+      className={cn("font-normal text-foreground", className)}
+      {...props}
+    />
+  )
+}
+
+function BreadcrumbSeparator({
+  children,
+  className,
+  ...props
+}: React.ComponentProps<"li">) {
+  return (
+    <li
+      data-slot="breadcrumb-separator"
+      role="presentation"
+      aria-hidden="true"
+      className={cn("[&>svg]:size-3.5", className)}
+      {...props}
+    >
+      {children ?? (
+        <ChevronRightIcon />
+      )}
+    </li>
+  )
+}
+
+function BreadcrumbEllipsis({
+  className,
+  ...props
+}: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="breadcrumb-ellipsis"
+      role="presentation"
+      aria-hidden="true"
+      className={cn(
+        "flex size-5 items-center justify-center [&>svg]:size-4",
+        className
+      )}
+      {...props}
+    >
+      <MoreHorizontalIcon
+      />
+      <span className="sr-only">More</span>
+    </span>
+  )
+}
+
+export {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  BreadcrumbEllipsis,
+}
+`],
+  ["addons/admin/packages/ui/src/components/bubble.tsx.hbs", `import { mergeProps } from "@base-ui/react/merge-props";
+import { useRender } from "@base-ui/react/use-render";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
+import * as React from "react";
+
+function BubbleGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="bubble-group"
+      className={cn("flex min-w-0 flex-col gap-2", className)}
+      {...props}
+    />
+  );
+}
+
+const bubbleVariants = cva(
+  "group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full",
+  {
+    variants: {
+      variant: {
+        default:
+          "*:data-[slot=bubble-content]:bg-primary *:data-[slot=bubble-content]:text-primary-foreground [&>[data-slot=bubble-content]:is(button,a):hover]:bg-primary/80",
+        secondary:
+          "*:data-[slot=bubble-content]:bg-secondary *:data-[slot=bubble-content]:text-secondary-foreground [&>[data-slot=bubble-content]:is(button,a):hover]:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)]",
+        muted:
+          "*:data-[slot=bubble-content]:bg-muted [&>[data-slot=bubble-content]:is(button,a):hover]:bg-[color-mix(in_oklch,var(--muted),var(--foreground)_5%)]",
+        tinted:
+          "*:data-[slot=bubble-content]:bg-[oklch(from_var(--primary)_0.93_calc(c*0.4)_h)] *:data-[slot=bubble-content]:text-foreground dark:*:data-[slot=bubble-content]:bg-[oklch(from_var(--primary)_0.3_calc(c*0.4)_h)] [&>[data-slot=bubble-content]:is(button,a):hover]:bg-[oklch(from_var(--primary)_0.88_calc(c*0.5)_h)] dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-[oklch(from_var(--primary)_0.35_calc(c*0.5)_h)]",
+        outline:
+          "*:data-[slot=bubble-content]:border-border *:data-[slot=bubble-content]:bg-background [&>[data-slot=bubble-content]:is(button,a):hover]:bg-muted [&>[data-slot=bubble-content]:is(button,a):hover]:text-foreground dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-input/30",
+        ghost:
+          "border-none *:data-[slot=bubble-content]:rounded-none *:data-[slot=bubble-content]:bg-transparent *:data-[slot=bubble-content]:p-0 [&>[data-slot=bubble-content]:is(button,a):hover]:bg-muted [&>[data-slot=bubble-content]:is(button,a):hover]:text-foreground dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-muted/50",
+        destructive:
+          "*:data-[slot=bubble-content]:bg-destructive/10 *:data-[slot=bubble-content]:text-destructive dark:*:data-[slot=bubble-content]:bg-destructive/20 [&>[data-slot=bubble-content]:is(button,a):hover]:bg-destructive/20 dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-destructive/30",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  },
+);
+
+function Bubble({
+  variant = "default",
+  align = "start",
+  className,
+  ...props
+}: React.ComponentProps<"div"> &
+  VariantProps<typeof bubbleVariants> & {
+    align?: "start" | "end";
+  }) {
+  return (
+    <div
+      data-slot="bubble"
+      data-variant={variant}
+      data-align={align}
+      className={cn(bubbleVariants({ variant }), className)}
+      {...props}
+    />
+  );
+}
+
+function BubbleContent({ className, render, ...props }: useRender.ComponentProps<"div">) {
+  return useRender({
+    defaultTagName: "div",
+    props: mergeProps<"div">(
+      {
+        className: cn(
+          "w-fit max-w-full min-w-0 overflow-hidden rounded-none border border-transparent px-2.5 py-2 text-xs leading-relaxed wrap-break-word group-data-[align=end]/bubble:self-end [button]:text-left [button,a]:transition-colors [button,a]:outline-none [button,a]:focus-visible:border-ring [button,a]:focus-visible:ring-1 [button,a]:focus-visible:ring-ring/50",
+          className,
+        ),
+      },
+      props,
+    ),
+    render,
+    state: {
+      slot: "bubble-content",
+    },
+  });
+}
+
+const bubbleReactionsVariants = cva(
+  "absolute z-10 flex w-fit shrink-0 items-center justify-center gap-1 rounded-none bg-muted px-1.5 py-0.5 text-xs ring-2 ring-card has-[button]:p-0",
+  {
+    variants: {
+      side: {
+        top: "top-0 -translate-y-3/4",
+        bottom: "bottom-0 translate-y-3/4",
+      },
+      align: {
+        start: "left-3",
+        end: "right-3",
+      },
+    },
+    defaultVariants: {
+      side: "bottom",
+      align: "end",
+    },
+  },
+);
+
+function BubbleReactions({
+  side = "bottom",
+  align = "end",
+  className,
+  ...props
+}: React.ComponentProps<"div"> & {
+  align?: "start" | "end";
+  side?: "top" | "bottom";
+}) {
+  return (
+    <div
+      data-slot="bubble-reactions"
+      data-align={align}
+      data-side={side}
+      className={cn(bubbleReactionsVariants({ side, align }), className)}
+      {...props}
+    />
+  );
+}
+
+export { BubbleGroup, Bubble, BubbleContent, BubbleReactions };
+`],
+  ["addons/admin/packages/ui/src/components/button.tsx.hbs", `import { Button as ButtonPrimitive } from "@base-ui/react/button";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
+
+const buttonVariants = cva(
+  "group/button inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap rounded-md border border-transparent bg-clip-padding font-medium text-sm outline-none transition-[color,background-color,border-color,box-shadow,transform] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  {
+    defaultVariants: {
+      size: "default",
+      variant: "default",
+    },
+    variants: {
+      size: {
+        default:
+          "h-9 gap-2 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
+        icon: "size-9 rounded-md",
+        "icon-lg": "size-10 rounded-md",
+        "icon-sm": "size-8 rounded-md",
+        "icon-xs": "size-7 rounded-md [&_svg:not([class*='size-'])]:size-3",
+        lg: "h-10 gap-2 rounded-md px-6",
+        sm: "h-8 gap-1.5 rounded-md px-3 text-xs [&_svg:not([class*='size-'])]:size-3.5",
+        xs: "h-7 gap-1 rounded-md px-2 text-xs [&_svg:not([class*='size-'])]:size-3",
+      },
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        destructive:
+          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 dark:hover:bg-destructive/30",
+        ghost:
+          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+        link: "text-primary underline-offset-4 hover:underline",
+        outline:
+          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+      },
+    },
+  }
+);
+
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  ...props
+}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  return (
+    <ButtonPrimitive
+      className={cn(buttonVariants({ className, size, variant }))}
+      data-slot="button"
+      {...props}
+    />
+  );
+}
+
+export { Button, buttonVariants };
+`],
+  ["addons/admin/packages/ui/src/components/card.tsx.hbs", `import { cn } from "@{{projectName}}/ui/lib/utils";
+import type * as React from "react";
+
+function Card({
+  className,
+  size = "default",
+  ...props
+}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+  return (
+    <div
+      className={cn(
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl border bg-card py-(--card-spacing) text-card-foreground shadow-sm [--card-spacing:--spacing(6)] has-[>img:first-child]:pt-0 has-data-[slot=card-footer]:pb-0 data-[size=sm]:has-data-[slot=card-footer]:pb-0 data-[size=sm]:[--card-spacing:--spacing(4)] *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+        className
+      )}
+      data-size={size}
+      data-slot="card"
+      {...props}
+    />
+  );
+}
+
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "group/card-header @container/card-header grid auto-rows-min items-start gap-1.5 px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)",
+        className
+      )}
+      data-slot="card-header"
+      {...props}
+    />
+  );
+}
+
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "font-semibold leading-none tracking-tight group-data-[size=sm]/card:text-sm",
+        className
+      )}
+      data-slot="card-title"
+      {...props}
+    />
+  );
+}
+
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("text-muted-foreground text-sm", className)}
+      data-slot="card-description"
+      {...props}
+    />
+  );
+}
+
+function CardAction({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
+        className
+      )}
+      data-slot="card-action"
+      {...props}
+    />
+  );
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("px-(--card-spacing)", className)}
+      data-slot="card-content"
+      {...props}
+    />
+  );
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("flex items-center border-t p-(--card-spacing)", className)}
+      data-slot="card-footer"
+      {...props}
+    />
+  );
+}
+
+export {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+};
+`],
+  ["addons/admin/packages/ui/src/components/checkbox.tsx.hbs", `"use client";
+
+import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import { CheckIcon } from "lucide-react";
+
+function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
+  return (
+    <CheckboxPrimitive.Root
+      data-slot="checkbox"
+      className={cn(
+        "peer relative flex size-4 shrink-0 items-center justify-center rounded-none border border-input transition-colors outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary",
+        className,
+      )}
+      {...props}
+    >
+      <CheckboxPrimitive.Indicator
+        data-slot="checkbox-indicator"
+        className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
+      >
+        <CheckIcon />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
+  );
+}
+
+export { Checkbox };
+`],
+  ["addons/admin/packages/ui/src/components/collapsible.tsx", `import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
+
+function Collapsible({ ...props }: CollapsiblePrimitive.Root.Props) {
+  return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />;
+}
+
+function CollapsibleTrigger({ ...props }: CollapsiblePrimitive.Trigger.Props) {
+  return <CollapsiblePrimitive.Trigger data-slot="collapsible-trigger" {...props} />;
+}
+
+function CollapsibleContent({ ...props }: CollapsiblePrimitive.Panel.Props) {
+  return <CollapsiblePrimitive.Panel data-slot="collapsible-content" {...props} />;
+}
+
+export { Collapsible, CollapsibleTrigger, CollapsibleContent };
+`],
+  ["addons/admin/packages/ui/src/components/dialog.tsx.hbs", `"use client";
+
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { Button } from "@{{projectName}}/ui/components/button";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import { XIcon } from "lucide-react";
+import type * as React from "react";
+
+function Dialog(props: DialogPrimitive.Root.Props) {
+  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+}
+function DialogTrigger(props: DialogPrimitive.Trigger.Props) {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
+}
+function DialogPortal(props: DialogPrimitive.Portal.Props) {
+  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
+}
+function DialogClose(props: DialogPrimitive.Close.Props) {
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
+}
+function DialogOverlay({
+  className,
+  ...props
+}: DialogPrimitive.Backdrop.Props) {
+  return (
+    <DialogPrimitive.Backdrop
+      className={cn(
+        "data-open:fade-in-0 data-closed:fade-out-0 fixed inset-0 isolate z-50 bg-black/10 duration-100 data-closed:animate-out data-open:animate-in supports-backdrop-filter:backdrop-blur-xs",
+        className
+      )}
+      data-slot="dialog-overlay"
+      {...props}
+    />
+  );
+}
+function DialogContent({
+  className,
+  children,
+  showCloseButton = true,
+  ...props
+}: DialogPrimitive.Popup.Props & { showCloseButton?: boolean }) {
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Popup
+        className={cn(
+          "data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-none bg-popover p-4 text-popover-foreground text-xs/relaxed outline-none ring-1 ring-foreground/10 duration-100 data-closed:animate-out data-open:animate-in sm:max-w-sm",
+          className
+        )}
+        data-slot="dialog-content"
+        {...props}
+      >
+        {children}
+        {showCloseButton ? (
+          <DialogPrimitive.Close
+            data-slot="dialog-close"
+            render={
+              <Button
+                className="absolute top-2 right-2"
+                size="icon-sm"
+                variant="ghost"
+              />
+            }
+          >
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        ) : null}
+      </DialogPrimitive.Popup>
+    </DialogPortal>
+  );
+}
+function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("flex flex-col gap-1 text-left", className)}
+      data-slot="dialog-header"
+      {...props}
+    />
+  );
+}
+function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        className
+      )}
+      data-slot="dialog-footer"
+      {...props}
+    />
+  );
+}
+function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
+  return (
+    <DialogPrimitive.Title
+      className={cn("cn-font-heading font-medium text-sm", className)}
+      data-slot="dialog-title"
+      {...props}
+    />
+  );
+}
+function DialogDescription({
+  className,
+  ...props
+}: DialogPrimitive.Description.Props) {
+  return (
+    <DialogPrimitive.Description
+      className={cn("text-muted-foreground text-xs/relaxed", className)}
+      data-slot="dialog-description"
+      {...props}
+    />
+  );
+}
+
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
+};
+`],
+  ["addons/admin/packages/ui/src/components/dropdown-menu.tsx.hbs", `"use client";
+
+import { Menu as MenuPrimitive } from "@base-ui/react/menu";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import { ChevronRightIcon, CheckIcon } from "lucide-react";
+import * as React from "react";
+
+function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
+  return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
+}
+
+function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
+  return <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />;
+}
+
+function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
+  return <MenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />;
+}
+
+function DropdownMenuContent({
+  align = "start",
+  alignOffset = 0,
+  side = "bottom",
+  sideOffset = 4,
+  className,
+  ...props
+}: MenuPrimitive.Popup.Props &
+  Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">) {
+  return (
+    <MenuPrimitive.Portal>
+      <MenuPrimitive.Positioner
+        className="isolate z-50 outline-none"
+        align={align}
+        alignOffset={alignOffset}
+        side={side}
+        sideOffset={sideOffset}
+      >
+        <MenuPrimitive.Popup
+          data-slot="dropdown-menu-content"
+          className={cn(
+            "cn-menu-target cn-menu-translucent z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-none bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95",
+            className,
+          )}
+          {...props}
+        />
+      </MenuPrimitive.Positioner>
+    </MenuPrimitive.Portal>
+  );
+}
+
+function DropdownMenuGroup({ ...props }: MenuPrimitive.Group.Props) {
+  return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />;
+}
+
+function DropdownMenuLabel({
+  className,
+  inset,
+  ...props
+}: MenuPrimitive.GroupLabel.Props & {
+  inset?: boolean;
+}) {
+  return (
+    <MenuPrimitive.GroupLabel
+      data-slot="dropdown-menu-label"
+      data-inset={inset}
+      className={cn("px-2 py-2 text-xs text-muted-foreground data-inset:pl-7", className)}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuItem({
+  className,
+  inset,
+  variant = "default",
+  ...props
+}: MenuPrimitive.Item.Props & {
+  inset?: boolean;
+  variant?: "default" | "destructive";
+}) {
+  return (
+    <MenuPrimitive.Item
+      data-slot="dropdown-menu-item"
+      data-inset={inset}
+      data-variant={variant}
+      className={cn(
+        "group/dropdown-menu-item relative flex cursor-default items-center gap-2 rounded-none px-2 py-2 text-xs outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
+  return <MenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />;
+}
+
+function DropdownMenuSubTrigger({
+  className,
+  inset,
+  children,
+  ...props
+}: MenuPrimitive.SubmenuTrigger.Props & {
+  inset?: boolean;
+}) {
+  return (
+    <MenuPrimitive.SubmenuTrigger
+      data-slot="dropdown-menu-sub-trigger"
+      data-inset={inset}
+      className={cn(
+        "flex cursor-default items-center gap-2 rounded-none px-2 py-2 text-xs outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-popup-open:bg-accent data-popup-open:text-accent-foreground data-open:bg-accent data-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRightIcon className="cn-rtl-flip ml-auto" />
+    </MenuPrimitive.SubmenuTrigger>
+  );
+}
+
+function DropdownMenuSubContent({
+  align = "start",
+  alignOffset = -3,
+  side = "right",
+  sideOffset = 0,
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuContent>) {
+  return (
+    <DropdownMenuContent
+      data-slot="dropdown-menu-sub-content"
+      className={cn(
+        "cn-menu-target cn-menu-translucent w-auto min-w-[96px] rounded-none bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+        className,
+      )}
+      align={align}
+      alignOffset={alignOffset}
+      side={side}
+      sideOffset={sideOffset}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuCheckboxItem({
+  className,
+  children,
+  checked,
+  inset,
+  ...props
+}: MenuPrimitive.CheckboxItem.Props & {
+  inset?: boolean;
+}) {
+  return (
+    <MenuPrimitive.CheckboxItem
+      data-slot="dropdown-menu-checkbox-item"
+      data-inset={inset}
+      className={cn(
+        "relative flex cursor-default items-center gap-2 rounded-none py-2 pr-8 pl-2 text-xs outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      checked={checked}
+      {...props}
+    >
+      <span
+        className="pointer-events-none absolute right-2 flex items-center justify-center"
+        data-slot="dropdown-menu-checkbox-item-indicator"
+      >
+        <MenuPrimitive.CheckboxItemIndicator>
+          <CheckIcon />
+        </MenuPrimitive.CheckboxItemIndicator>
+      </span>
+      {children}
+    </MenuPrimitive.CheckboxItem>
+  );
+}
+
+function DropdownMenuRadioGroup({ ...props }: MenuPrimitive.RadioGroup.Props) {
+  return <MenuPrimitive.RadioGroup data-slot="dropdown-menu-radio-group" {...props} />;
+}
+
+function DropdownMenuRadioItem({
+  className,
+  children,
+  inset,
+  ...props
+}: MenuPrimitive.RadioItem.Props & {
+  inset?: boolean;
+}) {
+  return (
+    <MenuPrimitive.RadioItem
+      data-slot="dropdown-menu-radio-item"
+      data-inset={inset}
+      className={cn(
+        "relative flex cursor-default items-center gap-2 rounded-none py-2 pr-8 pl-2 text-xs outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    >
+      <span
+        className="pointer-events-none absolute right-2 flex items-center justify-center"
+        data-slot="dropdown-menu-radio-item-indicator"
+      >
+        <MenuPrimitive.RadioItemIndicator>
+          <CheckIcon />
+        </MenuPrimitive.RadioItemIndicator>
+      </span>
+      {children}
+    </MenuPrimitive.RadioItem>
+  );
+}
+
+function DropdownMenuSeparator({ className, ...props }: MenuPrimitive.Separator.Props) {
+  return (
+    <MenuPrimitive.Separator
+      data-slot="dropdown-menu-separator"
+      className={cn("-mx-1 h-px bg-border", className)}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="dropdown-menu-shortcut"
+      className={cn(
+        "ml-auto text-xs tracking-widest text-muted-foreground group-focus/dropdown-menu-item:text-accent-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export {
+  DropdownMenu,
+  DropdownMenuPortal,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+};
+`],
+  ["addons/admin/packages/ui/src/components/empty.tsx.hbs", `import { cn } from "@{{projectName}}/ui/lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
+
+function Empty({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="empty"
+      className={cn(
+        "flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 rounded-none border-dashed p-6 text-center text-balance md:p-12",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function EmptyHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="empty-header"
+      className={cn("flex max-w-sm flex-col items-center gap-2", className)}
+      {...props}
+    />
+  );
+}
+
+const emptyMediaVariants = cva(
+  "mb-2 flex shrink-0 items-center justify-center [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  {
+    variants: {
+      variant: {
+        default: "bg-transparent",
+        icon: "flex size-10 shrink-0 items-center justify-center rounded-none bg-muted text-foreground [&_svg:not([class*='size-'])]:size-5",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  },
+);
+
+function EmptyMedia({
+  className,
+  variant = "default",
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof emptyMediaVariants>) {
+  return (
+    <div
+      data-slot="empty-icon"
+      data-variant={variant}
+      className={cn(emptyMediaVariants({ variant, className }))}
+      {...props}
+    />
+  );
+}
+
+function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="empty-title"
+      className={cn("cn-font-heading text-sm font-medium tracking-tight", className)}
+      {...props}
+    />
+  );
+}
+
+function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
+  return (
+    <div
+      data-slot="empty-description"
+      className={cn(
+        "text-sm/relaxed text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="empty-content"
+      className={cn(
+        "flex w-full max-w-sm min-w-0 flex-col items-center gap-4 text-sm text-balance",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMedia };
+`],
+  ["addons/admin/packages/ui/src/components/input-group.tsx.hbs", `"use client";
+
+import { Button } from "@{{projectName}}/ui/components/button";
+import { Input } from "@{{projectName}}/ui/components/input";
+import { Textarea } from "@{{projectName}}/ui/components/textarea";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
+import * as React from "react";
+
+function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="input-group"
+      role="group"
+      className={cn(
+        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-none border border-input bg-background shadow-xs transition-[color,box-shadow] outline-none has-[>textarea]:h-auto dark:bg-input/30",
+        "has-[>[data-align=inline-start]]:[&>input]:pl-2 has-[>[data-align=inline-end]]:[&>input]:pr-2",
+        "has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>[data-align=block-start]]:[&>input]:pb-3",
+        "has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-end]]:[&>input]:pt-3",
+        "has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50",
+        "has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-1 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+const inputGroupAddonVariants = cva(
+  "flex h-auto cursor-text select-none items-center justify-center gap-2 py-1.5 text-xs font-medium text-muted-foreground group-data-[disabled=true]/input-group:opacity-50 [&>kbd]:rounded-none [&>svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      align: {
+        "inline-start": "order-first pl-2 has-[>button]:ml-[-0.3rem] has-[>kbd]:ml-[-0.15rem]",
+        "inline-end": "order-last pr-2 has-[>button]:mr-[-0.3rem] has-[>kbd]:mr-[-0.15rem]",
+        "block-start":
+          "order-first w-full justify-start px-2.5 pt-2 group-has-[>input]/input-group:pt-2 [.border-b]:pb-2",
+        "block-end":
+          "order-last w-full justify-start px-2.5 pb-2 group-has-[>input]/input-group:pb-2 [.border-t]:pt-2",
+      },
+    },
+    defaultVariants: {
+      align: "inline-start",
+    },
+  },
+);
+
+function InputGroupAddon({
+  className,
+  align = "inline-start",
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
+  return (
+    <div
+      role="group"
+      data-slot="input-group-addon"
+      data-align={align}
+      className={cn(inputGroupAddonVariants({ align }), className)}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button")) {
+          return;
+        }
+        e.currentTarget.parentElement
+          ?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea")
+          ?.focus();
+      }}
+      {...props}
+    />
+  );
+}
+
+const inputGroupButtonVariants = cva("flex items-center gap-2 text-xs shadow-none", {
+  variants: {
+    size: {
+      xs: "h-6 gap-1 rounded-none px-1.5 [&>svg:not([class*='size-'])]:size-3.5",
+      sm: "h-7 gap-1 rounded-none px-2",
+      "icon-xs": "size-6 rounded-none p-0 has-[>svg]:p-0",
+      "icon-sm": "size-7 rounded-none p-0 has-[>svg]:p-0",
+    },
+  },
+  defaultVariants: {
+    size: "xs",
+  },
+});
+
+function InputGroupButton({
+  className,
+  type = "button",
+  variant = "ghost",
+  size = "xs",
+  ...props
+}: Omit<React.ComponentProps<typeof Button>, "size" | "type"> &
+  VariantProps<typeof inputGroupButtonVariants> & {
+    type?: "button" | "submit" | "reset";
+  }) {
+  return (
+    <Button
+      type={type}
+      data-size={size}
+      variant={variant}
+      className={cn(inputGroupButtonVariants({ size }), className)}
+      {...props}
+    />
+  );
+}
+
+function InputGroupText({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      className={cn(
+        "flex items-center gap-2 text-xs text-muted-foreground [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function InputGroupInput({ className, ...props }: React.ComponentProps<"input">) {
+  return (
+    <Input
+      data-slot="input-group-control"
+      className={cn(
+        "flex-1 rounded-none border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function InputGroupTextarea({ className, ...props }: React.ComponentProps<"textarea">) {
+  return (
+    <Textarea
+      data-slot="input-group-control"
+      className={cn(
+        "flex-1 resize-none rounded-none border-0 bg-transparent py-2 shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupText,
+  InputGroupInput,
+  InputGroupTextarea,
+};
+`],
+  ["addons/admin/packages/ui/src/components/input.tsx.hbs", `import { Input as InputPrimitive } from "@base-ui/react/input";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import type * as React from "react";
+
+function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+  return (
+    <InputPrimitive
+      className={cn(
+        "h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] file:inline-flex file:h-7 file:border-0 file:bg-transparent file:font-medium file:text-foreground file:text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 dark:disabled:bg-input/80",
+        className
+      )}
+      data-slot="input"
+      type={type}
+      {...props}
+    />
+  );
+}
+
+export { Input };
+`],
+  ["addons/admin/packages/ui/src/components/label.tsx.hbs", `"use client";
+
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import * as React from "react";
+
+function Label({ className, ...props }: React.ComponentProps<"label">) {
+  return (
+    <label
+      data-slot="label"
+      className={cn(
+        "flex items-center gap-2 text-xs leading-none select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Label };
+`],
+  ["addons/admin/packages/ui/src/components/marker.tsx.hbs", `import { mergeProps } from "@base-ui/react/merge-props";
+import { useRender } from "@base-ui/react/use-render";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
+import * as React from "react";
+
+const markerVariants = cva(
+  "group/marker relative flex min-h-4 w-full items-center gap-2 text-left text-xs text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5 [a]:underline [a]:underline-offset-3 [a]:hover:text-foreground",
+  {
+    variants: {
+      variant: {
+        default: "",
+        separator:
+          "before:mr-1 before:h-px before:min-w-0 before:flex-1 before:bg-border after:ml-1 after:h-px after:min-w-0 after:flex-1 after:bg-border",
+        border: "border-b border-border pb-2",
+      },
+    },
+  },
+);
+
+function Marker({
+  className,
+  variant = "default",
+  render,
+  ...props
+}: useRender.ComponentProps<"div"> & VariantProps<typeof markerVariants>) {
+  return useRender({
+    defaultTagName: "div",
+    props: mergeProps<"div">(
+      {
+        className: cn(markerVariants({ variant, className })),
+      },
+      props,
+    ),
+    render,
+    state: {
+      slot: "marker",
+      variant,
+    },
+  });
+}
+
+function MarkerIcon({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="marker-icon"
+      aria-hidden="true"
+      className={cn("size-3.5 shrink-0 [&_svg:not([class*='size-'])]:size-3.5", className)}
+      {...props}
+    />
+  );
+}
+
+function MarkerContent({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="marker-content"
+      className={cn(
+        "min-w-0 wrap-break-word group-data-[variant=separator]/marker:flex-none group-data-[variant=separator]/marker:text-center *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Marker, MarkerIcon, MarkerContent, markerVariants };
+`],
+  ["addons/admin/packages/ui/src/components/message-scroller.tsx.hbs", `"use client";
+
+import { Button } from "@{{projectName}}/ui/components/button";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+import {
+  MessageScroller as MessageScrollerPrimitive,
+  useMessageScroller,
+  useMessageScrollerScrollable,
+  useMessageScrollerVisibility,
+} from "@shadcn/react/message-scroller";
+import { ArrowDownIcon } from "lucide-react";
+import * as React from "react";
+
+function MessageScrollerProvider(
+  props: React.ComponentProps<typeof MessageScrollerPrimitive.Provider>,
+) {
+  return <MessageScrollerPrimitive.Provider {...props} />;
+}
+
+function MessageScroller({
+  className,
+  ...props
+}: React.ComponentProps<typeof MessageScrollerPrimitive.Root>) {
+  return (
+    <MessageScrollerPrimitive.Root
+      data-slot="message-scroller"
+      className={cn(
+        "cn-message-scroller group/message-scroller relative flex size-full min-h-0 flex-col overflow-hidden",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function MessageScrollerViewport({
+  className,
+  ...props
+}: React.ComponentProps<typeof MessageScrollerPrimitive.Viewport>) {
+  return (
+    <MessageScrollerPrimitive.Viewport
+      data-slot="message-scroller-viewport"
+      className={cn(
+        "cn-message-scroller-viewport size-full min-h-0 min-w-0 scroll-fade-b scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content data-autoscrolling:scrollbar-none",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function MessageScrollerContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof MessageScrollerPrimitive.Content>) {
+  return (
+    <MessageScrollerPrimitive.Content
+      data-slot="message-scroller-content"
+      className={cn("cn-message-scroller-content flex h-max min-h-full flex-col gap-6", className)}
+      {...props}
+    />
+  );
+}
+
+function MessageScrollerItem({
+  className,
+  scrollAnchor = false,
+  ...props
+}: React.ComponentProps<typeof MessageScrollerPrimitive.Item>) {
+  return (
+    <MessageScrollerPrimitive.Item
+      data-slot="message-scroller-item"
+      scrollAnchor={scrollAnchor}
+      className={cn(
+        "cn-message-scroller-item min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function MessageScrollerButton({
+  direction = "end",
+  className,
+  children,
+  render,
+  variant = "secondary",
+  size = "icon-sm",
+  ...props
+}: React.ComponentProps<typeof MessageScrollerPrimitive.Button> &
+  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
+  return (
+    <MessageScrollerPrimitive.Button
+      data-slot="message-scroller-button"
+      data-direction={direction}
+      data-variant={variant}
+      data-size={size}
+      direction={direction}
+      className={cn(
+        "cn-message-scroller-button absolute inset-s-1/2 -translate-x-1/2 border-border bg-background text-foreground transition-[translate,scale,opacity] duration-200 hover:bg-muted hover:text-foreground data-[active=false]:pointer-events-none data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=false]:duration-400 data-[active=false]:ease-[cubic-bezier(0.7,0,0.84,0)] data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100 data-[active=true]:ease-[cubic-bezier(0.23,1,0.32,1)] data-[direction=end]:bottom-4 data-[direction=end]:data-[active=false]:translate-y-full data-[direction=start]:top-4 data-[direction=start]:data-[active=false]:-translate-y-full rtl:translate-x-1/2 data-[direction=start]:[&_svg]:rotate-180",
+        className,
+      )}
+      render={render ?? <Button variant={variant} size={size} />}
+      {...props}
+    >
+      {children ?? (
+        <>
+          <ArrowDownIcon />
+          <span className="sr-only">
+            {direction === "end" ? "Scroll to end" : "Scroll to start"}
+          </span>
+        </>
+      )}
+    </MessageScrollerPrimitive.Button>
+  );
+}
+
+export {
+  MessageScrollerProvider,
+  MessageScroller,
+  MessageScrollerViewport,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerButton,
+  useMessageScroller,
+  useMessageScrollerScrollable,
+  useMessageScrollerVisibility,
+};
+`],
+  ["addons/admin/packages/ui/src/components/message.tsx.hbs", `import { cn } from "@{{projectName}}/ui/lib/utils";
+import * as React from "react";
+
+function MessageGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="message-group"
+      className={cn("flex min-w-0 flex-col gap-1.5", className)}
+      {...props}
+    />
+  );
+}
+
+function Message({
+  className,
+  align = "start",
+  ...props
+}: React.ComponentProps<"div"> & { align?: "start" | "end" }) {
+  return (
+    <div
+      data-slot="message"
+      data-align={align}
+      className={cn(
+        "group/message relative flex w-full min-w-0 gap-1.5 text-xs data-[align=end]:flex-row-reverse",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function MessageAvatar({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="message-avatar"
+      className={cn(
+        "flex w-fit min-w-8 shrink-0 items-center justify-center self-end overflow-hidden rounded-full bg-muted group-has-data-[slot=message-footer]/message:-translate-y-8",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function MessageContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="message-content"
+      className={cn(
+        "flex w-full min-w-0 flex-col gap-2 wrap-break-word group-data-[align=end]/message:*:data-slot:self-end",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function MessageHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="message-header"
+      className={cn(
+        "flex max-w-full min-w-0 items-center px-2.5 text-xs font-medium text-muted-foreground group-has-data-[variant=ghost]/message:px-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function MessageFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="message-footer"
+      className={cn(
+        "flex max-w-full min-w-0 items-center px-2.5 text-xs font-medium text-muted-foreground group-has-data-[variant=ghost]/message:px-0 group-data-[align=end]/message:justify-end",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { MessageGroup, Message, MessageAvatar, MessageContent, MessageFooter, MessageHeader };
+`],
+  ["addons/admin/packages/ui/src/components/native-textarea.tsx.hbs", `import { cn } from "@{{projectName}}/ui/lib/utils";
+import type * as React from "react";
+
+function NativeTextarea({
+  className,
+  ...props
+}: React.ComponentProps<"textarea">) {
+  return (
+    <textarea
+      className={cn(
+        "min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+export { NativeTextarea };
+`],
+  ["addons/admin/packages/ui/src/components/scroll-area.tsx.hbs", `"use client";
+
+import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+
+function ScrollArea({
+  className,
+  children,
+  ...props
+}: ScrollAreaPrimitive.Root.Props) {
+  return (
+    <ScrollAreaPrimitive.Root
+      className={cn("relative", className)}
+      data-slot="scroll-area"
+      {...props}
+    >
+      <ScrollAreaPrimitive.Viewport
+        className="size-full rounded-[inherit] outline-none transition-[color,box-shadow] focus-visible:outline-1 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        data-slot="scroll-area-viewport"
+      >
+        {children}
+      </ScrollAreaPrimitive.Viewport>
+      <ScrollBar />
+      <ScrollAreaPrimitive.Corner />
+    </ScrollAreaPrimitive.Root>
+  );
+}
+function ScrollBar({
+  className,
+  orientation = "vertical",
+  ...props
+}: ScrollAreaPrimitive.Scrollbar.Props) {
+  return (
+    <ScrollAreaPrimitive.Scrollbar
+      className={cn(
+        "flex touch-none select-none p-px transition-colors data-horizontal:h-2.5 data-vertical:h-full data-vertical:w-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:border-l data-vertical:border-l-transparent",
+        className
+      )}
+      data-orientation={orientation}
+      data-slot="scroll-area-scrollbar"
+      orientation={orientation}
+      {...props}
+    >
+      <ScrollAreaPrimitive.Thumb
+        className="relative flex-1 rounded-none bg-border"
+        data-slot="scroll-area-thumb"
+      />
+    </ScrollAreaPrimitive.Scrollbar>
+  );
+}
+
+export { ScrollArea, ScrollBar };
+`],
+  ["addons/admin/packages/ui/src/components/separator.tsx.hbs", `import { Separator as SeparatorPrimitive } from "@base-ui/react/separator"
+
+import { cn } from "@{{projectName}}/ui/lib/utils"
+
+function Separator({
+  className,
+  orientation = "horizontal",
+  ...props
+}: SeparatorPrimitive.Props) {
+  return (
+    <SeparatorPrimitive
+      data-slot="separator"
+      orientation={orientation}
+      className={cn(
+        "shrink-0 bg-border data-horizontal:h-px data-horizontal:w-full data-vertical:w-px data-vertical:self-stretch",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Separator }
+`],
+  ["addons/admin/packages/ui/src/components/sheet.tsx.hbs", `"use client"
+
+import * as React from "react"
+import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
+
+import { cn } from "@{{projectName}}/ui/lib/utils"
+import { Button } from "@{{projectName}}/ui/components/button"
+import { XIcon } from "lucide-react"
+
+function Sheet({ ...props }: SheetPrimitive.Root.Props) {
+  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+}
+
+function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props) {
+  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
+}
+
+function SheetClose({ ...props }: SheetPrimitive.Close.Props) {
+  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
+}
+
+function SheetPortal({ ...props }: SheetPrimitive.Portal.Props) {
+  return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />
+}
+
+function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
+  return (
+    <SheetPrimitive.Backdrop
+      data-slot="sheet-overlay"
+      className={cn(
+        "fixed inset-0 z-50 bg-black/10 text-xs/relaxed transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function SheetContent({
+  className,
+  children,
+  side = "right",
+  showCloseButton = true,
+  ...props
+}: SheetPrimitive.Popup.Props & {
+  side?: "top" | "right" | "bottom" | "left"
+  showCloseButton?: boolean
+}) {
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Popup
+        data-slot="sheet-content"
+        data-side={side}
+        className={cn(
+          "fixed z-50 flex flex-col bg-popover bg-clip-padding text-xs/relaxed text-popover-foreground shadow-lg transition duration-200 ease-in-out data-ending-style:opacity-0 data-starting-style:opacity-0 data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=bottom]:data-ending-style:translate-y-[2.5rem] data-[side=bottom]:data-starting-style:translate-y-[2.5rem] data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=left]:data-ending-style:translate-x-[-2.5rem] data-[side=left]:data-starting-style:translate-x-[-2.5rem] data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=right]:data-ending-style:translate-x-[2.5rem] data-[side=right]:data-starting-style:translate-x-[2.5rem] data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=top]:data-ending-style:translate-y-[-2.5rem] data-[side=top]:data-starting-style:translate-y-[-2.5rem] data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton && (
+          <SheetPrimitive.Close
+            data-slot="sheet-close"
+            render={
+              <Button
+                variant="ghost"
+                className="absolute top-3 right-3"
+                size="icon-sm"
+              />
+            }
+          >
+            <XIcon
+            />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+        )}
+      </SheetPrimitive.Popup>
+    </SheetPortal>
+  )
+}
+
+function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sheet-header"
+      className={cn("flex flex-col gap-0.5 p-4", className)}
+      {...props}
+    />
+  )
+}
+
+function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sheet-footer"
+      className={cn("mt-auto flex flex-col gap-2 p-4", className)}
+      {...props}
+    />
+  )
+}
+
+function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
+  return (
+    <SheetPrimitive.Title
+      data-slot="sheet-title"
+      className={cn(
+        "text-sm font-medium text-foreground",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function SheetDescription({
+  className,
+  ...props
+}: SheetPrimitive.Description.Props) {
+  return (
+    <SheetPrimitive.Description
+      data-slot="sheet-description"
+      className={cn("text-xs/relaxed text-muted-foreground", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Sheet,
+  SheetTrigger,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+}
+`],
+  ["addons/admin/packages/ui/src/components/sidebar.tsx.hbs", `import * as React from "react"
+import { mergeProps } from "@base-ui/react/merge-props"
+import { useRender } from "@base-ui/react/use-render"
+import { cva, type VariantProps } from "class-variance-authority"
+
+import { useIsMobile } from "@{{projectName}}/ui/hooks/use-mobile"
+import { cn } from "@{{projectName}}/ui/lib/utils"
+import { Button } from "@{{projectName}}/ui/components/button"
+import { Input } from "@{{projectName}}/ui/components/input"
+import { Separator } from "@{{projectName}}/ui/components/separator"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@{{projectName}}/ui/components/sheet"
+import { Skeleton } from "@{{projectName}}/ui/components/skeleton"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@{{projectName}}/ui/components/tooltip"
+import { PanelLeftIcon } from "lucide-react"
+
+const SIDEBAR_COOKIE_NAME = "sidebar_state"
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+const SIDEBAR_WIDTH = "16rem"
+const SIDEBAR_WIDTH_MOBILE = "18rem"
+const SIDEBAR_WIDTH_ICON = "3rem"
+const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+
+type SidebarContextProps = {
+  state: "expanded" | "collapsed"
+  open: boolean
+  setOpen: (open: boolean) => void
+  openMobile: boolean
+  setOpenMobile: (open: boolean) => void
+  isMobile: boolean
+  toggleSidebar: () => void
+}
+
+const SidebarContext = React.createContext<SidebarContextProps | null>(null)
+
+function useSidebar() {
+  const context = React.useContext(SidebarContext)
+  if (!context) {
+    throw new Error("useSidebar must be used within a SidebarProvider.")
+  }
+
+  return context
+}
+
+function SidebarProvider({
+  defaultOpen = true,
+  open: openProp,
+  onOpenChange: setOpenProp,
+  className,
+  style,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & {
+  defaultOpen?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
+  const isMobile = useIsMobile()
+  const [openMobile, setOpenMobile] = React.useState(false)
+
+  // This is the internal state of the sidebar.
+  // We use openProp and setOpenProp for control from outside the component.
+  const [_open, _setOpen] = React.useState(defaultOpen)
+  const open = openProp ?? _open
+  const setOpen = React.useCallback(
+    (value: boolean | ((value: boolean) => boolean)) => {
+      const openState = typeof value === "function" ? value(open) : value
+      if (setOpenProp) {
+        setOpenProp(openState)
+      } else {
+        _setOpen(openState)
+      }
+
+      // This sets the cookie to keep the sidebar state.
+      document.cookie = \`\${SIDEBAR_COOKIE_NAME}=\${openState}; path=/; max-age=\${SIDEBAR_COOKIE_MAX_AGE}\`
+    },
+    [setOpenProp, open]
+  )
+
+  // Helper to toggle the sidebar.
+  const toggleSidebar = React.useCallback(() => {
+    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
+  }, [isMobile, setOpen, setOpenMobile])
+
+  // Adds a keyboard shortcut to toggle the sidebar.
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
+        (event.metaKey || event.ctrlKey)
+      ) {
+        event.preventDefault()
+        toggleSidebar()
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [toggleSidebar])
+
+  // We add a state so that we can do data-state="expanded" or "collapsed".
+  // This makes it easier to style the sidebar with Tailwind classes.
+  const state = open ? "expanded" : "collapsed"
+
+  const contextValue = React.useMemo<SidebarContextProps>(
+    () => ({
+      state,
+      open,
+      setOpen,
+      isMobile,
+      openMobile,
+      setOpenMobile,
+      toggleSidebar,
+    }),
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+  )
+
+  return (
+    <SidebarContext.Provider value={contextValue}>
+      <div
+        data-slot="sidebar-wrapper"
+        style={
+          {
+            "--sidebar-width": SIDEBAR_WIDTH,
+            "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+            ...style,
+          } as React.CSSProperties
+        }
+        className={cn(
+          "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    </SidebarContext.Provider>
+  )
+}
+
+function Sidebar({
+  side = "left",
+  variant = "sidebar",
+  collapsible = "offcanvas",
+  className,
+  children,
+  dir,
+  ...props
+}: React.ComponentProps<"div"> & {
+  side?: "left" | "right"
+  variant?: "sidebar" | "floating" | "inset"
+  collapsible?: "offcanvas" | "icon" | "none"
+}) {
+  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+
+  if (collapsible === "none") {
+    return (
+      <div
+        data-slot="sidebar"
+        className={cn(
+          "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    )
+  }
+
+  if (isMobile) {
+    return (
+      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+        <SheetContent
+          dir={dir}
+          data-sidebar="sidebar"
+          data-slot="sidebar"
+          data-mobile="true"
+          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          style={
+            {
+              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+            } as React.CSSProperties
+          }
+          side={side}
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Sidebar</SheetTitle>
+            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+          </SheetHeader>
+          <div className="flex h-full w-full flex-col">{children}</div>
+        </SheetContent>
+      </Sheet>
+    )
+  }
+
+  return (
+    <div
+      className="group peer hidden text-sidebar-foreground md:block"
+      data-state={state}
+      data-collapsible={state === "collapsed" ? collapsible : ""}
+      data-variant={variant}
+      data-side={side}
+      data-slot="sidebar"
+    >
+      {/* This is what handles the sidebar gap on desktop */}
+      <div
+        data-slot="sidebar-gap"
+        className={cn(
+          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+          "group-data-[collapsible=offcanvas]:w-0",
+          "group-data-[side=right]:rotate-180",
+          variant === "floating" || variant === "inset"
+            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
+            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
+        )}
+      />
+      <div
+        data-slot="sidebar-container"
+        data-side={side}
+        className={cn(
+          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          // Adjust the padding for floating and inset variants.
+          variant === "floating" || variant === "inset"
+            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
+            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+          className
+        )}
+        {...props}
+      >
+        <div
+          data-sidebar="sidebar"
+          data-slot="sidebar-inner"
+          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-none group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+        >
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SidebarTrigger({
+  className,
+  onClick,
+  ...props
+}: React.ComponentProps<typeof Button>) {
+  const { toggleSidebar } = useSidebar()
+
+  return (
+    <Button
+      data-sidebar="trigger"
+      data-slot="sidebar-trigger"
+      variant="ghost"
+      size="icon-sm"
+      className={cn(className)}
+      onClick={(event) => {
+        onClick?.(event)
+        toggleSidebar()
+      }}
+      {...props}
+    >
+      <PanelLeftIcon />
+      <span className="sr-only">Toggle Sidebar</span>
+    </Button>
+  )
+}
+
+function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
+  const { toggleSidebar } = useSidebar()
+
+  return (
+    <button
+      data-sidebar="rail"
+      data-slot="sidebar-rail"
+      aria-label="Toggle Sidebar"
+      tabIndex={-1}
+      onClick={toggleSidebar}
+      title="Toggle Sidebar"
+      className={cn(
+        "absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
+        "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
+        "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
+        "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",
+        "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
+        "[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+  return (
+    <main
+      data-slot="sidebar-inset"
+      className={cn(
+        "relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function SidebarInput({
+  className,
+  ...props
+}: React.ComponentProps<typeof Input>) {
+  return (
+    <Input
+      data-slot="sidebar-input"
+      data-sidebar="input"
+      className={cn("h-8 w-full bg-background shadow-none", className)}
+      {...props}
+    />
+  )
+}
+
+function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-header"
+      data-sidebar="header"
+      className={cn("flex flex-col gap-2 p-2", className)}
+      {...props}
+    />
+  )
+}
+
+function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-footer"
+      data-sidebar="footer"
+      className={cn("flex flex-col gap-2 p-2", className)}
+      {...props}
+    />
+  )
+}
+
+function SidebarSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof Separator>) {
+  return (
+    <Separator
+      data-slot="sidebar-separator"
+      data-sidebar="separator"
+      className={cn("mx-2 w-auto bg-sidebar-border", className)}
+      {...props}
+    />
+  )
+}
+
+function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-content"
+      data-sidebar="content"
+      className={cn(
+        "no-scrollbar flex min-h-0 flex-1 flex-col gap-0 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-group"
+      data-sidebar="group"
+      className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
+      {...props}
+    />
+  )
+}
+
+function SidebarGroupLabel({
+  className,
+  render,
+  ...props
+}: useRender.ComponentProps<"div"> & React.ComponentProps<"div">) {
+  return useRender({
+    defaultTagName: "div",
+    props: mergeProps<"div">(
+      {
+        className: cn(
+          "flex h-8 shrink-0 items-center rounded-none px-2 text-xs text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+          className
+        ),
+      },
+      props
+    ),
+    render,
+    state: {
+      slot: "sidebar-group-label",
+      sidebar: "group-label",
+    },
+  })
+}
+
+function SidebarGroupAction({
+  className,
+  render,
+  ...props
+}: useRender.ComponentProps<"button"> & React.ComponentProps<"button">) {
+  return useRender({
+    defaultTagName: "button",
+    props: mergeProps<"button">(
+      {
+        className: cn(
+          "absolute top-3.5 right-3 flex aspect-square w-5 items-center justify-center rounded-none p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform group-data-[collapsible=icon]:hidden after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
+          className
+        ),
+      },
+      props
+    ),
+    render,
+    state: {
+      slot: "sidebar-group-action",
+      sidebar: "group-action",
+    },
+  })
+}
+
+function SidebarGroupContent({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-group-content"
+      data-sidebar="group-content"
+      className={cn("w-full text-xs", className)}
+      {...props}
+    />
+  )
+}
+
+function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
+  return (
+    <ul
+      data-slot="sidebar-menu"
+      data-sidebar="menu"
+      className={cn("flex w-full min-w-0 flex-col gap-0", className)}
+      {...props}
+    />
+  )
+}
+
+function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
+  return (
+    <li
+      data-slot="sidebar-menu-item"
+      data-sidebar="menu-item"
+      className={cn("group/menu-item relative", className)}
+      {...props}
+    />
+  )
+}
+
+const sidebarMenuButtonVariants = cva(
+  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-none p-2 text-left text-xs ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  {
+    variants: {
+      variant: {
+        default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        outline:
+          "bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
+      },
+      size: {
+        default: "h-8 text-xs",
+        sm: "h-7 text-xs",
+        lg: "h-12 text-xs group-data-[collapsible=icon]:p-0!",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+function SidebarMenuButton({
+  render,
+  isActive = false,
+  variant = "default",
+  size = "default",
+  tooltip,
+  className,
+  ...props
+}: useRender.ComponentProps<"button"> &
+  React.ComponentProps<"button"> & {
+    isActive?: boolean
+    tooltip?: string | React.ComponentProps<typeof TooltipContent>
+  } & VariantProps<typeof sidebarMenuButtonVariants>) {
+  const { isMobile, state } = useSidebar()
+  const comp = useRender({
+    defaultTagName: "button",
+    props: mergeProps<"button">(
+      {
+        className: cn(sidebarMenuButtonVariants({ variant, size }), className),
+      },
+      props
+    ),
+    render: !tooltip ? render : <TooltipTrigger render={render} />,
+    state: {
+      slot: "sidebar-menu-button",
+      sidebar: "menu-button",
+      size,
+      active: isActive,
+    },
+  })
+
+  if (!tooltip) {
+    return comp
+  }
+
+  if (typeof tooltip === "string") {
+    tooltip = {
+      children: tooltip,
+    }
+  }
+
+  return (
+    <Tooltip>
+      {comp}
+      <TooltipContent
+        side="right"
+        align="center"
+        hidden={state !== "collapsed" || isMobile}
+        {...tooltip}
+      />
+    </Tooltip>
+  )
+}
+
+function SidebarMenuAction({
+  className,
+  render,
+  showOnHover = false,
+  ...props
+}: useRender.ComponentProps<"button"> &
+  React.ComponentProps<"button"> & {
+    showOnHover?: boolean
+  }) {
+  return useRender({
+    defaultTagName: "button",
+    props: mergeProps<"button">(
+      {
+        className: cn(
+          "absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-none p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform group-data-[collapsible=icon]:hidden peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1 after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
+          showOnHover &&
+            "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground aria-expanded:opacity-100 md:opacity-0",
+          className
+        ),
+      },
+      props
+    ),
+    render,
+    state: {
+      slot: "sidebar-menu-action",
+      sidebar: "menu-action",
+    },
+  })
+}
+
+function SidebarMenuBadge({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-menu-badge"
+      data-sidebar="menu-badge"
+      className={cn(
+        "pointer-events-none absolute right-1 flex h-5 min-w-5 items-center justify-center rounded-none px-1 text-xs font-medium text-sidebar-foreground tabular-nums select-none group-data-[collapsible=icon]:hidden peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1 peer-data-active/menu-button:text-sidebar-accent-foreground",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function SidebarMenuSkeleton({
+  className,
+  showIcon = false,
+  ...props
+}: React.ComponentProps<"div"> & {
+  showIcon?: boolean
+}) {
+  // Random width between 50 to 90%.
+  const [width] = React.useState(() => {
+    return \`\${Math.floor(Math.random() * 40) + 50}%\`
+  })
+
+  return (
+    <div
+      data-slot="sidebar-menu-skeleton"
+      data-sidebar="menu-skeleton"
+      className={cn("flex h-8 items-center gap-2 rounded-none px-2", className)}
+      {...props}
+    >
+      {showIcon && (
+        <Skeleton
+          className="size-4 rounded-none"
+          data-sidebar="menu-skeleton-icon"
+        />
+      )}
+      <Skeleton
+        className="h-4 max-w-(--skeleton-width) flex-1"
+        data-sidebar="menu-skeleton-text"
+        style={
+          {
+            "--skeleton-width": width,
+          } as React.CSSProperties
+        }
+      />
+    </div>
+  )
+}
+
+function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
+  return (
+    <ul
+      data-slot="sidebar-menu-sub"
+      data-sidebar="menu-sub"
+      className={cn(
+        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l border-sidebar-border px-2.5 py-0.5 group-data-[collapsible=icon]:hidden",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function SidebarMenuSubItem({
+  className,
+  ...props
+}: React.ComponentProps<"li">) {
+  return (
+    <li
+      data-slot="sidebar-menu-sub-item"
+      data-sidebar="menu-sub-item"
+      className={cn("group/menu-sub-item relative", className)}
+      {...props}
+    />
+  )
+}
+
+function SidebarMenuSubButton({
+  render,
+  size = "md",
+  isActive = false,
+  className,
+  ...props
+}: useRender.ComponentProps<"a"> &
+  React.ComponentProps<"a"> & {
+    size?: "sm" | "md"
+    isActive?: boolean
+  }) {
+  return useRender({
+    defaultTagName: "a",
+    props: mergeProps<"a">(
+      {
+        className: cn(
+          "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-none px-2 text-sidebar-foreground ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-xs data-[size=sm]:text-xs data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
+          className
+        ),
+      },
+      props
+    ),
+    render,
+    state: {
+      slot: "sidebar-menu-sub-button",
+      sidebar: "menu-sub-button",
+      size,
+      active: isActive,
+    },
+  })
+}
+
+export {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInput,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
+}
+`],
+  ["addons/admin/packages/ui/src/components/skeleton.tsx.hbs", `import { cn } from "@{{projectName}}/ui/lib/utils";
+
+function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="skeleton"
+      className={cn("animate-pulse rounded-none bg-muted", className)}
+      {...props}
+    />
+  );
+}
+
+export { Skeleton };
+`],
+  ["addons/admin/packages/ui/src/components/sonner.tsx", `"use client";
+
+import {
+  CircleCheckIcon,
+  InfoIcon,
+  Loader2Icon,
+  OctagonXIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import { Toaster as Sonner, type ToasterProps } from "sonner";
+
+const Toaster = ({ ...props }: ToasterProps) => {
+  const { theme = "system" } = useTheme();
+
+  return (
+    <Sonner
+      theme={theme as ToasterProps["theme"]}
+      className="toaster group"
+      icons={{
+        success: <CircleCheckIcon className="size-4" />,
+        info: <InfoIcon className="size-4" />,
+        warning: <TriangleAlertIcon className="size-4" />,
+        error: <OctagonXIcon className="size-4" />,
+        loading: <Loader2Icon className="size-4 animate-spin" />,
+      }}
+      style={
+        {
+          "--normal-bg": "var(--popover)",
+          "--normal-text": "var(--popover-foreground)",
+          "--normal-border": "var(--border)",
+          "--border-radius": "var(--radius)",
+        } as React.CSSProperties
+      }
+      toastOptions={{
+        classNames: {
+          toast: "cn-toast",
+        },
+      }}
+      {...props}
+    />
+  );
+};
+
+export { Toaster };
+`],
+  ["addons/admin/packages/ui/src/components/table.tsx.hbs", `import { cn } from "@{{projectName}}/ui/lib/utils";
+import type * as React from "react";
+
+function Table({ className, ...props }: React.ComponentProps<"table">) {
+  return (
+    <div className="relative w-full overflow-x-auto">
+      <table
+        className={cn("w-full caption-bottom text-sm", className)}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+  return <thead className={cn("[&_tr]:border-b", className)} {...props} />;
+}
+
+function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
+  return (
+    <tbody className={cn("[&_tr:last-child]:border-0", className)} {...props} />
+  );
+}
+
+function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+  return (
+    <tr
+      className={cn(
+        "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+  return (
+    <th
+      className={cn(
+        "h-10 px-3 text-left align-middle font-medium text-muted-foreground",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+  return <td className={cn("p-3 align-middle", className)} {...props} />;
+}
+
+export { Table, TableBody, TableCell, TableHead, TableHeader, TableRow };
+`],
+  ["addons/admin/packages/ui/src/components/textarea.tsx.hbs", `import { cn } from "@{{projectName}}/ui/lib/utils";
+import * as React from "react";
+
+function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
+  return (
+    <textarea
+      data-slot="textarea"
+      className={cn(
+        "flex field-sizing-content min-h-16 w-full resize-none rounded-none border border-input bg-transparent px-2.5 py-2 text-xs transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 md:text-xs dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Textarea };
+`],
+  ["addons/admin/packages/ui/src/components/tooltip.tsx.hbs", `"use client";
+
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
+import { cn } from "@{{projectName}}/ui/lib/utils";
+
+function TooltipProvider({ delay = 0, ...props }: TooltipPrimitive.Provider.Props) {
+  return <TooltipPrimitive.Provider data-slot="tooltip-provider" delay={delay} {...props} />;
+}
+
+function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
+  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
+}
+
+function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+}
+
+function TooltipContent({
+  className,
+  side = "top",
+  sideOffset = 4,
+  align = "center",
+  alignOffset = 0,
+  children,
+  ...props
+}: TooltipPrimitive.Popup.Props &
+  Pick<TooltipPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">) {
+  return (
+    <TooltipPrimitive.Portal>
+      <TooltipPrimitive.Positioner
+        align={align}
+        alignOffset={alignOffset}
+        side={side}
+        sideOffset={sideOffset}
+        className="isolate z-50"
+      >
+        <TooltipPrimitive.Popup
+          data-slot="tooltip-content"
+          className={cn(
+            "z-50 inline-flex w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-none bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            className,
+          )}
+          {...props}
+        >
+          {children}
+          <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%-2px)] rotate-45 rounded-none bg-foreground fill-foreground data-[side=bottom]:top-1 data-[side=inline-end]:top-1/2! data-[side=inline-end]:-left-1 data-[side=inline-end]:-translate-y-1/2 data-[side=inline-start]:top-1/2! data-[side=inline-start]:-right-1 data-[side=inline-start]:-translate-y-1/2 data-[side=left]:top-1/2! data-[side=left]:-right-1 data-[side=left]:-translate-y-1/2 data-[side=right]:top-1/2! data-[side=right]:-left-1 data-[side=right]:-translate-y-1/2 data-[side=top]:-bottom-2.5" />
+        </TooltipPrimitive.Popup>
+      </TooltipPrimitive.Positioner>
+    </TooltipPrimitive.Portal>
+  );
+}
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
+`],
+  ["addons/admin/packages/ui/src/hooks/.gitkeep", ``],
+  ["addons/admin/packages/ui/src/hooks/use-mobile.ts", `import { useEffect, useState } from "react";
+
+const MOBILE_BREAKPOINT = 768;
+
+export function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(\`(max-width: \${MOBILE_BREAKPOINT - 1}px)\`);
+    const update = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    mediaQuery.addEventListener("change", update);
+    update();
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+  return isMobile;
+}
+`],
+  ["addons/admin/packages/ui/src/lib/utils.ts", `import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+`],
+  ["addons/admin/packages/ui/src/styles/globals.css", `@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@source "../../../apps/**/*.{ts,tsx}";
+@source "../**/*.{ts,tsx}";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.58 0.22 27);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.87 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.371 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply font-sans bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+`],
+  ["addons/admin/packages/ui/tsconfig.json.hbs", `{
+  "extends": "@{{projectName}}/config/tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": [],
+    "paths": {
+      "@{{projectName}}/ui/*": ["./src/*"]
+    },
+    "strictNullChecks": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules"]
+}
+`],
+  ["addons/admin/turbo.json", `{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**"]
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "check-types": {
+      "dependsOn": ["^check-types"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "db:push": {
+      "cache": false,
+      "interactive": true
+    },
+    "db:generate": {
+      "cache": false,
+      "interactive": true
+    },
+    "db:migrate": {
+      "cache": false,
+      "interactive": true
+    },
+    "db:studio": {
+      "cache": false,
+      "persistent": true
+    },
+    "db:start": {
+      "cache": false
+    },
+    "db:stop": {
+      "cache": false
+    },
+    "db:watch": {
+      "cache": false,
+      "persistent": true
+    },
+    "db:down": {
+      "cache": false
+    },
+    "deploy": {
+      "cache": false,
+      "interactive": true
+    },
+    "destroy": {
+      "cache": false,
+      "interactive": true
+    }
+  }
+}
+`],
   ["addons/biome/biome.json.hbs", `{
     "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
 	"vcs": {
@@ -25952,10 +51127,10 @@ allowBuilds:
   "@parcel/watcher": true
   vue-demi: true
 {{/if}}
-{{#if (or (eq webDeploy "cloudflare") (eq serverDeploy "cloudflare") (eq webDeploy "prisma") (eq serverDeploy "prisma") (eq webDeploy "docker") (eq webDeploy "vercel") (includes addons "pwa") (includes frontend "next"))}}
+{{#if (or (includes addons "admin") (eq webDeploy "cloudflare") (eq serverDeploy "cloudflare") (eq webDeploy "prisma") (eq serverDeploy "prisma") (eq webDeploy "docker") (eq webDeploy "vercel") (includes addons "pwa") (includes frontend "next"))}}
   sharp: true
 {{/if}}
-{{#if (or (eq webDeploy "cloudflare") (eq serverDeploy "cloudflare") (eq webDeploy "prisma") (eq serverDeploy "prisma"))}}
+{{#if (or (includes addons "admin") (eq webDeploy "cloudflare") (eq serverDeploy "cloudflare") (eq webDeploy "prisma") (eq serverDeploy "prisma"))}}
   msgpackr-extract: true
   workerd: true
 {{/if}}
@@ -35782,4 +60957,4 @@ export default function Success() {
 `]
 ]);
 
-export const TEMPLATE_COUNT = 522;
+export const TEMPLATE_COUNT = 858;

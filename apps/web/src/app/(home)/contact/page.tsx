@@ -12,13 +12,13 @@ const description =
   "Where to ask questions, report bugs, request features, or contact the project.";
 
 export const metadata: Metadata = {
-  title: "Contact - Better-T-Stack",
+  title: "Contact - Chacelow-Stack",
   description,
   alternates: {
     canonical: "/contact",
   },
   openGraph: {
-    title: "Contact - Better-T-Stack",
+    title: "Contact - Chacelow-Stack",
     description,
     url: `${SITE_URL}/contact`,
   },

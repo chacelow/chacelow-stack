@@ -1,7 +1,7 @@
 import path from "node:path";
 
-import { generate, EMBEDDED_TEMPLATES } from "@better-t-stack/template-generator";
-import { writeTree } from "@better-t-stack/template-generator/fs-writer";
+import { generate, EMBEDDED_TEMPLATES } from "@chacelow-stack/template-generator";
+import { writeTree } from "@chacelow-stack/template-generator/fs-writer";
 import { log } from "@clack/prompts";
 import { Result } from "better-result";
 import fs from "fs-extra";

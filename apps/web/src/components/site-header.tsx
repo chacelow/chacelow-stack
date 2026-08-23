@@ -90,7 +90,7 @@ function NavTitle() {
     return <Title className={className} href="/" />;
   }
   return (
-    <Link aria-label="Better T Stack home" className={className} href="/">
+    <Link aria-label="Chacelow Stack home" className={className} href="/">
       {navTitle}
     </Link>
   );

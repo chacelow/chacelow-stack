@@ -1,0 +1,21 @@
+import { auth } from "@chacelow-generated/auth";
+import type { Context as HonoContext } from "hono";
+
+export interface CreateContextOptions {
+  context: HonoContext;
+}
+
+export async function createContext({ context }: CreateContextOptions) {
+  const session = await auth.api.getSession({
+    headers: context.req.raw.headers,
+  });
+  return {
+    request: {
+      ipAddress: context.req.header("cf-connecting-ip") ?? context.req.header("x-forwarded-for"),
+      userAgent: context.req.header("user-agent"),
+    },
+    session,
+  };
+}
+
+export type Context = Awaited<ReturnType<typeof createContext>>;

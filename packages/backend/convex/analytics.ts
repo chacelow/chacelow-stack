@@ -1,4 +1,4 @@
-import { AnalyticsEventSchema, normalizeAnalyticsSelection } from "@better-t-stack/types";
+import { AnalyticsEventSchema, normalizeAnalyticsSelection } from "@chacelow-stack/types";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 

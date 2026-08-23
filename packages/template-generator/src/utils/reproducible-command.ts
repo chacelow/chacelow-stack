@@ -1,4 +1,4 @@
-import type { ProjectConfig } from "@better-t-stack/types";
+import type { ProjectConfig } from "@chacelow-stack/types";
 
 function normalizeMultiValues(values: string[] | undefined): string[] {
   if (!values || values.length === 0) return [];
@@ -15,14 +15,14 @@ function formatMultiFlag(flag: string, values: string[]): string {
 
 function getBaseCommand(packageManager: ProjectConfig["packageManager"]): string {
   if (packageManager === "bun") {
-    return "bun create better-t-stack@latest";
+    return "bun create chacelow-stack@latest";
   }
 
   if (packageManager === "pnpm") {
-    return "pnpm create better-t-stack@latest";
+    return "pnpm create chacelow-stack@latest";
   }
 
-  return "npx create-better-t-stack@latest";
+  return "npx create-chacelow-stack@latest";
 }
 
 export function generateReproducibleCommand(config: ProjectConfig): string {

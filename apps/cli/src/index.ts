@@ -1,4 +1,4 @@
-import { getAllJsonSchemas } from "@better-t-stack/types/json-schema";
+import { getAllJsonSchemas } from "@chacelow-stack/types/json-schema";
 import { initTRPC } from "@trpc/server";
 import { Result } from "better-result";
 import { createCli, type TrpcCli, type TrpcCliMeta } from "trpc-cli";
@@ -109,7 +109,7 @@ const t = initTRPC.meta<TrpcCliMeta>().create();
 function getCliSchemaJson(): unknown {
   return createCli({
     router,
-    name: "create-better-t-stack",
+    name: "create-chacelow-stack",
     version: getLatestCLIVersion(),
   }).toJSON();
 }
@@ -131,7 +131,7 @@ export function getSchemaResult(name: SchemaName) {
 export const router = t.router({
   create: t.procedure
     .meta({
-      description: "Create a new Better-T-Stack project",
+      description: "Create a new Chacelow-Stack project",
       default: true,
       negateBooleans: true,
     })
@@ -226,16 +226,16 @@ export const router = t.router({
     )
     .query(({ input }) => getSchemaResult(input.name)),
   sponsors: t.procedure
-    .meta({ description: "Show Better-T-Stack sponsors" })
+    .meta({ description: "Show Chacelow-Stack sponsors" })
     .mutation(() => showSponsorsCommand()),
   docs: t.procedure
-    .meta({ description: "Open Better-T-Stack documentation" })
+    .meta({ description: "Open Chacelow-Stack documentation" })
     .mutation(() => openDocsCommand()),
   builder: t.procedure
     .meta({ description: "Open the web-based stack builder" })
     .mutation(() => openBuilderCommand()),
   add: t.procedure
-    .meta({ description: "Add addons to an existing Better-T-Stack project" })
+    .meta({ description: "Add addons to an existing Chacelow-Stack project" })
     .input(
       z.object({
         addons: z.array(AddonsSchema).optional().describe("Addons to add"),
@@ -291,7 +291,7 @@ export const router = t.router({
 export function createBtsCli(): TrpcCli {
   return createCli({
     router,
-    name: "create-better-t-stack",
+    name: "create-chacelow-stack",
     version: getLatestCLIVersion(),
   });
 }
@@ -320,12 +320,12 @@ function formatInputValidationError(label: string, error: z.ZodError): string {
 }
 
 /**
- * Programmatic API to create a new Better-T-Stack project.
+ * Programmatic API to create a new Chacelow-Stack project.
  * Returns a Result type - no console output, no interactive prompts.
  *
  * @example
  * ```typescript
- * import { create, Result } from "create-better-t-stack";
+ * import { create, Result } from "create-chacelow-stack";
  *
  * const result = await create("my-app", {
  *   frontend: ["tanstack-router"],
@@ -413,7 +413,7 @@ export {
   generate,
   EMBEDDED_TEMPLATES,
   TEMPLATE_COUNT,
-} from "@better-t-stack/template-generator";
+} from "@chacelow-stack/template-generator";
 
 // Import for createVirtual
 import {
@@ -421,7 +421,7 @@ import {
   GeneratorError,
   type VirtualFileTree,
   EMBEDDED_TEMPLATES,
-} from "@better-t-stack/template-generator";
+} from "@chacelow-stack/template-generator";
 
 /**
  * Programmatic API to generate a project in-memory (virtual filesystem).
@@ -430,7 +430,7 @@ import {
  *
  * @example
  * ```typescript
- * import { createVirtual, EMBEDDED_TEMPLATES, Result } from "create-better-t-stack";
+ * import { createVirtual, EMBEDDED_TEMPLATES, Result } from "create-chacelow-stack";
  *
  * const result = await createVirtual({
  *   frontend: ["tanstack-router"],
@@ -538,11 +538,11 @@ export type AddOptions = Pick<
 >;
 
 /**
- * Programmatic API to add addons to an existing Better-T-Stack project.
+ * Programmatic API to add addons to an existing Chacelow-Stack project.
  *
  * @example
  * ```typescript
- * import { add } from "create-better-t-stack";
+ * import { add } from "create-chacelow-stack";
  *
  * const result = await add({
  *   addons: ["biome", "husky"],
