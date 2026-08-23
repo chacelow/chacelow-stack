@@ -70,24 +70,15 @@ jobs:
           npm pack --dry-run --json --workspace packages/template-generator
           npm pack --dry-run --json --workspace apps/cli
 
-      - name: Publish types
-        working-directory: packages/types
-        run: npm view "@chacelow-stack/types@${{ inputs.version }}" version >/dev/null 2>&1 || npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish template generator
-        working-directory: packages/template-generator
-        run: npm view "@chacelow-stack/template-generator@${{ inputs.version }}" version >/dev/null 2>&1 || npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish CLI
         working-directory: apps/cli
-        run: npm view "@chacelow-stack/create@${{ inputs.version }}" version >/dev/null 2>&1 || npm publish --access public --provenance
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Wait for registry consistency
+        run: sleep 20
       - name: Verify registry packages
         env:
           VERSION: ${{ inputs.version }}
