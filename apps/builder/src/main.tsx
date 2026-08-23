@@ -3,23 +3,51 @@ import { createRoot } from "react-dom/client";
 import {
   Blocks,
   Check,
-  ChevronRight,
-  Clipboard,
   Code2,
-  Database,
-  ExternalLink,
   GitBranch,
   Languages,
-  Menu,
   Package,
-  PanelLeftClose,
   Server,
   ShieldCheck,
   Users,
-  X,
 } from "lucide-react";
 
-import "./styles.css";
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+} from "@/components/ui/sidebar";
+import "@/styles/index.css";
 
 type Language = "zh" | "en";
 type PackageManager = "npm" | "pnpm" | "bun";
@@ -29,69 +57,63 @@ const templates = [
   {
     id: "chacelow-admin-base",
     name: "Admin Base",
-    description: "生产可用的后台基础模板：登录、Session、API 健康检测和中英文。",
-    descriptionEn: "Production admin foundation with auth, sessions, API health checks, and i18n.",
+    description: "登录、Session、API 健康检测和中英文后台基础模板。",
+    descriptionEn: "Admin foundation with auth, sessions, API health checks, and i18n.",
     icon: Server,
     features: ["shadcn-admin", "Better Auth", "PostgreSQL + Drizzle", "Hono + tRPC", "中文 / English", "API health"],
   },
   {
     id: "chacelow-admin-rbac",
     name: "Admin RBAC",
-    description: "Base 的权限升级版：动态角色、用户多角色、服务端鉴权和审计。",
-    descriptionEn: "Admin Base plus dynamic roles, server authorization, multi-role users, and audit logs.",
+    description: "动态角色、用户多角色、服务端鉴权和真实审计日志。",
+    descriptionEn: "Dynamic roles, server authorization, multi-role users, and audit logs.",
     icon: ShieldCheck,
     features: ["Admin Base 全部能力", "动态角色", "静态权限目录", "permissionProcedure", "用户管理", "审计日志"],
   },
   {
     id: "chacelow-admin-saas",
     name: "Admin SaaS",
-    description: "RBAC 的多租户升级版：组织、成员、邀请、租户角色和数据隔离。",
-    descriptionEn: "Tenant-scoped RBAC with organizations, members, invitations, roles, and isolation.",
+    description: "组织、成员、邀请、租户角色和服务端数据隔离。",
+    descriptionEn: "Organizations, members, invitations, tenant roles, and server isolation.",
     icon: Users,
     features: ["Admin RBAC 全部能力", "Better Auth Organization", "组织切换", "成员与邀请", "租户角色", "tenant API guard"],
   },
 ] as const;
 
-const copy = {
+const translations = {
   zh: {
     templates: "模板",
     builder: "项目生成器",
-    capabilities: "能力说明",
     repository: "GitHub 仓库",
-    title: "选择一个可直接使用的后台模板",
-    subtitle: "每个选项都对应真实生成器、数据库 Schema、API 和页面，不展示 Mock 模板。",
+    title: "选择后台模板",
+    subtitle: "每个选项都对应真实生成器、数据库 Schema、API 和页面。",
     project: "项目名称",
     packageManager: "包管理器",
     command: "执行命令",
     copy: "复制命令",
     copied: "已复制",
-    included: "实际包含",
     selected: "当前模板",
-    install: "生成后安装依赖并启动数据库，即可打开真实登录页。",
-    public: "公开 Builder",
-    status: "静态站 · 无需登录",
+    status: "公开静态 Builder",
+    ready: "已通过 npm E2E",
   },
   en: {
     templates: "Templates",
-    builder: "Project builder",
-    capabilities: "Capabilities",
-    repository: "GitHub repository",
-    title: "Choose a production-ready admin template",
-    subtitle: "Every option maps to real generator files, database schemas, APIs, and pages. No mock templates.",
+    builder: "Project Builder",
+    repository: "GitHub Repository",
+    title: "Choose an admin template",
+    subtitle: "Every option maps to real generator files, database schemas, APIs, and pages.",
     project: "Project name",
     packageManager: "Package manager",
     command: "Command",
     copy: "Copy command",
     copied: "Copied",
-    included: "Included",
     selected: "Selected template",
-    install: "Install dependencies and start the database to open the real login page.",
-    public: "Public Builder",
-    status: "Static · no login required",
+    status: "Public static Builder",
+    ready: "npm E2E verified",
   },
 } as const;
 
-function commandFor(packageManager: PackageManager, template: TemplateId, projectName: string) {
+const commandFor = (packageManager: PackageManager, template: TemplateId, projectName: string) => {
   const name = projectName.trim().replaceAll(/\s+/g, "-") || "my-admin";
   const runner = packageManager === "npm"
     ? "npx @chacelow-stack/create@latest"
@@ -99,6 +121,76 @@ function commandFor(packageManager: PackageManager, template: TemplateId, projec
       ? "pnpm create chacelow-stack@latest"
       : "bun create chacelow-stack@latest";
   return `${runner} ${name} --template ${template}`;
+};
+
+function BuilderSidebar({ language }: { language: Language }) {
+  const text = translations[language];
+  return (
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" tooltip="Chacelow Stack" isActive>
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                <Code2 className="size-4" />
+              </div>
+              <div className="grid flex-1 text-start text-sm leading-tight">
+                <span className="truncate font-semibold">Chacelow Stack</span>
+                <span className="truncate text-xs">{text.status}</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>{text.builder}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton isActive tooltip={text.templates}>
+                  <Blocks />
+                  <span>{text.templates}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton tooltip="Capabilities">
+                  <Package />
+                  <span>Capabilities</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Project</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={text.repository}>
+                  <a href="https://github.com/chacelow/chacelow-stack">
+                    <GitBranch />
+                    <span>{text.repository}</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip={text.ready}>
+              <Check className="text-emerald-600" />
+              <span>{text.ready}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
 }
 
 function App() {
@@ -106,11 +198,9 @@ function App() {
   const [templateId, setTemplateId] = useState<TemplateId>("chacelow-admin-rbac");
   const [projectName, setProjectName] = useState("my-admin");
   const [packageManager, setPackageManager] = useState<PackageManager>("pnpm");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
-  const text = copy[language];
-  const selectedTemplate = templates.find((item) => item.id === templateId) ?? templates[1];
+  const text = translations[language];
+  const selectedTemplate = templates.find((template) => template.id === templateId) ?? templates[1];
   const command = useMemo(
     () => commandFor(packageManager, templateId, projectName),
     [packageManager, projectName, templateId],
@@ -123,73 +213,94 @@ function App() {
   };
 
   return (
-    <div className={`admin-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      {sidebarOpen ? <button className="sidebar-backdrop" type="button" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} /> : null}
-      <aside className={`admin-sidebar ${sidebarOpen ? "mobile-open" : ""}`}>
-        <div className="sidebar-brand">
-          <span className="brand-mark"><Code2 /></span>
-          <div className="brand-copy"><strong>Chacelow Stack</strong><small>{text.public}</small></div>
-          <button className="mobile-close" type="button" onClick={() => setSidebarOpen(false)}><X /></button>
-        </div>
-        <nav className="sidebar-nav" aria-label="Builder navigation">
-          <p>{text.builder}</p>
-          <button className="nav-item active" type="button"><Blocks /><span>{text.templates}</span></button>
-          <button className="nav-item" type="button"><Package /><span>{text.capabilities}</span></button>
-          <p>Project</p>
-          <a className="nav-item" href="https://github.com/chacelow/chacelow-stack"><GitBranch /><span>{text.repository}</span><ExternalLink className="nav-external" /></a>
-        </nav>
-        <div className="sidebar-status"><span className="online-dot" /><div><strong>{text.status}</strong><small>Cloudflare Pages</small></div></div>
-        <button className="collapse-button" type="button" onClick={() => setSidebarCollapsed((value) => !value)}>
-          {sidebarCollapsed ? <ChevronRight /> : <PanelLeftClose />}<span>{sidebarCollapsed ? "" : "Collapse"}</span>
-        </button>
-      </aside>
-
-      <section className="admin-content">
-        <header className="site-header">
-          <button className="menu-button" type="button" onClick={() => setSidebarOpen(true)}><Menu /></button>
-          <div className="breadcrumbs"><span>{text.builder}</span><ChevronRight /><strong>{text.templates}</strong></div>
-          <div className="header-actions">
-            <div className="language-control"><Languages /><button type="button" aria-pressed={language === "zh"} onClick={() => setLanguage("zh")}>中文</button><button type="button" aria-pressed={language === "en"} onClick={() => setLanguage("en")}>EN</button></div>
-            <a className="icon-button" href="https://github.com/chacelow/chacelow-stack" aria-label="GitHub"><GitBranch /></a>
+    <SidebarProvider>
+      <BuilderSidebar language={language} />
+      <SidebarInset>
+        <Header fixed>
+          <div className="flex flex-1 items-center gap-2 text-sm">
+            <span className="text-muted-foreground">{text.builder}</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="font-medium">{text.templates}</span>
           </div>
-        </header>
+          <div className="flex items-center gap-2">
+            <Button variant={language === "zh" ? "secondary" : "ghost"} size="sm" onClick={() => setLanguage("zh")}>中文</Button>
+            <Button variant={language === "en" ? "secondary" : "ghost"} size="sm" onClick={() => setLanguage("en")}>EN</Button>
+            <Button asChild variant="outline" size="icon"><a href="https://github.com/chacelow/chacelow-stack" aria-label="GitHub"><GitBranch /></a></Button>
+          </div>
+        </Header>
+        <Main>
+          <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{text.title}</h1>
+              <p className="mt-1 text-muted-foreground">{text.subtitle}</p>
+            </div>
+            <Badge variant="outline" className="w-fit gap-1.5 text-emerald-700"><Check className="size-3.5" />{text.ready}</Badge>
+          </div>
 
-        <main className="main-content">
-          <div className="page-heading"><div><h1>{text.title}</h1><p>{text.subtitle}</p></div><span className="real-badge"><Check />Real output only</span></div>
-
-          <section className="template-grid" aria-label={text.templates}>
+          <div className="grid gap-4 lg:grid-cols-3">
             {templates.map((template) => {
               const Icon = template.icon;
               const selected = template.id === templateId;
               return (
-                <button className={`template-card ${selected ? "selected" : ""}`} key={template.id} type="button" aria-pressed={selected} onClick={() => setTemplateId(template.id)}>
-                  <div className="template-card-head"><span className="template-icon"><Icon /></span>{selected ? <span className="selected-check"><Check /></span> : null}</div>
-                  <div><h2>{template.name}</h2><p>{language === "zh" ? template.description : template.descriptionEn}</p></div>
-                  <div className="feature-list">{template.features.map((feature) => <span key={feature}><Check />{feature}</span>)}</div>
-                </button>
+                <Card
+                  key={template.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selected}
+                  className={selected ? "border-primary ring-1 ring-primary" : "transition-colors hover:border-foreground/30"}
+                  onClick={() => setTemplateId(template.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") setTemplateId(template.id);
+                  }}
+                >
+                  <CardHeader>
+                    <div className="mb-3 flex size-9 items-center justify-center rounded-lg bg-muted"><Icon className="size-4" /></div>
+                    <CardTitle>{template.name}</CardTitle>
+                    <CardDescription>{language === "zh" ? template.description : template.descriptionEn}</CardDescription>
+                    <CardAction>{selected ? <Badge><Check className="size-3" />{text.selected}</Badge> : null}</CardAction>
+                  </CardHeader>
+                  <CardContent className="grid gap-2">
+                    {template.features.map((feature) => <div className="flex items-center gap-2 text-sm text-muted-foreground" key={feature}><Check className="size-3.5 text-emerald-600" />{feature}</div>)}
+                  </CardContent>
+                </Card>
               );
             })}
-          </section>
-
-          <div className="builder-grid">
-            <section className="config-card">
-              <div className="card-header"><div><h2>{text.selected}</h2><p>{selectedTemplate.name}</p></div><selectedTemplate.icon /></div>
-              <div className="form-grid">
-                <label><span>{text.project}</span><input value={projectName} onChange={(event) => setProjectName(event.target.value)} /></label>
-                <label><span>{text.packageManager}</span><select value={packageManager} onChange={(event) => setPackageManager(event.target.value as PackageManager)}><option value="pnpm">pnpm</option><option value="bun">bun</option><option value="npm">npm</option></select></label>
-              </div>
-              <div className="dependency-row"><Database /><span>PostgreSQL + Drizzle</span><Server /><span>Hono + tRPC</span><ShieldCheck /><span>Better Auth</span></div>
-            </section>
-
-            <section className="command-card">
-              <div className="card-header"><div><h2>{text.command}</h2><p>{text.install}</p></div><Clipboard /></div>
-              <pre><code>{command}</code></pre>
-              <button className="primary-button" type="button" onClick={copyCommand}>{copied ? <Check /> : <Clipboard />}{copied ? text.copied : text.copy}</button>
-            </section>
           </div>
-        </main>
-      </section>
-    </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>{text.selected}</CardTitle>
+                <CardDescription>{selectedTemplate.name}</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-[1fr_12rem]">
+                <label className="grid gap-2 text-sm font-medium">
+                  {text.project}
+                  <Input value={projectName} onChange={(event) => setProjectName(event.target.value)} />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  {text.packageManager}
+                  <Select value={packageManager} onValueChange={(value) => setPackageManager(value as PackageManager)}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="pnpm">pnpm</SelectItem><SelectItem value="bun">bun</SelectItem><SelectItem value="npm">npm</SelectItem></SelectContent>
+                  </Select>
+                </label>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{text.command}</CardTitle>
+                <CardDescription>CLI 0.2.0 · npm registry</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm"><code>{command}</code></pre>
+                <Button className="w-full" onClick={copyCommand}>{copied ? <Check /> : <Code2 />}{copied ? text.copied : text.copy}</Button>
+              </CardContent>
+            </Card>
+          </div>
+        </Main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
