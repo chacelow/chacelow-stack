@@ -1,8 +1,10 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 
 import type { Context } from "./context";
+{{#if (includes addons "rbac")}}
 import type { PermissionKey } from "./permissions";
 import { hasPermission } from "./rbac";
+{{/if}}
 
 const t = initTRPC.context<Context>().create();
 
@@ -24,6 +26,7 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   });
 });
 
+{{#if (includes addons "rbac")}}
 export const permissionProcedure = (permission: PermissionKey) =>
   protectedProcedure.use(async ({ ctx, next }) => {
     const allowed = await hasPermission(ctx.session.user.id, permission);
@@ -32,3 +35,4 @@ export const permissionProcedure = (permission: PermissionKey) =>
     }
     return next({ ctx });
   });
+{{/if}}

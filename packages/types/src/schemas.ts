@@ -54,6 +54,7 @@ export const AddonsSchema = z
     "admin",
     "rbac",
     "i18n",
+    "organization",
     "none",
   ])
   .describe("Additional addons");
@@ -109,7 +110,7 @@ export const DirectoryConflictSchema = z
   .describe("How to handle existing directory conflicts");
 
 export const TemplateSchema = z
-  .enum(["chacelow-admin", "mern", "pern", "t3", "uniwind", "none"])
+  .enum(["chacelow-admin", "chacelow-admin-base", "chacelow-admin-rbac", "chacelow-admin-saas", "mern", "pern", "t3", "uniwind", "none"])
   .describe("Predefined project template");
 
 export const WxtTemplateSchema = z

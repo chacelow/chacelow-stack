@@ -10,6 +10,7 @@ import {
   userRelations,
   verification,
 } from "./schema/auth";
+{{#if (includes addons "rbac")}}
 import {
   auditLog,
   permission,
@@ -21,12 +22,22 @@ import {
   userRole,
   userRoleRelations,
 } from "./schema/rbac";
+{{/if}}
+{{#if (includes addons "organization")}}
+import {
+  invitation,
+  member,
+  organization,
+  organizationRole,
+} from "./schema/organization";
+{{/if}}
 
 export function createDb() {
   return drizzle(env.DATABASE_URL, {
     schema: {
       account,
       accountRelations,
+      {{#if (includes addons "rbac")}}
       auditLog,
       permission,
       permissionRelations,
@@ -34,13 +45,22 @@ export function createDb() {
       rolePermission,
       rolePermissionRelations,
       roleRelations,
+      {{/if}}
       session,
       sessionRelations,
       user,
       userRelations,
+      {{#if (includes addons "rbac")}}
       userRole,
       userRoleRelations,
+      {{/if}}
       verification,
+      {{#if (includes addons "organization")}}
+      invitation,
+      member,
+      organization,
+      organizationRole,
+      {{/if}}
     },
   });
 }

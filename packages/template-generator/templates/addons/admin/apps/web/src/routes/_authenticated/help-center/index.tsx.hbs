@@ -1,0 +1,11 @@
+import { createFileRoute } from "@tanstack/react-router";
+
+{{#if (includes addons "organization")}}
+import { Organizations } from "@/features/organizations";
+{{else}}
+import { ComingSoon } from "@/components/coming-soon";
+{{/if}}
+
+export const Route = createFileRoute("/_authenticated/help-center/")({
+  component: {{#if (includes addons "organization")}}Organizations{{else}}ComingSoon{{/if}},
+});

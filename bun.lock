@@ -40,13 +40,13 @@
     },
     "apps/cli": {
       "name": "@chacelow-stack/create",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "create-chacelow-stack": "dist/cli.mjs",
       },
       "dependencies": {
-        "@chacelow-stack/template-generator": "0.1.0",
-        "@chacelow-stack/types": "0.1.0",
+        "@chacelow-stack/template-generator": "0.2.0",
+        "@chacelow-stack/types": "0.2.0",
         "@clack/core": "^1.4.3",
         "@clack/prompts": "^1.7.0",
         "@modelcontextprotocol/sdk": "1.30.0",
@@ -179,9 +179,9 @@
     },
     "packages/template-generator": {
       "name": "@chacelow-stack/template-generator",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
-        "@chacelow-stack/types": "0.1.0",
+        "@chacelow-stack/types": "0.2.0",
         "better-result": "^3.0.0",
         "handlebars": "^4.7.9",
         "memfs": "^4.64.0",
@@ -201,7 +201,7 @@
     },
     "packages/types": {
       "name": "@chacelow-stack/types",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "zod": "^4.4.3",
       },

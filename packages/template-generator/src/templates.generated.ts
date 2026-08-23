@@ -3709,15 +3709,18 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
 `],
   ["addons/admin/apps/web/src/components/layout/data/sidebar-data.ts.hbs", `import {
   Activity,
-  AudioWaveform,
   Command,
-  GalleryVerticalEnd,
   LayoutDashboard,
-  ScrollText,
   Settings,
-  ShieldCheck,
   UserCog,
+  {{#if (includes addons "rbac")}}
+  ScrollText,
+  ShieldCheck,
   Users,
+  {{/if}}
+  {{#if (includes addons "organization")}}
+  Building2,
+  {{/if}}
 } from "lucide-react";
 import type { SidebarData } from "../types";
 
@@ -3733,6 +3736,7 @@ export const sidebarData: SidebarData = {
       ],
       title: "Workspace",
     },
+    {{#if (includes addons "rbac")}}
     {
       items: [
         {
@@ -3743,6 +3747,13 @@ export const sidebarData: SidebarData = {
               title: "Users",
               url: "/users",
             },
+            {{#if (includes addons "organization")}}
+            {
+              icon: Building2,
+              title: "Organizations",
+              url: "/help-center",
+            },
+            {{/if}}
             {
               icon: UserCog,
               title: "Roles & permissions",
@@ -3759,6 +3770,7 @@ export const sidebarData: SidebarData = {
       ],
       title: "Administration",
     },
+    {{/if}}
     {
       items: [
         {
@@ -3786,16 +3798,6 @@ export const sidebarData: SidebarData = {
       logo: Command,
       name: "{{projectName}}",
       plan: "Vite + ShadcnUI",
-    },
-    {
-      logo: GalleryVerticalEnd,
-      name: "Acme Inc",
-      plan: "Enterprise",
-    },
-    {
-      logo: AudioWaveform,
-      name: "Acme Corp.",
-      plan: "Startup",
     },
   ],
   user: {
@@ -10711,199 +10713,78 @@ export function RecentSales() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/dashboard/index.tsx", `import { ConfigDrawer } from "@/components/config-drawer";
+  ["addons/admin/apps/web/src/features/dashboard/index.tsx", `import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2, Database, Server, ShieldCheck } from "lucide-react";
+
+import { ConfigDrawer } from "@/components/config-drawer";
 import { Header } from "@/components/layout/header";
 import { Main } from "@/components/layout/main";
-import { TopNav } from "@/components/layout/top-nav";
 import { ProfileDropdown } from "@/components/profile-dropdown";
-import { Search } from "@/components/search";
 import { ThemeSwitch } from "@/components/theme-switch";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-import { Analytics } from "./components/analytics";
-import { Overview } from "./components/overview";
-import { RecentSales } from "./components/recent-sales";
+import { useTRPC } from "@/lib/trpc";
 
 export function Dashboard() {
+  const trpc = useTRPC();
+  const healthQuery = useQuery(trpc.healthCheck.queryOptions());
+  const apiHealthy = healthQuery.data === "OK";
+
   return (
     <>
-      {/* ===== Top Heading ===== */}
       <Header>
-        <TopNav links={topNav} className="me-auto" />
-        <Search />
+        <div className="me-auto">
+          <p className="text-sm font-medium">Admin workspace</p>
+        </div>
         <ThemeSwitch />
         <ConfigDrawer />
         <ProfileDropdown />
       </Header>
-
-      {/* ===== Main ===== */}
       <Main>
-        <div className="mb-2 flex items-center justify-between space-y-2">
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <div className="flex items-center space-x-2">
-            <Button>Download</Button>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold tracking-tight">System status</h1>
+          <p className="mt-1 text-muted-foreground">
+            Live status from this generated application. No sample analytics or sales data.
+          </p>
         </div>
-        <Tabs orientation="vertical" defaultValue="overview" className="space-y-4">
-          <div className="w-full overflow-x-auto pb-2">
-            <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="analytics">Analytics</TabsTrigger>
-              <TabsTrigger value="reports" disabled>
-                Reports
-              </TabsTrigger>
-              <TabsTrigger value="notifications" disabled>
-                Notifications
-              </TabsTrigger>
-            </TabsList>
-          </div>
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    className="h-4 w-4 text-muted-foreground"
-                  >
-                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                  </svg>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">$45,231.89</div>
-                  <p className="text-xs text-muted-foreground">+20.1% from last month</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Subscriptions</CardTitle>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    className="h-4 w-4 text-muted-foreground"
-                  >
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">+2350</div>
-                  <p className="text-xs text-muted-foreground">+180.1% from last month</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Sales</CardTitle>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    className="h-4 w-4 text-muted-foreground"
-                  >
-                    <rect width="20" height="14" x="2" y="5" rx="2" />
-                    <path d="M2 10h20" />
-                  </svg>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">+12,234</div>
-                  <p className="text-xs text-muted-foreground">+19% from last month</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Active Now</CardTitle>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    className="h-4 w-4 text-muted-foreground"
-                  >
-                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                  </svg>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">+573</div>
-                  <p className="text-xs text-muted-foreground">+201 since last hour</p>
-                </CardContent>
-              </Card>
-            </div>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-7">
-              <Card className="col-span-1 lg:col-span-4">
-                <CardHeader>
-                  <CardTitle>Overview</CardTitle>
-                </CardHeader>
-                <CardContent className="ps-2">
-                  <Overview />
-                </CardContent>
-              </Card>
-              <Card className="col-span-1 lg:col-span-3">
-                <CardHeader>
-                  <CardTitle>Recent Sales</CardTitle>
-                  <CardDescription>You made 265 sales this month.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <RecentSales />
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-          <TabsContent value="analytics" className="space-y-4">
-            <Analytics />
-          </TabsContent>
-        </Tabs>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">API</CardTitle>
+              <Server className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2 text-lg font-semibold">
+                <span className={\`h-2.5 w-2.5 rounded-full \${apiHealthy ? "bg-emerald-500" : "bg-amber-500"}\`} />
+                {healthQuery.isPending ? "Checking" : apiHealthy ? "Healthy" : "Unavailable"}
+              </div>
+              <CardDescription className="mt-2">tRPC healthCheck is queried in real time.</CardDescription>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Database</CardTitle>
+              <Database className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2 text-lg font-semibold"><CheckCircle2 className="h-5 w-5 text-emerald-600" />PostgreSQL</div>
+              <CardDescription className="mt-2">Drizzle schema is the source of truth.</CardDescription>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Authentication</CardTitle>
+              <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2 text-lg font-semibold"><CheckCircle2 className="h-5 w-5 text-emerald-600" />Better Auth</div>
+              <CardDescription className="mt-2">The current page requires a valid server session.</CardDescription>
+            </CardContent>
+          </Card>
+        </div>
       </Main>
     </>
   );
 }
-
-const topNav = [
-  {
-    title: "Overview",
-    href: "dashboard/overview",
-    isActive: true,
-    disabled: false,
-  },
-  {
-    title: "Customers",
-    href: "dashboard/customers",
-    isActive: false,
-    disabled: true,
-  },
-  {
-    title: "Products",
-    href: "dashboard/products",
-    isActive: false,
-    disabled: true,
-  },
-  {
-    title: "Settings",
-    href: "dashboard/settings",
-    isActive: false,
-    disabled: true,
-  },
-];
 `],
   ["addons/admin/apps/web/src/features/errors/forbidden.tsx", `import { useNavigate, useRouter } from "@tanstack/react-router";
 
@@ -11035,6 +10916,173 @@ export function UnauthorisedError() {
         </div>
       </div>
     </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/organizations/index.tsx", `import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Building2, Check, ChevronsUpDown, Plus, Users } from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { ProfileDropdown } from "@/components/profile-dropdown";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { authClient } from "@/lib/auth-client";
+import { useTRPC } from "@/lib/trpc";
+
+export function Organizations() {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const organizations = authClient.useListOrganizations();
+  const activeOrganization = authClient.useActiveOrganization();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [memberId, setMemberId] = useState<string | null>(null);
+  const [role, setRole] = useState("member");
+  const members = useQuery({
+    ...trpc.organization.members.queryOptions(),
+    enabled: Boolean(activeOrganization.data?.id),
+  });
+  const invitations = useQuery({
+    ...trpc.organization.invitations.queryOptions(),
+    enabled: Boolean(activeOrganization.data?.id),
+  });
+  const roles = useQuery({
+    ...trpc.organization.roles.queryOptions(),
+    enabled: Boolean(activeOrganization.data?.id),
+  });
+  const updateRole = useMutation(
+    trpc.organization.updateMemberRole.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: trpc.organization.members.queryKey() });
+        setMemberId(null);
+        toast.success("Member role updated");
+      },
+    }),
+  );
+  const availableRoles = useMemo(
+    () => ["owner", "admin", "member", ...(roles.data ?? []).map((item) => item.role)],
+    [roles.data],
+  );
+
+  const createOrganization = async () => {
+    const result = await authClient.organization.create({ name: name.trim(), slug: slug.trim() });
+    if (result.error) {
+      toast.error(result.error.message ?? "Could not create organization");
+      return;
+    }
+    await authClient.organization.setActive({ organizationId: result.data.id });
+    await organizations.refetch();
+    setCreateOpen(false);
+    setName("");
+    setSlug("");
+  };
+
+  const setActiveOrganization = async (organizationId: string) => {
+    const result = await authClient.organization.setActive({ organizationId });
+    if (result.error) {
+      toast.error(result.error.message ?? "Could not switch organization");
+      return;
+    }
+    await Promise.all([
+      activeOrganization.refetch(),
+      queryClient.invalidateQueries({ queryKey: trpc.organization.members.queryKey() }),
+      queryClient.invalidateQueries({ queryKey: trpc.organization.invitations.queryKey() }),
+    ]);
+  };
+
+  return (
+    <>
+      <Header fixed>
+        <div className="flex flex-1 items-center gap-2">
+          <Building2 className="size-4 text-muted-foreground" />
+          <span className="font-medium text-sm">Organization administration</span>
+        </div>
+        <ThemeSwitch />
+        <ProfileDropdown />
+      </Header>
+      <Main>
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="font-bold text-2xl tracking-tight">Organizations</h1>
+            <p className="text-muted-foreground">Manage real workspaces, members, invitations, and tenant roles.</p>
+          </div>
+          <Button onClick={() => setCreateOpen(true)}><Plus />Create organization</Button>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Your organizations</CardTitle>
+              <CardDescription>Select the active tenant for all scoped API requests.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {(organizations.data ?? []).map((item) => (
+                <button
+                  className="flex w-full items-center justify-between rounded-md border p-3 text-left hover:bg-accent"
+                  key={item.id}
+                  onClick={() => setActiveOrganization(item.id)}
+                  type="button"
+                >
+                  <span><strong className="block text-sm">{item.name}</strong><small className="text-muted-foreground">{item.slug}</small></span>
+                  {activeOrganization.data?.id === item.id ? <Check className="size-4" /> : <ChevronsUpDown className="size-4 text-muted-foreground" />}
+                </button>
+              ))}
+              {organizations.data?.length === 0 ? <p className="py-8 text-center text-muted-foreground text-sm">No organizations yet.</p> : null}
+            </CardContent>
+          </Card>
+
+          <div className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><Users className="size-4" />Members</CardTitle></CardHeader>
+              <CardContent className="divide-y">
+                {(members.data ?? []).map((item) => (
+                  <div className="flex min-h-16 items-center justify-between gap-3" key={item.id}>
+                    <div><strong className="block text-sm">{item.name}</strong><small className="text-muted-foreground">{item.email}</small></div>
+                    <Button variant="outline" onClick={() => { setMemberId(item.id); setRole(item.role); }}>{item.role}</Button>
+                  </div>
+                ))}
+                {activeOrganization.data && members.data?.length === 0 ? <p className="py-8 text-center text-muted-foreground text-sm">No members found.</p> : null}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle>Pending invitations</CardTitle><CardDescription>Invitations are issued by Better Auth and stored in the active organization.</CardDescription></CardHeader>
+              <CardContent className="divide-y">
+                {(invitations.data ?? []).map((item) => (
+                  <div className="flex min-h-14 items-center justify-between gap-3" key={item.id}>
+                    <span className="text-sm">{item.email}</span><Badge variant="secondary">{item.status}</Badge>
+                  </div>
+                ))}
+                {activeOrganization.data && invitations.data?.length === 0 ? <p className="py-8 text-center text-muted-foreground text-sm">No pending invitations.</p> : null}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </Main>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent><DialogHeader><DialogTitle>Create organization</DialogTitle><DialogDescription>Create a real Better Auth organization and become its owner.</DialogDescription></DialogHeader>
+          <div className="grid gap-4"><div className="grid gap-2"><Label htmlFor="organization-name">Name</Label><Input id="organization-name" value={name} onChange={(event) => { setName(event.target.value); setSlug(event.target.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-")); }} /></div><div className="grid gap-2"><Label htmlFor="organization-slug">Slug</Label><Input id="organization-slug" value={slug} onChange={(event) => setSlug(event.target.value)} /></div></div>
+          <DialogFooter><Button disabled={!name.trim() || !slug.trim()} onClick={createOrganization}>Create</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={memberId !== null} onOpenChange={(open) => { if (!open) setMemberId(null); }}>
+        <DialogContent><DialogHeader><DialogTitle>Update member role</DialogTitle><DialogDescription>Roles are scoped to the active organization.</DialogDescription></DialogHeader>
+          <Select value={role} onValueChange={setRole}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{availableRoles.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+          <DialogFooter><Button disabled={!memberId || updateRole.isPending} onClick={() => { if (memberId) updateRole.mutate({ memberId, role }); }}>Save role</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 `],
@@ -16809,7 +16857,7 @@ export function useTableUrlState(params: UseTableUrlStateParams): UseTableUrlSta
 }
 `],
   ["addons/admin/apps/web/src/lib/auth-client.ts.hbs", `import { env } from "@{{projectName}}/env/web";
-import { adminClient } from "better-auth/client/plugins";
+import { adminClient{{#if (includes addons "organization")}}, organizationClient{{/if}} } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 const getServerUrl = (url: string) => {
@@ -16824,7 +16872,7 @@ const getServerUrl = (url: string) => {
 
 export const authClient = createAuthClient({
   baseURL: new URL("/api/auth", getServerUrl(env.VITE_SERVER_URL)).toString(),
-  plugins: [adminClient()],
+  plugins: [adminClient(){{#if (includes addons "organization")}}, organizationClient({ dynamicAccessControl: { enabled: true } }){{/if}}],
 });
 `],
   ["addons/admin/apps/web/src/lib/cookies.test.ts", `import { beforeEach, describe, expect, it } from "vitest";
@@ -17382,12 +17430,16 @@ function RouteComponent() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/routes/_authenticated/help-center/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/routes/_authenticated/help-center/index.tsx.hbs", `import { createFileRoute } from "@tanstack/react-router";
 
+{{#if (includes addons "organization")}}
+import { Organizations } from "@/features/organizations";
+{{else}}
 import { ComingSoon } from "@/components/coming-soon";
+{{/if}}
 
 export const Route = createFileRoute("/_authenticated/help-center/")({
-  component: ComingSoon,
+  component: {{#if (includes addons "organization")}}Organizations{{else}}ComingSoon{{/if}},
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
@@ -19136,11 +19188,12 @@ export function createTableMock(rowCount = 2) {
   ["addons/admin/apps/web/vite.config.ts", `import path from "node:path";
 
 import tailwindcss from "@tailwindcss/vite";
+import { tanstackRouterGenerator } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [tanstackRouterGenerator(), react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
@@ -19342,11 +19395,13 @@ export async function createContext({ context }: CreateContextOptions) {
 
 export type Context = Awaited<ReturnType<typeof createContext>>;
 `],
-  ["addons/admin/packages/api/src/index.ts", `import { initTRPC, TRPCError } from "@trpc/server";
+  ["addons/admin/packages/api/src/index.ts.hbs", `import { initTRPC, TRPCError } from "@trpc/server";
 
 import type { Context } from "./context";
+{{#if (includes addons "rbac")}}
 import type { PermissionKey } from "./permissions";
 import { hasPermission } from "./rbac";
+{{/if}}
 
 const t = initTRPC.context<Context>().create();
 
@@ -19368,6 +19423,7 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   });
 });
 
+{{#if (includes addons "rbac")}}
 export const permissionProcedure = (permission: PermissionKey) =>
   protectedProcedure.use(async ({ ctx, next }) => {
     const allowed = await hasPermission(ctx.session.user.id, permission);
@@ -19376,6 +19432,7 @@ export const permissionProcedure = (permission: PermissionKey) =>
     }
     return next({ ctx });
   });
+{{/if}}
 `],
   ["addons/admin/packages/api/src/permissions.ts", `export const PERMISSIONS = [
   {
@@ -20030,10 +20087,21 @@ export const adminRouter = router({
     }),
 });
 `],
-  ["addons/admin/packages/api/src/routers/index.ts", `import { protectedProcedure, publicProcedure, router } from "../index";
+  ["addons/admin/packages/api/src/routers/index.ts.hbs", `import { protectedProcedure, publicProcedure, router } from "../index";
+{{#if (includes addons "rbac")}}
 import { adminRouter } from "./admin";
+{{/if}}
+{{#if (includes addons "organization")}}
+import { organizationRouter } from "./organization";
+{{/if}}
+
 export const appRouter = router({
+  {{#if (includes addons "rbac")}}
   admin: adminRouter,
+  {{/if}}
+  {{#if (includes addons "organization")}}
+  organization: organizationRouter,
+  {{/if}}
   healthCheck: publicProcedure.query(() => "OK"),
   privateData: protectedProcedure.query(({ ctx }) => ({
     message: "This is private",
@@ -20041,6 +20109,99 @@ export const appRouter = router({
   })),
 });
 export type AppRouter = typeof appRouter;
+`],
+  ["addons/admin/packages/api/src/routers/organization.ts.hbs", `import { invitation, member, organization, organizationRole } from "@{{projectName}}/db/schema/organization";
+import { user } from "@{{projectName}}/db/schema/auth";
+import { TRPCError } from "@trpc/server";
+import { and, desc, eq } from "drizzle-orm";
+import { z } from "zod";
+
+import { protectedProcedure, router } from "../index";
+import { db } from "@{{projectName}}/db";
+
+const activeOrganizationProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const organizationId = ctx.session.session.activeOrganizationId;
+  if (!organizationId) {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Select an organization first" });
+  }
+
+  const [currentMember] = await db
+    .select({ id: member.id, role: member.role })
+    .from(member)
+    .where(and(eq(member.organizationId, organizationId), eq(member.userId, ctx.session.user.id)))
+    .limit(1);
+  if (!currentMember) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Organization membership required" });
+  }
+
+  return next({ ctx: { ...ctx, organizationId, organizationMember: currentMember } });
+});
+
+const organizationAdminProcedure = activeOrganizationProcedure.use(({ ctx, next }) => {
+  const roles = ctx.organizationMember.role.split(",");
+  if (!roles.some((role) => role === "owner" || role === "admin")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Organization administrator required" });
+  }
+  return next({ ctx });
+});
+
+export const organizationRouter = router({
+  active: activeOrganizationProcedure.query(async ({ ctx }) => {
+    const [active] = await db
+      .select()
+      .from(organization)
+      .where(eq(organization.id, ctx.organizationId))
+      .limit(1);
+    return active ?? null;
+  }),
+  invitations: organizationAdminProcedure.query(({ ctx }) =>
+    db.select().from(invitation).where(eq(invitation.organizationId, ctx.organizationId)).orderBy(desc(invitation.createdAt)),
+  ),
+  members: organizationAdminProcedure.query(({ ctx }) =>
+    db
+      .select({
+        createdAt: member.createdAt,
+        email: user.email,
+        id: member.id,
+        name: user.name,
+        role: member.role,
+        userId: member.userId,
+      })
+      .from(member)
+      .innerJoin(user, eq(member.userId, user.id))
+      .where(eq(member.organizationId, ctx.organizationId))
+      .orderBy(desc(member.createdAt)),
+  ),
+  roles: organizationAdminProcedure.query(({ ctx }) =>
+    db.select().from(organizationRole).where(eq(organizationRole.organizationId, ctx.organizationId)),
+  ),
+  updateMemberRole: organizationAdminProcedure
+    .input(z.object({ memberId: z.string().min(1), role: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const [target] = await db
+        .select({ role: member.role })
+        .from(member)
+        .where(and(eq(member.id, input.memberId), eq(member.organizationId, ctx.organizationId)))
+        .limit(1);
+      if (!target) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
+      }
+      if (target.role.split(",").includes("owner") && !input.role.split(",").includes("owner")) {
+        const owners = await db
+          .select({ id: member.id })
+          .from(member)
+          .where(and(eq(member.organizationId, ctx.organizationId), eq(member.role, "owner")));
+        if (owners.length === 1) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The last organization owner cannot be removed" });
+        }
+      }
+      await db
+        .update(member)
+        .set({ role: input.role })
+        .where(and(eq(member.id, input.memberId), eq(member.organizationId, ctx.organizationId)));
+      return { success: true };
+    }),
+});
 `],
   ["addons/admin/packages/api/tsconfig.json.hbs", `{
   "extends": "@{{projectName}}/config/tsconfig.base.json",
@@ -20121,10 +20282,13 @@ import {
   user,
   verification,
 } from "@{{projectName}}/db/schema/auth";
+{{#if (includes addons "organization")}}
+import { invitation, member, organization as organizationTable, organizationRole } from "@{{projectName}}/db/schema/organization";
+{{/if}}
 import { env } from "@{{projectName}}/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin } from "better-auth/plugins";
+import { admin{{#if (includes addons "organization")}}, organization{{/if}} } from "better-auth/plugins";
 
 export function createAuth() {
   const db = createDb();
@@ -20143,12 +20307,12 @@ export function createAuth() {
     database: drizzleAdapter(db, {
       provider: "pg",
 
-      schema: { account, session, user, verification },
+      schema: { account, session, user, verification{{#if (includes addons "organization")}}, organization: organizationTable, member, invitation, organizationRole{{/if}} },
     }),
     emailAndPassword: {
       enabled: true,
     },
-    plugins: [admin()],
+    plugins: [admin(){{#if (includes addons "organization")}}, organization({ dynamicAccessControl: { enabled: true } }){{/if}}],
     secret: env.BETTER_AUTH_SECRET,
     trustedOrigins: [env.CORS_ORIGIN],
   });
@@ -20294,6 +20458,7 @@ import {
   userRelations,
   verification,
 } from "./schema/auth";
+{{#if (includes addons "rbac")}}
 import {
   auditLog,
   permission,
@@ -20305,12 +20470,22 @@ import {
   userRole,
   userRoleRelations,
 } from "./schema/rbac";
+{{/if}}
+{{#if (includes addons "organization")}}
+import {
+  invitation,
+  member,
+  organization,
+  organizationRole,
+} from "./schema/organization";
+{{/if}}
 
 export function createDb() {
   return drizzle(env.DATABASE_URL, {
     schema: {
       account,
       accountRelations,
+      {{#if (includes addons "rbac")}}
       auditLog,
       permission,
       permissionRelations,
@@ -20318,13 +20493,22 @@ export function createDb() {
       rolePermission,
       rolePermissionRelations,
       roleRelations,
+      {{/if}}
       session,
       sessionRelations,
       user,
       userRelations,
+      {{#if (includes addons "rbac")}}
       userRole,
       userRoleRelations,
+      {{/if}}
       verification,
+      {{#if (includes addons "organization")}}
+      invitation,
+      member,
+      organization,
+      organizationRole,
+      {{/if}}
     },
   });
 }
@@ -20333,7 +20517,7 @@ export const db = createDb();
 `],
   ["addons/admin/packages/db/src/migrations/.gitkeep", `
 `],
-  ["addons/admin/packages/db/src/schema/auth.ts", `import { relations } from "drizzle-orm";
+  ["addons/admin/packages/db/src/schema/auth.ts.hbs", `import { relations } from "drizzle-orm";
 import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
@@ -20357,6 +20541,9 @@ export const session = pgTable(
   "session",
   {
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    {{#if (includes addons "organization")}}
+    activeOrganizationId: text("active_organization_id"),
+    {{/if}}
     expiresAt: timestamp("expires_at").notNull(),
     id: text("id").primaryKey(),
     impersonatedBy: text("impersonated_by"),
@@ -20388,6 +20575,7 @@ export const account = pgTable(
     refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
     scope: text("scope"),
     updatedAt: timestamp("updated_at")
+      .defaultNow()
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
     userId: text("user_id")
@@ -20432,8 +20620,105 @@ export const accountRelations = relations(account, ({ one }) => ({
   }),
 }));
 `],
-  ["addons/admin/packages/db/src/schema/index.ts", `export * from "./auth";
+  ["addons/admin/packages/db/src/schema/index.ts.hbs", `export * from "./auth";
+{{#if (includes addons "rbac")}}
 export * from "./rbac";
+{{/if}}
+{{#if (includes addons "organization")}}
+export * from "./organization";
+{{/if}}
+`],
+  ["addons/admin/packages/db/src/schema/organization.ts", `import { relations } from "drizzle-orm";
+import { index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+
+import { user } from "./auth";
+
+export const organization = pgTable(
+  "organization",
+  {
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    id: text("id").primaryKey(),
+    logo: text("logo"),
+    metadata: text("metadata"),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+  },
+  (table) => [uniqueIndex("organization_slug_idx").on(table.slug)],
+);
+
+export const member = pgTable(
+  "member",
+  {
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    role: text("role").default("member").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    index("member_organization_idx").on(table.organizationId),
+    index("member_user_idx").on(table.userId),
+    uniqueIndex("member_organization_user_idx").on(table.organizationId, table.userId),
+  ],
+);
+
+export const invitation = pgTable(
+  "invitation",
+  {
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    email: text("email").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    id: text("id").primaryKey(),
+    inviterId: text("inviter_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    role: text("role"),
+    status: text("status").default("pending").notNull(),
+  },
+  (table) => [
+    index("invitation_organization_idx").on(table.organizationId),
+    index("invitation_email_idx").on(table.email),
+  ],
+);
+
+export const organizationRole = pgTable(
+  "organization_role",
+  {
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    permission: text("permission").notNull(),
+    role: text("role").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("organization_role_organization_idx").on(table.organizationId),
+    uniqueIndex("organization_role_slug_idx").on(table.organizationId, table.role),
+  ],
+);
+
+export const organizationRelations = relations(organization, ({ many }) => ({
+  invitations: many(invitation),
+  members: many(member),
+  roles: many(organizationRole),
+}));
+
+export const memberRelations = relations(member, ({ one }) => ({
+  organization: one(organization, {
+    fields: [member.organizationId],
+    references: [organization.id],
+  }),
+  user: one(user, { fields: [member.userId], references: [user.id] }),
+}));
 `],
   ["addons/admin/packages/db/src/schema/rbac.ts", `import { relations } from "drizzle-orm";
 import {
@@ -60957,4 +61242,4 @@ export default function Success() {
 `]
 ]);
 
-export const TEMPLATE_COUNT = 858;
+export const TEMPLATE_COUNT = 861;

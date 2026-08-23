@@ -1,7 +1,18 @@
 import { protectedProcedure, publicProcedure, router } from "../index";
+{{#if (includes addons "rbac")}}
 import { adminRouter } from "./admin";
+{{/if}}
+{{#if (includes addons "organization")}}
+import { organizationRouter } from "./organization";
+{{/if}}
+
 export const appRouter = router({
+  {{#if (includes addons "rbac")}}
   admin: adminRouter,
+  {{/if}}
+  {{#if (includes addons "organization")}}
+  organization: organizationRouter,
+  {{/if}}
   healthCheck: publicProcedure.query(() => "OK"),
   privateData: protectedProcedure.query(({ ctx }) => ({
     message: "This is private",

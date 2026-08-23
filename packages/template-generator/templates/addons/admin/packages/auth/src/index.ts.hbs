@@ -5,10 +5,13 @@ import {
   user,
   verification,
 } from "@{{projectName}}/db/schema/auth";
+{{#if (includes addons "organization")}}
+import { invitation, member, organization as organizationTable, organizationRole } from "@{{projectName}}/db/schema/organization";
+{{/if}}
 import { env } from "@{{projectName}}/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin } from "better-auth/plugins";
+import { admin{{#if (includes addons "organization")}}, organization{{/if}} } from "better-auth/plugins";
 
 export function createAuth() {
   const db = createDb();
@@ -27,12 +30,12 @@ export function createAuth() {
     database: drizzleAdapter(db, {
       provider: "pg",
 
-      schema: { account, session, user, verification },
+      schema: { account, session, user, verification{{#if (includes addons "organization")}}, organization: organizationTable, member, invitation, organizationRole{{/if}} },
     }),
     emailAndPassword: {
       enabled: true,
     },
-    plugins: [admin()],
+    plugins: [admin(){{#if (includes addons "organization")}}, organization({ dynamicAccessControl: { enabled: true } }){{/if}}],
     secret: env.BETTER_AUTH_SECRET,
     trustedOrigins: [env.CORS_ORIGIN],
   });

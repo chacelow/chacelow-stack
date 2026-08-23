@@ -1,5 +1,5 @@
 import { env } from "@{{projectName}}/env/web";
-import { adminClient } from "better-auth/client/plugins";
+import { adminClient{{#if (includes addons "organization")}}, organizationClient{{/if}} } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 const getServerUrl = (url: string) => {
@@ -14,5 +14,5 @@ const getServerUrl = (url: string) => {
 
 export const authClient = createAuthClient({
   baseURL: new URL("/api/auth", getServerUrl(env.VITE_SERVER_URL)).toString(),
-  plugins: [adminClient()],
+  plugins: [adminClient(){{#if (includes addons "organization")}}, organizationClient({ dynamicAccessControl: { enabled: true } }){{/if}}],
 });

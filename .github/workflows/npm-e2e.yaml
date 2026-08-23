@@ -13,9 +13,16 @@ permissions:
 
 jobs:
   verify:
-    name: Generate and build chacelow-admin
+    name: Generate and build ${{ matrix.template }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        template:
+          - chacelow-admin-base
+          - chacelow-admin-rbac
+          - chacelow-admin-saas
     steps:
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -32,19 +39,32 @@ jobs:
         run: |
           npm exec --yes --package="@chacelow-stack/create@${{ inputs.version }}" -- \
             create-chacelow-stack create npm-admin \
-            --template chacelow-admin \
+            --template "${{ matrix.template }}" \
             --yes \
             --package-manager pnpm \
             --no-install \
             --no-git
 
-      - name: Verify generated admin files
+      - name: Verify generated capability files
         run: |
-          test -f npm-admin/apps/web/src/features/users/index.tsx
-          test -f npm-admin/packages/api/src/rbac.ts
-          test -f npm-admin/packages/api/src/permissions.ts
+          test -f npm-admin/apps/web/src/features/dashboard/index.tsx
           test -f npm-admin/packages/i18n/src/locales/en.json
           test -f npm-admin/packages/i18n/src/locales/zh.json
+          if test "${{ matrix.template }}" = "chacelow-admin-base"; then
+            test ! -e npm-admin/packages/api/src/rbac.ts
+            test ! -e npm-admin/packages/db/src/schema/organization.ts
+          else
+            test -f npm-admin/apps/web/src/features/users/index.tsx
+            test -f npm-admin/packages/api/src/rbac.ts
+            test -f npm-admin/packages/api/src/permissions.ts
+          fi
+          if test "${{ matrix.template }}" = "chacelow-admin-saas"; then
+            test -f npm-admin/packages/db/src/schema/organization.ts
+            test -f npm-admin/packages/api/src/routers/organization.ts
+            test -f npm-admin/apps/web/src/features/organizations/index.tsx
+          else
+            test ! -e npm-admin/packages/db/src/schema/organization.ts
+          fi
 
       - name: Install generated project
         working-directory: npm-admin

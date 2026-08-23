@@ -54,6 +54,7 @@ export const ADDON_COMPATIBILITY = {
   admin: ["tanstack-router"],
   rbac: ["tanstack-router"],
   i18n: ["tanstack-router"],
+  organization: ["tanstack-router"],
   pwa: ["tanstack-router", "react-router", "solid", "next"],
   tauri: desktopWebFrontends,
   electrobun: desktopWebFrontends,

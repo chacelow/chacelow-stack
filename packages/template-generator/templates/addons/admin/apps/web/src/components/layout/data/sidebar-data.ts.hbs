@@ -1,14 +1,17 @@
 import {
   Activity,
-  AudioWaveform,
   Command,
-  GalleryVerticalEnd,
   LayoutDashboard,
-  ScrollText,
   Settings,
-  ShieldCheck,
   UserCog,
+  {{#if (includes addons "rbac")}}
+  ScrollText,
+  ShieldCheck,
   Users,
+  {{/if}}
+  {{#if (includes addons "organization")}}
+  Building2,
+  {{/if}}
 } from "lucide-react";
 import type { SidebarData } from "../types";
 
@@ -24,6 +27,7 @@ export const sidebarData: SidebarData = {
       ],
       title: "Workspace",
     },
+    {{#if (includes addons "rbac")}}
     {
       items: [
         {
@@ -34,6 +38,13 @@ export const sidebarData: SidebarData = {
               title: "Users",
               url: "/users",
             },
+            {{#if (includes addons "organization")}}
+            {
+              icon: Building2,
+              title: "Organizations",
+              url: "/help-center",
+            },
+            {{/if}}
             {
               icon: UserCog,
               title: "Roles & permissions",
@@ -50,6 +61,7 @@ export const sidebarData: SidebarData = {
       ],
       title: "Administration",
     },
+    {{/if}}
     {
       items: [
         {
@@ -77,16 +89,6 @@ export const sidebarData: SidebarData = {
       logo: Command,
       name: "{{projectName}}",
       plan: "Vite + ShadcnUI",
-    },
-    {
-      logo: GalleryVerticalEnd,
-      name: "Acme Inc",
-      plan: "Enterprise",
-    },
-    {
-      logo: AudioWaveform,
-      name: "Acme Corp.",
-      plan: "Startup",
     },
   ],
   user: {

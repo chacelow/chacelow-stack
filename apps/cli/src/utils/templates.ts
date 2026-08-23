@@ -1,20 +1,34 @@
 import type { CreateInput, Template } from "../types";
 
+const ADMIN_BASE_PRESET = {
+  database: "postgres",
+  orm: "drizzle",
+  backend: "hono",
+  runtime: "bun",
+  frontend: ["tanstack-router"],
+  api: "trpc",
+  auth: "better-auth",
+  payments: "none",
+  addons: ["admin", "i18n", "turborepo"],
+  examples: ["none"],
+  dbSetup: "docker",
+  webDeploy: "none",
+  serverDeploy: "none",
+} as const satisfies CreateInput;
+
 export const TEMPLATE_PRESETS = {
   "chacelow-admin": {
-    database: "postgres",
-    orm: "drizzle",
-    backend: "hono",
-    runtime: "bun",
-    frontend: ["tanstack-router"],
-    api: "trpc",
-    auth: "better-auth",
-    payments: "none",
+    ...ADMIN_BASE_PRESET,
     addons: ["admin", "rbac", "i18n", "turborepo"],
-    examples: ["none"],
-    dbSetup: "docker",
-    webDeploy: "none",
-    serverDeploy: "none",
+  },
+  "chacelow-admin-base": ADMIN_BASE_PRESET,
+  "chacelow-admin-rbac": {
+    ...ADMIN_BASE_PRESET,
+    addons: ["admin", "rbac", "i18n", "turborepo"],
+  },
+  "chacelow-admin-saas": {
+    ...ADMIN_BASE_PRESET,
+    addons: ["admin", "rbac", "organization", "i18n", "turborepo"],
   },
   mern: {
     database: "mongodb",
@@ -94,7 +108,10 @@ export function getTemplateConfig(template: Template) {
 
 export function getTemplateDescription(template: Template) {
   const descriptions = {
-    "chacelow-admin": "Production admin with Better Auth, dynamic RBAC, audit logs, and i18n",
+    "chacelow-admin": "Alias for chacelow-admin-rbac",
+    "chacelow-admin-base": "Production admin with Better Auth, API health checks, and i18n",
+    "chacelow-admin-rbac": "Admin Base with dynamic RBAC, protected APIs, and audit logs",
+    "chacelow-admin-saas": "Admin RBAC with organizations, members, invitations, and tenant-scoped access",
     mern: "MongoDB + Express + React + Node.js - Classic MERN stack",
     pern: "PostgreSQL + Express + React + Node.js - Popular PERN stack",
     t3: "T3 Stack - Next.js + tRPC + Prisma + PostgreSQL + Better Auth",
@@ -106,5 +123,5 @@ export function getTemplateDescription(template: Template) {
 }
 
 export function listAvailableTemplates() {
-  return Object.keys(TEMPLATE_PRESETS).filter((t) => t !== "none") as Template[];
+  return Object.keys(TEMPLATE_PRESETS).filter((template) => template !== "none" && template !== "chacelow-admin") as Template[];
 }
