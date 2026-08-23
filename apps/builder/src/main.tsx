@@ -7,7 +7,7 @@ import { sanitizeStackState } from "@/lib/sanitize-stack-addons";
 import { formatProjectName, generateStackCommand, getSelectedTechs } from "@/lib/stack-utils";
 
 import "./styles.css";
-import { type Language, messages } from "./i18n";
+import { getOptionDescription, type Language, messages } from "./i18n";
 
 type Category = keyof typeof TECH_OPTIONS;
 type Option = (typeof TECH_OPTIONS)[Category][number];
@@ -179,7 +179,7 @@ function App() {
                         </span>
                         <span className="option-copy">
                           <strong>{option.name}</strong>
-                          <small>{option.description}</small>
+                          <small>{getOptionDescription(language, option.id, option.name, option.description)}</small>
                         </span>
                         {"experimental" in option && option.experimental ? <em>{copy.experimental}</em> : null}
                       </button>
