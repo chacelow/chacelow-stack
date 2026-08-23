@@ -187,7 +187,7 @@ function generateReadmeContent(options: ProjectConfig): string {
 
   return `# ${projectName}
 
-This project was created with [Chacelow-Stack](https://github.com/AmanVarshney01/create-chacelow-stack), a modern TypeScript stack${
+This project was created with [Chacelow-Stack](https://github.com/AmanVarshney01/@chacelow-stack/create), a modern TypeScript stack${
     stackDescription ? ` that combines ${stackDescription}` : ""
   }.
 

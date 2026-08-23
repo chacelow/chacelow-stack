@@ -26,13 +26,13 @@ export const customSearchItems: CustomSearchItem[] = [
   },
   {
     title: "GitHub Repository",
-    url: "https://github.com/AmanVarshney01/create-chacelow-stack",
+    url: "https://github.com/AmanVarshney01/@chacelow-stack/create",
     content: "GitHub",
     tags: ["github", "source", "code", "repository", "contribute", "star"],
   },
   {
     title: "NPM Package",
-    url: "https://www.npmjs.com/package/create-chacelow-stack",
+    url: "https://www.npmjs.com/package/@chacelow-stack/create",
     content: "NPM",
     tags: ["npm", "package", "install", "cli", "tool"],
   },

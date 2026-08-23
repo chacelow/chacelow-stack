@@ -20,7 +20,7 @@
       },
     },
     "apps/cli": {
-      "name": "create-chacelow-stack",
+      "name": "@chacelow-stack/create",
       "version": "0.1.0",
       "bin": {
         "create-chacelow-stack": "dist/cli.mjs",
@@ -66,6 +66,7 @@
         "@base-ui/react": "^1.6.0",
         "@base-ui/utils": "^0.3.1",
         "@chacelow-stack/backend": "workspace:*",
+        "@chacelow-stack/create": "workspace:*",
         "@chacelow-stack/template-generator": "workspace:*",
         "@chacelow-stack/types": "workspace:*",
         "@erquhart/convex-oss-stats": "catalog:",
@@ -85,7 +86,6 @@
         "clsx": "^2.1.1",
         "convex": "catalog:",
         "convex-helpers": "catalog:",
-        "create-chacelow-stack": "workspace:*",
         "culori": "^4.0.2",
         "d3-array": "^3.2.4",
         "date-fns": "^4.4.0",
@@ -153,7 +153,7 @@
         "create-bts": "cli.js",
       },
       "dependencies": {
-        "create-chacelow-stack": "workspace:*",
+        "@chacelow-stack/create": "workspace:*",
       },
     },
     "packages/template-generator": {
@@ -247,6 +247,8 @@
     "@base-ui/utils": ["@base-ui/utils@0.3.1", "https://registry.npmmirror.com/@base-ui/utils/-/utils-0.3.1.tgz", { "dependencies": { "@babel/runtime": "^7.29.2", "@floating-ui/utils": "^0.2.11", "reselect": "^5.2.0", "use-sync-external-store": "^1.6.0" }, "peerDependencies": { "@types/react": "^17 || ^18 || ^19", "react": "^17 || ^18 || ^19", "react-dom": "^17 || ^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-gFFiltORVmW/N6IILTGxizP3PBpVpysqML1ALY5Vk0mH+7faVkCknOU31goYHN5Aoek2dkjxva1XOD2Ce9WuIg=="],
 
     "@chacelow-stack/backend": ["@chacelow-stack/backend@workspace:packages/backend"],
+
+    "@chacelow-stack/create": ["@chacelow-stack/create@workspace:apps/cli"],
 
     "@chacelow-stack/create-bts-legacy": ["@chacelow-stack/create-bts-legacy@workspace:packages/create-bts"],
 
@@ -1271,8 +1273,6 @@
     "cookie-signature": ["cookie-signature@1.2.2", "https://registry.npmmirror.com/cookie-signature/-/cookie-signature-1.2.2.tgz", {}, "sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg=="],
 
     "cors": ["cors@2.8.6", "https://registry.npmmirror.com/cors/-/cors-2.8.6.tgz", { "dependencies": { "object-assign": "^4", "vary": "^1" } }, "sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw=="],
-
-    "create-chacelow-stack": ["create-chacelow-stack@workspace:apps/cli"],
 
     "cron-parser": ["cron-parser@4.9.0", "https://registry.npmmirror.com/cron-parser/-/cron-parser-4.9.0.tgz", { "dependencies": { "luxon": "^3.2.1" } }, "sha512-p0SaNjrHOnQeR8/VnfGbmg9te2kfyYSQ7Sc/j/6DtPL3JQvKxmjO9TSjNFpujqV3vEYYBvNNvXSxzyksBWAx1Q=="],
 

@@ -84,7 +84,7 @@ describe("local tool requirements", () => {
     const result = validateLocalToolVersions(config(), { bun: "1.2.14", node: "v21.7.3" }, "node");
 
     expect(result.isErr()).toBe(true);
-    expect(result.isErr() ? result.error.message : "").toContain("create-chacelow-stack");
+    expect(result.isErr() ? result.error.message : "").toContain("@chacelow-stack/create");
   });
 
   it("does not require Node tooling when Bun owns the install and runtime", () => {

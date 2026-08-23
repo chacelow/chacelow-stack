@@ -84,7 +84,7 @@ function getAllMcpServers(config: ProjectConfig): McpServerDef[] {
       key: "chacelow-stack",
       label: "Chacelow Stack",
       name: "chacelow-stack",
-      target: getPackageExecutionCommand(config.packageManager, "create-chacelow-stack@latest mcp"),
+      target: getPackageExecutionCommand(config.packageManager, "@chacelow-stack/create@latest mcp"),
     },
     {
       key: "context7",

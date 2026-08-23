@@ -22,7 +22,7 @@ function getBaseCommand(packageManager: ProjectConfig["packageManager"]): string
     return "pnpm create chacelow-stack@latest";
   }
 
-  return "npx create-chacelow-stack@latest";
+  return "npx @chacelow-stack/create@latest";
 }
 
 export function generateReproducibleCommand(config: ProjectConfig): string {

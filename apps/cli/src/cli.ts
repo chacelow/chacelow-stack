@@ -5,12 +5,12 @@ const [, , command, ...args] = process.argv;
 
 if (command === "mcp") {
   if (args.includes("--help") || args.includes("-h")) {
-    console.log(`Usage: create-chacelow-stack mcp
+    console.log(`Usage: @chacelow-stack/create mcp
 
 Start the Chacelow Stack MCP server over stdio.
 
 This command is intended to be launched by an MCP client, for example:
-  create-chacelow-stack mcp`);
+  @chacelow-stack/create mcp`);
     process.exit(0);
   }
 

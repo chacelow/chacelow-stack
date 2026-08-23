@@ -8,7 +8,7 @@ A modern CLI tool for scaffolding end-to-end type-safe TypeScript projects with 
 <img src="https://sponsors.chacelow-stack.dev/sponsors.png" alt="Sponsors">
 </p>
 
-![demo](https://cdn.jsdelivr.net/gh/amanvarshney01/create-chacelow-stack@master/demo.gif)
+![demo](https://cdn.jsdelivr.net/gh/amanvarshney01/@chacelow-stack/create@master/demo.gif)
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ bun create chacelow-stack@latest
 pnpm create chacelow-stack@latest
 
 # Using npm
-npx create-chacelow-stack@latest
+npx @chacelow-stack/create@latest
 ```
 
 Follow the prompts to configure your project or use the `--yes` flag for defaults.
@@ -59,7 +59,7 @@ generated commands.
 ## Usage
 
 ```bash
-Usage: create-chacelow-stack [project-directory] [options]
+Usage: @chacelow-stack/create [project-directory] [options]
 
 Options:
   -V, --version                   Output the version number
@@ -94,29 +94,29 @@ Options:
 
 ```bash
 # Raw JSON payload input (agent-friendly)
-create-chacelow-stack create-json --input '{"projectName":"my-app","yes":true,"dryRun":true}'
-create-chacelow-stack add-json --input '{"projectDir":"./my-app","addons":["wxt"],"addonOptions":{"wxt":{"template":"react"}}}'
-create-chacelow-stack create-json --input '{"projectName":"db-app","database":"postgres","orm":"drizzle","dbSetup":"neon","dbSetupOptions":{"mode":"manual"}}'
+@chacelow-stack/create create-json --input '{"projectName":"my-app","yes":true,"dryRun":true}'
+@chacelow-stack/create add-json --input '{"projectDir":"./my-app","addons":["wxt"],"addonOptions":{"wxt":{"template":"react"}}}'
+@chacelow-stack/create create-json --input '{"projectName":"db-app","database":"postgres","orm":"drizzle","dbSetup":"neon","dbSetupOptions":{"mode":"manual"}}'
 
 # Runtime schema/introspection output
-create-chacelow-stack schema --name all
-create-chacelow-stack schema --name createInput
-create-chacelow-stack schema --name addInput
-create-chacelow-stack schema --name addonOptions
-create-chacelow-stack schema --name dbSetupOptions
-create-chacelow-stack schema --name cli
+@chacelow-stack/create schema --name all
+@chacelow-stack/create schema --name createInput
+@chacelow-stack/create schema --name addInput
+@chacelow-stack/create schema --name addonOptions
+@chacelow-stack/create schema --name dbSetupOptions
+@chacelow-stack/create schema --name cli
 
 # Local stdio MCP server
-npx create-chacelow-stack@latest mcp
+npx @chacelow-stack/create@latest mcp
 ```
 
 To install Chacelow Stack into supported agent configs with `add-mcp` and avoid relying on a global CLI install:
 
 ```bash
-npx -y add-mcp@latest "npx -y create-chacelow-stack@latest mcp"
+npx -y add-mcp@latest "npx -y @chacelow-stack/create@latest mcp"
 ```
 
-When you scaffold with the `mcp` addon, Chacelow Stack itself can also be installed into supported agent configs through `add-mcp` using a package runner command instead of assuming a global CLI install. For Bun projects, the generated config uses the equivalent `bunx create-chacelow-stack@latest mcp` server command inside `add-mcp`.
+When you scaffold with the `mcp` addon, Chacelow Stack itself can also be installed into supported agent configs through `add-mcp` using a package runner command instead of assuming a global CLI install. For Bun projects, the generated config uses the equivalent `bunx @chacelow-stack/create@latest mcp` server command inside `add-mcp`.
 
 For MCP project creation, prefer `install: false`. Long dependency installs can exceed common MCP client request timeouts, so the safest flow is to scaffold first and run your package manager install command afterward in the project directory.
 
@@ -137,7 +137,7 @@ You can disable telemetry by setting the `BTS_TELEMETRY_DISABLED` environment va
 
 ```bash
 # Disable telemetry for a single run
-BTS_TELEMETRY_DISABLED=1 npx create-chacelow-stack
+BTS_TELEMETRY_DISABLED=1 npx @chacelow-stack/create
 
 # Disable telemetry globally in your shell profile (.bashrc, .zshrc, etc.)
 export BTS_TELEMETRY_DISABLED=1
@@ -148,103 +148,103 @@ export BTS_TELEMETRY_DISABLED=1
 Create a project with default configuration:
 
 ```bash
-npx create-chacelow-stack --yes
+npx @chacelow-stack/create --yes
 ```
 
 Validate a command without writing files:
 
 ```bash
-npx create-chacelow-stack --yes --dry-run
+npx @chacelow-stack/create --yes --dry-run
 ```
 
 Create a project with specific options:
 
 ```bash
-npx create-chacelow-stack --database postgres --orm drizzle --auth better-auth --addons pwa biome
+npx @chacelow-stack/create --database postgres --orm drizzle --auth better-auth --addons pwa biome
 ```
 
 Create a project with Elysia backend and Node.js runtime:
 
 ```bash
-npx create-chacelow-stack --backend elysia --runtime node
+npx @chacelow-stack/create --backend elysia --runtime node
 ```
 
 Create a project with multiple frontend options (one web + one native):
 
 ```bash
-npx create-chacelow-stack --frontend tanstack-router native-bare
+npx @chacelow-stack/create --frontend tanstack-router native-bare
 ```
 
 Create a project with examples:
 
 ```bash
-npx create-chacelow-stack --examples todo ai
+npx @chacelow-stack/create --examples todo ai
 ```
 
 Create a project with Turso database setup:
 
 ```bash
-npx create-chacelow-stack --database sqlite --orm drizzle --db-setup turso
+npx @chacelow-stack/create --database sqlite --orm drizzle --db-setup turso
 ```
 
 Create a project with Supabase PostgreSQL setup:
 
 ```bash
-npx create-chacelow-stack --database postgres --orm drizzle --db-setup supabase --auth better-auth
+npx @chacelow-stack/create --database postgres --orm drizzle --db-setup supabase --auth better-auth
 ```
 
 Create a project with Convex backend:
 
 ```bash
-npx create-chacelow-stack --backend convex --frontend tanstack-router
+npx @chacelow-stack/create --backend convex --frontend tanstack-router
 ```
 
 Create a project with documentation site:
 
 ```bash
-npx create-chacelow-stack --addons starlight
+npx @chacelow-stack/create --addons starlight
 ```
 
 Create a minimal TypeScript project with no backend:
 
 ```bash
-npx create-chacelow-stack --backend none --frontend tanstack-router
+npx @chacelow-stack/create --backend none --frontend tanstack-router
 ```
 
 Create a backend-only project with no frontend:
 
 ```bash
-npx create-chacelow-stack --frontend none --backend hono --database postgres --orm drizzle
+npx @chacelow-stack/create --frontend none --backend hono --database postgres --orm drizzle
 ```
 
 Create a simple frontend-only project:
 
 ```bash
-npx create-chacelow-stack --backend none --frontend next --addons none --examples none
+npx @chacelow-stack/create --backend none --frontend next --addons none --examples none
 ```
 
 Create a Cloudflare Workers project:
 
 ```bash
-npx create-chacelow-stack --backend hono --runtime workers --database sqlite --orm drizzle --db-setup d1
+npx @chacelow-stack/create --backend hono --runtime workers --database sqlite --orm drizzle --db-setup d1
 ```
 
 Create a self-hosted fullstack project on Cloudflare with D1:
 
 ```bash
-npx create-chacelow-stack --backend self --frontend next --api trpc --database sqlite --orm drizzle --db-setup d1 --web-deploy cloudflare
+npx @chacelow-stack/create --backend self --frontend next --api trpc --database sqlite --orm drizzle --db-setup d1 --web-deploy cloudflare
 ```
 
 Create a self-hosted project that ships as Docker containers (web + server + database via Docker Compose):
 
 ```bash
-npx create-chacelow-stack --frontend tanstack-router --backend hono --runtime bun --database postgres --orm drizzle --db-setup docker --web-deploy docker --server-deploy docker
+npx @chacelow-stack/create --frontend tanstack-router --backend hono --runtime bun --database postgres --orm drizzle --db-setup docker --web-deploy docker --server-deploy docker
 ```
 
 Create a minimal API-only project:
 
 ```bash
-npx create-chacelow-stack --frontend none --backend hono --api trpc --database none --addons none
+npx @chacelow-stack/create --frontend none --backend hono --api trpc --database none --addons none
 ```
 
 ## Compatibility Notes

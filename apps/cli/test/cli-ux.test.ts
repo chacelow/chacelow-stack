@@ -313,16 +313,16 @@ describe("CLI flow presentation", () => {
 
   it("uses the active package runner for follow-up commands", () => {
     expect(getCliSubcommandCommand("history", "npm", "bun/1.3.0")).toBe(
-      "bunx create-chacelow-stack@latest history",
+      "bunx @chacelow-stack/create@latest history",
     );
     expect(getCliSubcommandCommand("history", "bun", "npm/11.0.0")).toBe(
-      "npx create-chacelow-stack@latest history",
+      "npx @chacelow-stack/create@latest history",
     );
     expect(getCliSubcommandCommand("history", "npm", "pnpm/10.0.0")).toBe(
-      "pnpm dlx create-chacelow-stack@latest history",
+      "pnpm dlx @chacelow-stack/create@latest history",
     );
     expect(getCliSubcommandCommand("history", "bun", "")).toBe(
-      "bunx create-chacelow-stack@latest history",
+      "bunx @chacelow-stack/create@latest history",
     );
   });
 });

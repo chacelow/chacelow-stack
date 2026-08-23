@@ -1,6 +1,6 @@
 # chacelow-generated
 
-This project was created with [Chacelow-Stack](https://github.com/AmanVarshney01/create-chacelow-stack), a modern TypeScript stack that combines React, TanStack Router, Hono, TRPC, and more.
+This project was created with [Chacelow-Stack](https://github.com/AmanVarshney01/@chacelow-stack/create), a modern TypeScript stack that combines React, TanStack Router, Hono, TRPC, and more.
 
 ## Features
 

@@ -8,7 +8,7 @@ Thank you for your interest in contributing to Chacelow-Stack! This document pro
 
 This repository is organized as a monorepo containing:
 
-- **CLI**: [`apps/cli`](apps/cli) - The scaffolding CLI tool (`create-chacelow-stack`)
+- **CLI**: [`apps/cli`](apps/cli) - The scaffolding CLI tool (`@chacelow-stack/create`)
 - **Documentation**: [`apps/web`](apps/web) - Official website and documentation
 
 ## Development Setup
@@ -24,8 +24,8 @@ This repository is organized as a monorepo containing:
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/AmanVarshney01/create-chacelow-stack.git
-   cd create-chacelow-stack
+   git clone https://github.com/AmanVarshney01/@chacelow-stack/create.git
+   cd @chacelow-stack/create
    ```
 
 2. **Install dependencies**
@@ -47,7 +47,7 @@ This repository is organized as a monorepo containing:
    bun link
    ```
 
-   Now you can use `create-chacelow-stack` from anywhere in your system.
+   Now you can use `@chacelow-stack/create` from anywhere in your system.
 
 3. **Start development server**
 
@@ -60,7 +60,7 @@ This repository is organized as a monorepo containing:
 4. **Test the CLI**
    Now go to anywhere else in your system (maybe like a test folder) and run:
    ```bash
-   create-chacelow-stack
+   @chacelow-stack/create
    ```
    This will run the locally installed CLI.
 

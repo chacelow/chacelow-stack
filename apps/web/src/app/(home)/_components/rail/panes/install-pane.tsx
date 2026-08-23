@@ -12,7 +12,7 @@ import { GroupHeader } from "../chrome";
 const COMMANDS = {
   bun: "bun create chacelow-stack@latest",
   pnpm: "pnpm create chacelow-stack@latest",
-  npm: "npx create-chacelow-stack@latest",
+  npm: "npx @chacelow-stack/create@latest",
 } as const;
 
 type PackageManager = keyof typeof COMMANDS;

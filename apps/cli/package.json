@@ -1,5 +1,5 @@
 {
-  "name": "create-chacelow-stack",
+  "name": "@chacelow-stack/create",
   "version": "0.1.0",
   "description": "A configurable full-stack generator with a production-ready admin, RBAC, audit, and i18n preset",
   "keywords": [

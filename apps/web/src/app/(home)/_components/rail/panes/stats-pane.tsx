@@ -74,7 +74,7 @@ export default function StatsPane() {
         />
 
         <StatColumn
-          href="https://github.com/AmanVarshney01/create-chacelow-stack"
+          href="https://github.com/AmanVarshney01/@chacelow-stack/create"
           label="github"
           caption="stars"
           notes={[
@@ -95,12 +95,12 @@ export default function StatsPane() {
         />
 
         <StatColumn
-          href="https://www.npmjs.com/package/create-chacelow-stack"
+          href="https://www.npmjs.com/package/@chacelow-stack/create"
           label="npm"
           caption="downloads"
           notes={[
             stats.npmAvgPerDay === null ? "— / day" : `${stats.npmAvgPerDay} / day`,
-            "create-chacelow-stack",
+            "@chacelow-stack/create",
           ]}
           value={
             <NumberFlow

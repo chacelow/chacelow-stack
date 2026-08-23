@@ -33,7 +33,7 @@
     "clsx": "^2.1.1",
     "convex": "catalog:",
     "convex-helpers": "catalog:",
-    "create-chacelow-stack": "workspace:*",
+    "@chacelow-stack/create": "workspace:*",
     "culori": "^4.0.2",
     "d3-array": "^3.2.4",
     "date-fns": "^4.4.0",

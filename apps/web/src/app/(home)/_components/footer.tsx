@@ -20,7 +20,7 @@ const Footer = () => {
             </p>
             <div className="flex gap-2">
               <Link
-                href="https://github.com/AmanVarshney01/create-chacelow-stack"
+                href="https://github.com/AmanVarshney01/@chacelow-stack/create"
                 target="_blank"
                 className="inline-flex items-center justify-center rounded border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                 aria-label="GitHub Repository"
@@ -28,7 +28,7 @@ const Footer = () => {
                 <FaGithub size={20} />
               </Link>
               <Link
-                href="https://www.npmjs.com/package/create-chacelow-stack"
+                href="https://www.npmjs.com/package/@chacelow-stack/create"
                 target="_blank"
                 className="inline-flex items-center justify-center rounded border border-border p-2 text-muted-foreground invert-0 transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:invert"
                 aria-label="NPM Package"
@@ -46,7 +46,7 @@ const Footer = () => {
               <li>
                 <Link
                   target="_blank"
-                  href="https://github.com/AmanVarshney01/create-chacelow-stack"
+                  href="https://github.com/AmanVarshney01/@chacelow-stack/create"
                   className="inline-block transition-colors hover:text-primary focus:text-primary focus:outline-none"
                 >
                   GitHub Repository
@@ -55,7 +55,7 @@ const Footer = () => {
               <li>
                 <Link
                   target="_blank"
-                  href="https://www.npmjs.com/package/create-chacelow-stack"
+                  href="https://www.npmjs.com/package/@chacelow-stack/create"
                   className="inline-block transition-colors hover:text-primary focus:text-primary focus:outline-none"
                 >
                   NPM Package

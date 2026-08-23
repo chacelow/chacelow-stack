@@ -25,7 +25,7 @@ const config: NextConfig = {
       },
     ];
   },
-  serverExternalPackages: ["create-chacelow-stack", "fs-extra", "tinyglobby", "handlebars"],
+  serverExternalPackages: ["@chacelow-stack/create", "fs-extra", "tinyglobby", "handlebars"],
 };
 
 export default withMDX(config);

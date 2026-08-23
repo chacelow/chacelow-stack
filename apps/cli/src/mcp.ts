@@ -180,7 +180,7 @@ function getStackGuidance() {
 export function createBtsMcpServer() {
   const server = new McpServer(
     {
-      name: "create-chacelow-stack",
+      name: "@chacelow-stack/create",
       version: getLatestCLIVersion(),
     },
     {

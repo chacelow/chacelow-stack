@@ -24,10 +24,10 @@ export function useProjectStats() {
   const stats = useQuery(api.analytics.getStats, {});
   const monthlyStats = useQuery(api.analytics.getMonthlyStats, {});
   const githubRepo = useQuery(api.stats.getGithubRepo, {
-    name: "AmanVarshney01/create-chacelow-stack",
+    name: "AmanVarshney01/@chacelow-stack/create",
   }) as GithubRepoStats | null | undefined;
   const npmPackages = useQuery(api.stats.getNpmPackages, {
-    names: ["create-chacelow-stack"],
+    names: ["@chacelow-stack/create"],
   }) as NpmPackageStats | null | undefined;
 
   const liveNpmDownloadCount = useNpmDownloadCounter(npmPackages);

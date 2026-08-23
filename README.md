@@ -33,7 +33,7 @@ bun create chacelow-stack@latest
 pnpm create chacelow-stack@latest
 
 # Using npm
-npx create-chacelow-stack@latest
+npx @chacelow-stack/create@latest
 ```
 
 ## Claude Code plugin
@@ -41,7 +41,7 @@ npx create-chacelow-stack@latest
 Want your AI assistant to scaffold and extend projects with Chacelow-Stack? Install the plugin and it will plan a valid stack and generate it through the bundled MCP server instead of hand-rolling boilerplate.
 
 ```bash
-/plugin marketplace add AmanVarshney01/create-chacelow-stack
+/plugin marketplace add AmanVarshney01/@chacelow-stack/create
 /plugin install chacelow-stack@chacelow-stack
 ```
 
@@ -79,7 +79,7 @@ Visit [chacelow-stack.dev](https://chacelow-stack.dev) for full documentation, g
 
 ```bash
 # Clone the repository
-git clone https://github.com/AmanVarshney01/create-chacelow-stack.git
+git clone https://github.com/AmanVarshney01/@chacelow-stack/create.git
 
 # Install dependencies
 bun install
@@ -100,10 +100,10 @@ Please read the Contribution Guide first and open an issue before starting new f
 
 ## Star History
 
-<a href="https://www.star-history.com/#AmanVarshney01/create-chacelow-stack&Date">
+<a href="https://www.star-history.com/#AmanVarshney01/@chacelow-stack/create&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=AmanVarshney01/create-chacelow-stack&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=AmanVarshney01/create-chacelow-stack&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=AmanVarshney01/create-chacelow-stack&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=AmanVarshney01/@chacelow-stack/create&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=AmanVarshney01/@chacelow-stack/create&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=AmanVarshney01/@chacelow-stack/create&type=Date" />
  </picture>
 </a>

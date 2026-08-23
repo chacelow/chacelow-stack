@@ -110,7 +110,7 @@ async function main(): Promise<void> {
   // Update alias package version
   const aliasPackageJson = JSON.parse(await readFile(ALIAS_PACKAGE_JSON_PATH, "utf-8"));
   aliasPackageJson.version = newVersion;
-  aliasPackageJson.dependencies["create-chacelow-stack"] = `^${newVersion}`;
+  aliasPackageJson.dependencies["@chacelow-stack/create"] = `^${newVersion}`;
   await writeFile(ALIAS_PACKAGE_JSON_PATH, `${JSON.stringify(aliasPackageJson, null, 2)}\n`);
 
   // Update types package version
@@ -153,7 +153,7 @@ async function main(): Promise<void> {
 This PR bumps the version to \`${newVersion}\`.
 
 ### Changes
-- Updated \`create-chacelow-stack\` to v${newVersion}
+- Updated \`@chacelow-stack/create\` to v${newVersion}
 - Updated \`create-bts\` to v${newVersion}
 - Updated \`@chacelow-stack/types\` to v${newVersion}
 - Updated \`@chacelow-stack/template-generator\` to v${newVersion}

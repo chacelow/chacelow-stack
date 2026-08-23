@@ -59,7 +59,7 @@ The analytics page publishes aggregate usage trends from successful CLI project 
 - Disable CLI telemetry with \`BTS_TELEMETRY_DISABLED=1\` or \`--disable-analytics\`.`,
   builder: `# Chacelow-Stack browser builder
 
-Use the stack builder to choose a frontend, backend, runtime, database, ORM, API layer, authentication, deployment targets, and addons. It produces a reproducible \`create-chacelow-stack\` command.
+Use the stack builder to choose a frontend, backend, runtime, database, ORM, API layer, authentication, deployment targets, and addons. It produces a reproducible \`@chacelow-stack/create\` command.
 
 - [Open the builder](${SITE_URL}/new)
 - [CLI options](${SITE_URL}/docs/cli/options.mdx)
@@ -198,21 +198,21 @@ Chacelow-Stack does not expose a public hosted application API. The supported au
 ## Quick start
 
 \`\`\`bash
-npx create-chacelow-stack@latest my-app
+npx @chacelow-stack/create@latest my-app
 \`\`\`
 
 Non-interactive default project:
 
 \`\`\`bash
-npx create-chacelow-stack@latest my-app --yes
+npx @chacelow-stack/create@latest my-app --yes
 \`\`\`
 
 ## Agent interfaces
 
-- JSON project creation: \`create-chacelow-stack create-json --input '{...}'\`
-- JSON project updates: \`create-chacelow-stack add-json --input '{...}'\`
-- JSON schemas: \`create-chacelow-stack schema --name all\`
-- Local MCP server: \`npx create-chacelow-stack@latest mcp\`
+- JSON project creation: \`@chacelow-stack/create create-json --input '{...}'\`
+- JSON project updates: \`@chacelow-stack/create add-json --input '{...}'\`
+- JSON schemas: \`@chacelow-stack/create schema --name all\`
+- Local MCP server: \`npx @chacelow-stack/create@latest mcp\`
 - [Agent workflow guide](${SITE_URL}/docs/cli/agent-workflows.mdx)
 - [Programmatic API](${SITE_URL}/docs/cli/programmatic-api.mdx)
 

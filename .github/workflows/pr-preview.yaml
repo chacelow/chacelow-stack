@@ -101,7 +101,7 @@ jobs:
       - name: Update create-bts alias package version
         run: |
           cd packages/create-bts
-          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v | .dependencies["create-chacelow-stack"] = $v' package.json > tmp.json && mv tmp.json package.json
+          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v | .dependencies["@chacelow-stack/create"] = $v' package.json > tmp.json && mv tmp.json package.json
 
       - name: Build CLI
         run: cd apps/cli && bun run build
@@ -141,7 +141,7 @@ jobs:
 
             | Package | Version | NPM Tag |
             |---------|---------|---------|
-            | `create-chacelow-stack` | `${{ steps.version.outputs.version }}` | `pr${{ steps.version.outputs.pr }}` |
+            | `@chacelow-stack/create` | `${{ steps.version.outputs.version }}` | `pr${{ steps.version.outputs.pr }}` |
             | `create-bts` | `${{ steps.version.outputs.version }}` | `pr${{ steps.version.outputs.pr }}` |
             | `@chacelow-stack/types` | `${{ steps.version.outputs.version }}` | `pr${{ steps.version.outputs.pr }}` |
             | `@chacelow-stack/template-generator` | `${{ steps.version.outputs.version }}` | `pr${{ steps.version.outputs.pr }}` |
@@ -152,12 +152,12 @@ jobs:
 
             ```bash
             # Using the PR tag (always gets latest for this PR)
-            bunx create-chacelow-stack@pr${{ steps.version.outputs.pr }}
-            npx create-chacelow-stack@pr${{ steps.version.outputs.pr }}
+            bunx @chacelow-stack/create@pr${{ steps.version.outputs.pr }}
+            npx @chacelow-stack/create@pr${{ steps.version.outputs.pr }}
 
             # Using exact version
-            bunx create-chacelow-stack@${{ steps.version.outputs.version }}
-            npx create-chacelow-stack@${{ steps.version.outputs.version }}
+            bunx @chacelow-stack/create@${{ steps.version.outputs.version }}
+            npx @chacelow-stack/create@${{ steps.version.outputs.version }}
 
             # Using the alias
             bunx create-bts@pr${{ steps.version.outputs.pr }}
@@ -165,7 +165,7 @@ jobs:
             ```
 
             ### NPM Links
-            - [create-chacelow-stack@${{ steps.version.outputs.version }}](https://www.npmjs.com/package/create-chacelow-stack/v/${{ steps.version.outputs.version }})
+            - [@chacelow-stack/create@${{ steps.version.outputs.version }}](https://www.npmjs.com/package/@chacelow-stack/create/v/${{ steps.version.outputs.version }})
             - [create-bts@${{ steps.version.outputs.version }}](https://www.npmjs.com/package/create-bts/v/${{ steps.version.outputs.version }})
             - [@chacelow-stack/types@${{ steps.version.outputs.version }}](https://www.npmjs.com/package/@chacelow-stack/types/v/${{ steps.version.outputs.version }})
             - [@chacelow-stack/template-generator@${{ steps.version.outputs.version }}](https://www.npmjs.com/package/@chacelow-stack/template-generator/v/${{ steps.version.outputs.version }})

@@ -81,10 +81,10 @@ describe("Basic Configurations", () => {
         const config = await readFile(join(result.projectDir!, "bts.jsonc"), "utf8");
         const expectedAddCommand =
           packageManager === "npm"
-            ? "npx create-chacelow-stack@latest add"
+            ? "npx @chacelow-stack/create@latest add"
             : packageManager === "pnpm"
-              ? "pnpm dlx create-chacelow-stack@latest add"
-              : "bunx create-chacelow-stack@latest add";
+              ? "pnpm dlx @chacelow-stack/create@latest add"
+              : "bunx @chacelow-stack/create@latest add";
 
         expect(config).toContain("Keep this file to use the `add` command.");
         expect(config).toContain(`Add addons: ${expectedAddCommand}`);

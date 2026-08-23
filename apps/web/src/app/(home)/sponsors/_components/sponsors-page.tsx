@@ -248,7 +248,7 @@ export function SponsorsPage({
       <PageHeader
         icon={Heart}
         title="SPONSORS.SH"
-        description="The companies and developers funding create-chacelow-stack"
+        description="The companies and developers funding @chacelow-stack/create"
         meta={`LAST_SYNC: ${lastSync}`}
         actions={
           <a
@@ -386,7 +386,7 @@ export function SponsorsPage({
           <div className="flex items-center gap-2 text-[13px] leading-[1.55]">
             <span className="text-primary">$</span>
             <span className="text-fd-muted-foreground">
-              Sponsorship funds development and infrastructure for create-chacelow-stack
+              Sponsorship funds development and infrastructure for @chacelow-stack/create
             </span>
           </div>
           {totalProjects > 0 && (

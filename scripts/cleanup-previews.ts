@@ -2,7 +2,7 @@ import { confirm, isCancel, multiselect, spinner } from "@clack/prompts";
 import { $ } from "bun";
 
 const PACKAGES = [
-  "create-chacelow-stack",
+  "@chacelow-stack/create",
   "create-bts",
   "@chacelow-stack/types",
   "@chacelow-stack/template-generator",

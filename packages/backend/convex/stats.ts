@@ -4,8 +4,8 @@ import { components } from "./_generated/api";
 
 export const ossStats = new OssStats(components.ossStats, {
   githubOwners: ["AmanVarshney01"],
-  githubRepos: ["AmanVarshney01/create-chacelow-stack"],
-  npmPackages: ["create-chacelow-stack"],
+  githubRepos: ["AmanVarshney01/@chacelow-stack/create"],
+  npmPackages: ["@chacelow-stack/create"],
 });
 
 export const {

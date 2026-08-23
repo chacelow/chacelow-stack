@@ -45,10 +45,10 @@ export function writeBtsConfigToVfs(
 
   const addCommand =
     projectConfig.packageManager === "npm"
-      ? "npx create-chacelow-stack@latest add"
+      ? "npx @chacelow-stack/create@latest add"
       : projectConfig.packageManager === "pnpm"
-        ? "pnpm dlx create-chacelow-stack@latest add"
-        : "bunx create-chacelow-stack@latest add";
+        ? "pnpm dlx @chacelow-stack/create@latest add"
+        : "bunx @chacelow-stack/create@latest add";
 
   const finalContent = `// Chacelow-Stack project metadata
 //

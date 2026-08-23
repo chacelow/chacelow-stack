@@ -1,5 +1,5 @@
 export default {
-  repo: "AmanVarshney01/create-chacelow-stack",
+  repo: "AmanVarshney01/@chacelow-stack/create",
   emoji: true,
   contributors: true,
 };

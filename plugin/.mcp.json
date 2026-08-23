@@ -2,7 +2,7 @@
   "mcpServers": {
     "chacelow-stack": {
       "command": "npx",
-      "args": ["-y", "create-chacelow-stack@latest", "mcp"],
+      "args": ["-y", "@chacelow-stack/create@latest", "mcp"],
       "note": "Official Chacelow-Stack MCP server (stdio). Exposes bts_get_stack_guidance, bts_get_schema, bts_plan_project, bts_create_project, bts_plan_addons, and bts_add_addons. Runs via npx; no API key or auth required."
     }
   }

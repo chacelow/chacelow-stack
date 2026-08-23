@@ -13,7 +13,7 @@ export function useNpmVersion(): string {
 
     const load = async () => {
       try {
-        const res = await fetch("https://registry.npmjs.org/create-chacelow-stack/latest");
+        const res = await fetch("https://registry.npmjs.org/@chacelow-stack/create/latest");
         if (!res.ok) throw new Error("Failed to fetch version");
         const data = npmVersionResponseSchema.safeParse(await res.json());
         if (cancelled) return;

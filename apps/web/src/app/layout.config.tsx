@@ -46,7 +46,7 @@ export const links: LinkItemType[] = [
     icon: <Image src={npmLogo} alt="npm" className="size-4 invert-0 dark:invert" />,
     label: "NPM",
     type: "icon",
-    url: "https://www.npmjs.com/package/create-chacelow-stack",
+    url: "https://www.npmjs.com/package/@chacelow-stack/create",
     external: true,
     secondary: true,
   },
@@ -82,5 +82,5 @@ export const baseOptions: BaseLayoutProps = {
     ),
   },
   links: links,
-  githubUrl: "https://github.com/AmanVarshney01/create-chacelow-stack",
+  githubUrl: "https://github.com/AmanVarshney01/@chacelow-stack/create",
 };

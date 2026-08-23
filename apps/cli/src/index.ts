@@ -109,7 +109,7 @@ const t = initTRPC.meta<TrpcCliMeta>().create();
 function getCliSchemaJson(): unknown {
   return createCli({
     router,
-    name: "create-chacelow-stack",
+    name: "@chacelow-stack/create",
     version: getLatestCLIVersion(),
   }).toJSON();
 }
@@ -291,7 +291,7 @@ export const router = t.router({
 export function createBtsCli(): TrpcCli {
   return createCli({
     router,
-    name: "create-chacelow-stack",
+    name: "@chacelow-stack/create",
     version: getLatestCLIVersion(),
   });
 }
@@ -325,7 +325,7 @@ function formatInputValidationError(label: string, error: z.ZodError): string {
  *
  * @example
  * ```typescript
- * import { create, Result } from "create-chacelow-stack";
+ * import { create, Result } from "@chacelow-stack/create";
  *
  * const result = await create("my-app", {
  *   frontend: ["tanstack-router"],
@@ -430,7 +430,7 @@ import {
  *
  * @example
  * ```typescript
- * import { createVirtual, EMBEDDED_TEMPLATES, Result } from "create-chacelow-stack";
+ * import { createVirtual, EMBEDDED_TEMPLATES, Result } from "@chacelow-stack/create";
  *
  * const result = await createVirtual({
  *   frontend: ["tanstack-router"],
@@ -542,7 +542,7 @@ export type AddOptions = Pick<
  *
  * @example
  * ```typescript
- * import { add } from "create-chacelow-stack";
+ * import { add } from "@chacelow-stack/create";
  *
  * const result = await add({
  *   addons: ["biome", "husky"],

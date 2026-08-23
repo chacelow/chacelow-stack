@@ -83,7 +83,7 @@ export function AnalyticsHeader({
       <PageHeader
         icon={Terminal}
         title="ANALYTICS.SH"
-        description="Aggregate CLI telemetry for create-chacelow-stack."
+        description="Aggregate CLI telemetry for @chacelow-stack/create."
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.10em]">

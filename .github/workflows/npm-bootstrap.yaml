@@ -72,19 +72,19 @@ jobs:
 
       - name: Publish types
         working-directory: packages/types
-        run: npm publish --access public --provenance
+        run: npm view "@chacelow-stack/types@${{ inputs.version }}" version >/dev/null 2>&1 || npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish template generator
         working-directory: packages/template-generator
-        run: npm publish --access public --provenance
+        run: npm view "@chacelow-stack/template-generator@${{ inputs.version }}" version >/dev/null 2>&1 || npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish CLI
         working-directory: apps/cli
-        run: npm publish --access public --provenance
+        run: npm view "@chacelow-stack/create@${{ inputs.version }}" version >/dev/null 2>&1 || npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -94,5 +94,5 @@ jobs:
         run: |
           test "$(npm view "@chacelow-stack/types@$VERSION" version)" = "$VERSION"
           test "$(npm view "@chacelow-stack/template-generator@$VERSION" version)" = "$VERSION"
-          test "$(npm view "create-chacelow-stack@$VERSION" version)" = "$VERSION"
+          test "$(npm view "@chacelow-stack/create@$VERSION" version)" = "$VERSION"
           echo "Bootstrap complete. Configure Trusted Publishers for release.yaml, then delete NPM_TOKEN."

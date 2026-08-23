@@ -22,7 +22,7 @@ export function ShowcasePage({ showcaseProjects }: { showcaseProjects: Array<Sho
       <PageHeader
         icon={Terminal}
         title="PROJECT_SHOWCASE.SH"
-        description="Community projects built with create-chacelow-stack"
+        description="Community projects built with @chacelow-stack/create"
         count={showcaseProjects.length}
       />
 
@@ -52,7 +52,7 @@ export function ShowcasePage({ showcaseProjects }: { showcaseProjects: Array<Sho
           <span className="text-fd-muted-foreground">
             Want to showcase your project? Submit via{" "}
             <a
-              href="https://github.com/AmanVarshney01/create-chacelow-stack/issues/new/choose"
+              href="https://github.com/AmanVarshney01/@chacelow-stack/create/issues/new/choose"
               target="_blank"
               rel="noreferrer"
               className="builder-focus-ring underline decoration-fd-border underline-offset-4 transition-colors duration-150 hover:text-primary"

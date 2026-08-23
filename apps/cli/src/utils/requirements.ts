@@ -169,7 +169,7 @@ export function getLocalVersionRequirements(
   ];
 
   if (hostRuntime === "node") {
-    addNodeRequirement(requirements, ">=22.0.0", "create-chacelow-stack");
+    addNodeRequirement(requirements, ">=22.0.0", "@chacelow-stack/create");
   }
 
   if (config.packageManager !== "bun") {

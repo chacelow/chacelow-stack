@@ -20,7 +20,7 @@ async function main(): Promise<void> {
 
   const packageJson = JSON.parse(await readFile(CLI_PACKAGE_JSON_PATH, "utf-8"));
   const currentVersion = packageJson.version;
-  const packageName: string = packageJson.name || "create-chacelow-stack";
+  const packageName: string = packageJson.name || "@chacelow-stack/create";
   const strictSemver = /^\d+\.\d+\.\d+$/;
   let baseVersion = currentVersion;
   if (strictSemver.test(currentVersion)) {
@@ -234,7 +234,7 @@ async function main(): Promise<void> {
 
     // Update alias package version
     aliasPackageJson.version = canaryVersion;
-    aliasPackageJson.dependencies["create-chacelow-stack"] = canaryVersion;
+    aliasPackageJson.dependencies["@chacelow-stack/create"] = canaryVersion;
     await writeFile(ALIAS_PACKAGE_JSON_PATH, `${JSON.stringify(aliasPackageJson, null, 2)}\n`);
 
     const buildSpin = spinner();

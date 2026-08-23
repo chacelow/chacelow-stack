@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Verify create-chacelow-stack installs and runs under npm, pnpm, and bun.
+// Verify @chacelow-stack/create installs and runs under npm, pnpm, and bun.
 // Catches any regression that breaks the published artifact for consumers —
 // unresolved protocol refs, missing files, broken bin entry, import failures
 // from missing transitive deps, etc.
@@ -7,7 +7,7 @@
 // Packs each publishable workspace with `npm pack` (matching the release
 // workflow, which uses `npm publish`), installs the CLI tarball in a temp
 // dir using overrides to redirect sibling workspace deps at their local
-// tarballs, then runs `create-chacelow-stack --version` to prove the binary
+// tarballs, then runs `@chacelow-stack/create --version` to prove the binary
 // actually executes.
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -39,7 +39,7 @@ const PUBLISHABLES: Publishable[] = [
   { name: "@chacelow-stack/types", dir: "packages/types" },
   { name: "@chacelow-stack/template-generator", dir: "packages/template-generator" },
   {
-    name: "create-chacelow-stack",
+    name: "@chacelow-stack/create",
     dir: "apps/cli",
     rewriteWorkspaceDeps: ["@chacelow-stack/types", "@chacelow-stack/template-generator"],
   },
@@ -100,7 +100,7 @@ async function installAndRun(
     name: `smoke-${pm}`,
     private: true,
     version: "0.0.0",
-    dependencies: { "create-chacelow-stack": `file:${tarballs["create-chacelow-stack"]}` },
+    dependencies: { "@chacelow-stack/create": `file:${tarballs["@chacelow-stack/create"]}` },
   };
   if (pm === "pnpm") fixture.pnpm = { overrides };
   else fixture.overrides = overrides;
@@ -115,7 +115,7 @@ async function installAndRun(
 module.exports = {
   hooks: {
     readPackage(pkg) {
-      if (pkg.name === "create-chacelow-stack") {
+      if (pkg.name === "@chacelow-stack/create") {
         pkg.dependencies = {
           ...pkg.dependencies,
           "@chacelow-stack/types": localDeps["@chacelow-stack/types"],
@@ -148,10 +148,10 @@ module.exports = {
 
   // Execute the CLI via its installed bin path to prove it actually works —
   // not just that the file got linked into node_modules/.bin.
-  const bin = join(dir, "node_modules", ".bin", "create-chacelow-stack");
+  const bin = join(dir, "node_modules", ".bin", "@chacelow-stack/create");
   const run = await $`${bin} --version`.cwd(dir).quiet().nothrow();
   if (run.exitCode !== 0) {
-    console.error(red(`✗ ${pm}: create-chacelow-stack --version failed (exit ${run.exitCode})`));
+    console.error(red(`✗ ${pm}: @chacelow-stack/create --version failed (exit ${run.exitCode})`));
     console.error(dim(run.stderr.toString() + run.stdout.toString()));
     process.exit(1);
   }
@@ -174,7 +174,7 @@ for (const pkg of PUBLISHABLES) {
   console.log(dim(`  ${pkg.name}`));
 }
 
-console.log("\nInstalling and running create-chacelow-stack under each package manager...");
+console.log("\nInstalling and running @chacelow-stack/create under each package manager...");
 for (const pm of ["npm", "pnpm", "bun"] as const) {
   if (!(await hasPackageManager(pm))) {
     console.log(dim(`  - ${pm} not available, skipping`));

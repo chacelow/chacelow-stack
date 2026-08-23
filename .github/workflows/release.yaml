@@ -106,4 +106,4 @@ jobs:
         run: |
           test "$(npm view "@chacelow-stack/types@$VERSION" version)" = "$VERSION"
           test "$(npm view "@chacelow-stack/template-generator@$VERSION" version)" = "$VERSION"
-          test "$(npm view "create-chacelow-stack@$VERSION" version)" = "$VERSION"
+          test "$(npm view "@chacelow-stack/create@$VERSION" version)" = "$VERSION"

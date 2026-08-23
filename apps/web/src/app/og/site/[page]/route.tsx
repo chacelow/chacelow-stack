@@ -30,7 +30,7 @@ const PAGES = {
     path: "~/analytics",
     section: "analytics",
     title: "Analytics",
-    description: "Live usage insights from the create-chacelow-stack CLI",
+    description: "Live usage insights from the @chacelow-stack/create CLI",
   },
   sponsors: {
     path: "~/sponsors",

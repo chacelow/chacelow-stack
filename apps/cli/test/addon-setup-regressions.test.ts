@@ -94,7 +94,7 @@ describe("Addon setup regressions", () => {
     const servers = getRecommendedMcpServers(createProjectConfig(), "project");
     const betterTStackServer = servers.find((server) => server.key === "chacelow-stack");
 
-    expect(betterTStackServer?.target).toBe("bunx create-chacelow-stack@latest mcp");
+    expect(betterTStackServer?.target).toBe("bunx @chacelow-stack/create@latest mcp");
   });
 
   it("preserves explicit empty MCP selections in silent mode", async () => {

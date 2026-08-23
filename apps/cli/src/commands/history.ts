@@ -89,7 +89,7 @@ export async function historyHandler(input: HistoryCommandInput): Promise<void> 
   if (entries.length === 0) {
     outro(
       `${pc.dim("No saved projects yet · create one with")} ${pc.cyan(
-        "create-chacelow-stack my-app",
+        "@chacelow-stack/create my-app",
       )}`,
     );
     return;

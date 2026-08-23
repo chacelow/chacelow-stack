@@ -1,1 +1,1 @@
-export * from "create-chacelow-stack";
+export * from "@chacelow-stack/create";

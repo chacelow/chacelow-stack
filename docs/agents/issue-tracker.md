@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and PRDs for this repo live in GitHub Issues for `AmanVarshney01/create-chacelow-stack`. Use the `gh` CLI for issue operations.
+Issues and PRDs for this repo live in GitHub Issues for `AmanVarshney01/@chacelow-stack/create`. Use the `gh` CLI for issue operations.
 
 ## Conventions
 

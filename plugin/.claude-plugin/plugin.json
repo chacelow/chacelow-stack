@@ -1,17 +1,17 @@
 {
   "name": "chacelow-stack",
   "version": "3.40.3",
-  "description": "Let your AI scaffold and extend projects with Chacelow-Stack. Bundles the create-chacelow-stack MCP server plus skills, commands, and an agent so the assistant plans a valid stack and generates it instead of hand-rolling boilerplate.",
+  "description": "Let your AI scaffold and extend projects with Chacelow-Stack. Bundles the @chacelow-stack/create MCP server plus skills, commands, and an agent so the assistant plans a valid stack and generates it instead of hand-rolling boilerplate.",
   "author": {
     "name": "Aman Varshney",
     "url": "https://github.com/AmanVarshney01"
   },
   "homepage": "https://chacelow-stack.dev",
-  "repository": "https://github.com/AmanVarshney01/create-chacelow-stack",
+  "repository": "https://github.com/AmanVarshney01/@chacelow-stack/create",
   "license": "MIT",
   "keywords": [
     "chacelow-stack",
-    "create-chacelow-stack",
+    "@chacelow-stack/create",
     "scaffold",
     "starter",
     "boilerplate",

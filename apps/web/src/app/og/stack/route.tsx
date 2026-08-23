@@ -29,7 +29,7 @@ function hasCategoryColor(category: string): category is keyof typeof categoryCh
 }
 
 function commandBase(packageManager: StackState["packageManager"]) {
-  if (packageManager === "npm") return "npx create-chacelow-stack@latest";
+  if (packageManager === "npm") return "npx @chacelow-stack/create@latest";
   if (packageManager === "pnpm") return "pnpm create chacelow-stack@latest";
   return "bun create chacelow-stack@latest";
 }

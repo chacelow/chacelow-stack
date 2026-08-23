@@ -13,7 +13,7 @@ export function AnalyticsSources() {
 
       <div className="divide-y">
         <Link
-          href="https://github.com/AmanVarshney01/create-chacelow-stack/blob/main/apps/cli/src/utils/analytics.ts"
+          href="https://github.com/AmanVarshney01/@chacelow-stack/create/blob/main/apps/cli/src/utils/analytics.ts"
           target="_blank"
           rel="noopener noreferrer"
           className="builder-focus-ring group flex items-center justify-between gap-3 py-2.5"
@@ -30,7 +30,7 @@ export function AnalyticsSources() {
         </Link>
 
         <Link
-          href="https://github.com/AmanVarshney01/create-chacelow-stack/blob/main/packages/backend/convex/analytics.ts"
+          href="https://github.com/AmanVarshney01/@chacelow-stack/create/blob/main/packages/backend/convex/analytics.ts"
           target="_blank"
           rel="noopener noreferrer"
           className="builder-focus-ring group flex items-center justify-between gap-3 py-2.5"
