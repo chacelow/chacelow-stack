@@ -77,13 +77,20 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Wait for registry consistency
-        run: sleep 20
       - name: Verify registry packages
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          test "$(npm view "@chacelow-stack/types@$VERSION" version)" = "$VERSION"
-          test "$(npm view "@chacelow-stack/template-generator@$VERSION" version)" = "$VERSION"
-          test "$(npm view "@chacelow-stack/create@$VERSION" version)" = "$VERSION"
+          for package in @chacelow-stack/types @chacelow-stack/template-generator @chacelow-stack/create; do
+            for attempt in $(seq 1 30); do
+              if test "$(npm view "$package@$VERSION" version 2>/dev/null)" = "$VERSION"; then
+                break
+              fi
+              if test "$attempt" = 30; then
+                echo "Timed out waiting for $package@$VERSION" >&2
+                exit 1
+              fi
+              sleep 10
+            done
+          done
           echo "Bootstrap complete. Configure Trusted Publishers for release.yaml, then delete NPM_TOKEN."
