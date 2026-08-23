@@ -21,13 +21,13 @@
     },
     "apps/cli": {
       "name": "create-chacelow-stack",
-      "version": "3.40.3",
+      "version": "0.1.0",
       "bin": {
         "create-chacelow-stack": "dist/cli.mjs",
       },
       "dependencies": {
-        "@chacelow-stack/template-generator": "workspace:*",
-        "@chacelow-stack/types": "workspace:*",
+        "@chacelow-stack/template-generator": "0.1.0",
+        "@chacelow-stack/types": "0.1.0",
         "@clack/core": "^1.4.3",
         "@clack/prompts": "^1.7.0",
         "@modelcontextprotocol/sdk": "1.30.0",
@@ -147,20 +147,20 @@
       },
     },
     "packages/create-bts": {
-      "name": "create-bts",
-      "version": "3.40.3",
+      "name": "@chacelow-stack/create-bts-legacy",
+      "version": "0.1.0",
       "bin": {
         "create-bts": "cli.js",
       },
       "dependencies": {
-        "create-chacelow-stack": "^3.40.3",
+        "create-chacelow-stack": "workspace:*",
       },
     },
     "packages/template-generator": {
       "name": "@chacelow-stack/template-generator",
-      "version": "3.40.3",
+      "version": "0.1.0",
       "dependencies": {
-        "@chacelow-stack/types": "^3.40.3",
+        "@chacelow-stack/types": "0.1.0",
         "better-result": "^3.0.0",
         "handlebars": "^4.7.9",
         "memfs": "^4.64.0",
@@ -180,7 +180,7 @@
     },
     "packages/types": {
       "name": "@chacelow-stack/types",
-      "version": "3.40.3",
+      "version": "0.1.0",
       "dependencies": {
         "zod": "^4.4.3",
       },
@@ -247,6 +247,8 @@
     "@base-ui/utils": ["@base-ui/utils@0.3.1", "https://registry.npmmirror.com/@base-ui/utils/-/utils-0.3.1.tgz", { "dependencies": { "@babel/runtime": "^7.29.2", "@floating-ui/utils": "^0.2.11", "reselect": "^5.2.0", "use-sync-external-store": "^1.6.0" }, "peerDependencies": { "@types/react": "^17 || ^18 || ^19", "react": "^17 || ^18 || ^19", "react-dom": "^17 || ^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-gFFiltORVmW/N6IILTGxizP3PBpVpysqML1ALY5Vk0mH+7faVkCknOU31goYHN5Aoek2dkjxva1XOD2Ce9WuIg=="],
 
     "@chacelow-stack/backend": ["@chacelow-stack/backend@workspace:packages/backend"],
+
+    "@chacelow-stack/create-bts-legacy": ["@chacelow-stack/create-bts-legacy@workspace:packages/create-bts"],
 
     "@chacelow-stack/template-generator": ["@chacelow-stack/template-generator@workspace:packages/template-generator"],
 
@@ -1269,8 +1271,6 @@
     "cookie-signature": ["cookie-signature@1.2.2", "https://registry.npmmirror.com/cookie-signature/-/cookie-signature-1.2.2.tgz", {}, "sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg=="],
 
     "cors": ["cors@2.8.6", "https://registry.npmmirror.com/cors/-/cors-2.8.6.tgz", { "dependencies": { "object-assign": "^4", "vary": "^1" } }, "sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw=="],
-
-    "create-bts": ["create-bts@workspace:packages/create-bts"],
 
     "create-chacelow-stack": ["create-chacelow-stack@workspace:apps/cli"],
 

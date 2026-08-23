@@ -1,56 +1,46 @@
-name: Release npm packages
+name: Bootstrap npm packages
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Existing release tag (vMAJOR.MINOR.PATCH)"
+      version:
+        description: "First package version (MAJOR.MINOR.PATCH)"
+        required: true
+        default: "0.1.0"
+        type: string
+      confirmation:
+        description: "Type BOOTSTRAP to authorize the one-time first publish"
         required: true
         type: string
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 concurrency:
-  group: npm-release-${{ github.ref }}
+  group: npm-bootstrap
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Publish trusted release
+    name: First publish only
+    if: inputs.confirmation == 'BOOTSTRAP'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: npm
+    environment: npm-bootstrap
     steps:
-      - name: Resolve release tag
-        id: release
+      - name: Validate version
         env:
-          DISPATCH_TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
         run: |
-          TAG="${DISPATCH_TAG:-${GITHUB_REF_NAME}}"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid release tag: $TAG" >&2
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $VERSION" >&2
             exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout release tag
+      - name: Checkout main
         uses: actions/checkout@v6
         with:
-          ref: ${{ steps.release.outputs.tag }}
-          fetch-depth: 0
-
-      - name: Verify tag commit is on main
-        env:
-          TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          git fetch origin main
-          git merge-base --is-ancestor "$TAG" origin/main
+          ref: main
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -58,9 +48,6 @@ jobs:
           node-version: "24"
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-
-      - name: Require OIDC-capable npm
-        run: npm install --global npm@latest && npm --version
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -70,8 +57,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Apply release version
-        run: bun scripts/set-release-version.ts "${{ steps.release.outputs.version }}"
+      - name: Apply first release version
+        run: bun scripts/set-release-version.ts "${{ inputs.version }}"
 
       - name: Build packages
         run: bun run build:cli
@@ -82,28 +69,29 @@ jobs:
           npm pack --dry-run --json --workspace packages/template-generator
           npm pack --dry-run --json --workspace apps/cli
 
-      - name: Publish types with provenance
+      - name: Publish types
         working-directory: packages/types
         run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
 
-      - name: Publish template generator with provenance
+      - name: Publish template generator
         working-directory: packages/template-generator
         run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
 
-      - name: Publish CLI with provenance
+      - name: Publish CLI
         working-directory: apps/cli
         run: npm publish --access public --provenance
-
-      - name: Create GitHub release
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.release.outputs.tag }}
-        run: gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --generate-notes
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
 
       - name: Verify registry packages
         env:
-          VERSION: ${{ steps.release.outputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
           test "$(npm view "@chacelow-stack/types@$VERSION" version)" = "$VERSION"
           test "$(npm view "@chacelow-stack/template-generator@$VERSION" version)" = "$VERSION"
           test "$(npm view "create-chacelow-stack@$VERSION" version)" = "$VERSION"
+          echo "Bootstrap complete. Configure Trusted Publishers for release.yaml, then delete NPM_BOOTSTRAP_TOKEN."

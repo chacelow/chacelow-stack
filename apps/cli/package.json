@@ -1,6 +1,6 @@
 {
   "name": "create-chacelow-stack",
-  "version": "3.40.3",
+  "version": "0.1.0",
   "description": "A configurable full-stack generator with a production-ready admin, RBAC, audit, and i18n preset",
   "keywords": [
     "better-auth",
@@ -69,8 +69,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@chacelow-stack/template-generator": "workspace:*",
-    "@chacelow-stack/types": "workspace:*",
+    "@chacelow-stack/template-generator": "0.1.0",
+    "@chacelow-stack/types": "0.1.0",
     "@clack/core": "^1.4.3",
     "@clack/prompts": "^1.7.0",
     "@modelcontextprotocol/sdk": "1.30.0",

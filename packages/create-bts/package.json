@@ -1,7 +1,8 @@
 {
-  "name": "create-bts",
-  "version": "3.40.3",
-  "description": "A modern CLI tool for scaffolding end-to-end type-safe TypeScript projects with best practices and customizable configurations (alias for create-chacelow-stack)",
+  "name": "@chacelow-stack/create-bts-legacy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private compatibility fixture retained from the upstream generator",
   "keywords": [
     "better-auth",
     "biome",
@@ -29,12 +30,12 @@
     "type-safety",
     "typescript"
   ],
-  "homepage": "https://chacelow-stack.dev/",
+  "homepage": "https://github.com/chacelow/chacelow-stack#readme",
   "license": "MIT",
-  "author": "Aman Varshney",
+  "author": "chacelow-stack contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AmanVarshney01/create-chacelow-stack.git",
+    "url": "git+https://github.com/chacelow/chacelow-stack.git",
     "directory": "packages/create-bts"
   },
   "bin": {
@@ -62,7 +63,7 @@
     "access": "public"
   },
   "dependencies": {
-    "create-chacelow-stack": "^3.40.3"
+    "create-chacelow-stack": "workspace:*"
   },
   "engines": {
     "node": ">=22.0.0"
