@@ -1,0 +1,57 @@
+name: Verify published npm preset
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published version to verify
+        required: true
+        default: 0.1.0
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Generate and build chacelow-admin
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Generate project from npm
+        run: |
+          npm exec --yes --package="@chacelow-stack/create@${{ inputs.version }}" -- \
+            create-chacelow-stack create npm-admin \
+            --template chacelow-admin \
+            --no-install \
+            --no-git
+
+      - name: Verify generated admin files
+        run: |
+          test -f npm-admin/apps/web/src/features/users/index.tsx
+          test -f npm-admin/packages/api/src/rbac.ts
+          test -f npm-admin/packages/api/src/permissions.ts
+          test -f npm-admin/packages/i18n/src/locales/en.json
+          test -f npm-admin/packages/i18n/src/locales/zh.json
+
+      - name: Install generated project
+        working-directory: npm-admin
+        run: pnpm install --registry=https://registry.npmjs.org --frozen-lockfile
+
+      - name: Typecheck generated project
+        working-directory: npm-admin
+        run: pnpm run check-types
+
+      - name: Build generated project
+        working-directory: npm-admin
+        run: pnpm run build
