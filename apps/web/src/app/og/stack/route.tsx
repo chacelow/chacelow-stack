@@ -29,9 +29,9 @@ function hasCategoryColor(category: string): category is keyof typeof categoryCh
 }
 
 function commandBase(packageManager: StackState["packageManager"]) {
-  if (packageManager === "npm") return "npx @chacelow-stack/create@latest";
-  if (packageManager === "pnpm") return "pnpm create chacelow-stack@latest";
-  return "bun create chacelow-stack@latest";
+  if (packageManager === "npm") return "npx @chacelow-stack/create@latest create";
+  if (packageManager === "pnpm") return "pnpm dlx @chacelow-stack/create@latest create";
+  return "bunx @chacelow-stack/create@latest create";
 }
 
 export async function GET(req: NextRequest) {

@@ -15,14 +15,14 @@ function formatMultiFlag(flag: string, values: string[]): string {
 
 function getBaseCommand(packageManager: ProjectConfig["packageManager"]): string {
   if (packageManager === "bun") {
-    return "bun create chacelow-stack@latest";
+    return "bunx @chacelow-stack/create@latest create";
   }
 
   if (packageManager === "pnpm") {
-    return "pnpm create chacelow-stack@latest";
+    return "pnpm dlx @chacelow-stack/create@latest create";
   }
 
-  return "npx @chacelow-stack/create@latest";
+  return "npx @chacelow-stack/create@latest create";
 }
 
 export function generateReproducibleCommand(config: ProjectConfig): string {

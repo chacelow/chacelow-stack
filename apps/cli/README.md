@@ -16,13 +16,13 @@ Run without installing globally:
 
 ```bash
 # Using bun (recommended)
-bun create chacelow-stack@latest
+bunx @chacelow-stack/create@latest create
 
 # Using pnpm
-pnpm create chacelow-stack@latest
+pnpm dlx @chacelow-stack/create@latest create
 
 # Using npm
-npx @chacelow-stack/create@latest
+npx @chacelow-stack/create@latest create
 ```
 
 Follow the prompts to configure your project or use the `--yes` flag for defaults.

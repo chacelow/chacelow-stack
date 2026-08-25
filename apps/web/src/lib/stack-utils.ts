@@ -150,9 +150,9 @@ export function getDesktopBuildNote(stack: Pick<StackState, "addons" | "backend"
 
 export function generateStackCommand(stack: StackState) {
   const packageManagerCommands = {
-    npm: "npx @chacelow-stack/create@latest",
-    pnpm: "pnpm create chacelow-stack@latest",
-    default: "bun create chacelow-stack@latest",
+    npm: "npx @chacelow-stack/create@latest create",
+    pnpm: "pnpm dlx @chacelow-stack/create@latest create",
+    default: "bunx @chacelow-stack/create@latest create",
   };
 
   const base =

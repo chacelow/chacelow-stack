@@ -27,13 +27,13 @@ https://github.com/user-attachments/assets/87b541ea-9d4d-4734-b383-00784b0b43ff
 
 ```bash
 # Using bun (recommended)
-bun create chacelow-stack@latest
+bunx @chacelow-stack/create@latest create
 
 # Using pnpm
-pnpm create chacelow-stack@latest
+pnpm dlx @chacelow-stack/create@latest create
 
 # Using npm
-npx @chacelow-stack/create@latest
+npx @chacelow-stack/create@latest create
 ```
 
 ## Claude Code plugin

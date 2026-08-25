@@ -10,9 +10,9 @@ import PackageIcon from "../../icons";
 import { GroupHeader } from "../chrome";
 
 const COMMANDS = {
-  bun: "bun create chacelow-stack@latest",
-  pnpm: "pnpm create chacelow-stack@latest",
-  npm: "npx @chacelow-stack/create@latest",
+  bun: "bunx @chacelow-stack/create@latest create",
+  pnpm: "pnpm dlx @chacelow-stack/create@latest create",
+  npm: "npx @chacelow-stack/create@latest create",
 } as const;
 
 type PackageManager = keyof typeof COMMANDS;

@@ -298,7 +298,7 @@ describe("CLI flow presentation", () => {
           packageManager: "bun",
         },
         cliVersion: "1.0.0",
-        reproducibleCommand: "bun create chacelow-stack@latest acme-app --yes",
+        reproducibleCommand: "bunx @chacelow-stack/create@latest create acme-app --yes",
       },
       0,
     );
@@ -307,7 +307,7 @@ describe("CLI flow presentation", () => {
     expect(output).toContain("Location");
     expect(output).toContain("TanStack Router + Hono + SQLite + Drizzle");
     expect(output).toContain("Recreate");
-    expect(output).toContain("bun create chacelow-stack@latest acme-app --yes");
+    expect(output).toContain("bunx @chacelow-stack/create@latest create acme-app --yes");
     expect(output).not.toContain("tanstack-router");
   });
 

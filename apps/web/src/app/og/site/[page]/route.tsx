@@ -11,14 +11,14 @@ const PAGES = {
     section: "home",
     title: "Roll Your Own Stack",
     description: "Modern CLI for scaffolding end-to-end type-safe TypeScript projects",
-    command: "bun create chacelow-stack@latest",
+    command: "bunx @chacelow-stack/create@latest create",
   },
   new: {
     path: "~/new",
     section: "stack builder",
     title: "Stack Builder",
     description: "Pick your stack, get a ready-to-run command",
-    command: "bun create chacelow-stack@latest my-app --yes",
+    command: "bunx @chacelow-stack/create@latest create my-app --yes",
   },
   showcase: {
     path: "~/showcase",

@@ -116,10 +116,10 @@ const translations = {
 const commandFor = (packageManager: PackageManager, template: TemplateId, projectName: string) => {
   const name = projectName.trim().replaceAll(/\s+/g, "-") || "my-admin";
   const runner = packageManager === "npm"
-    ? "npx @chacelow-stack/create@latest"
+    ? "npx @chacelow-stack/create@latest create"
     : packageManager === "pnpm"
-      ? "pnpm create chacelow-stack@latest"
-      : "bun create chacelow-stack@latest";
+      ? "pnpm dlx @chacelow-stack/create@latest create"
+      : "bunx @chacelow-stack/create@latest create";
   return `${runner} ${name} --template ${template}`;
 };
 
