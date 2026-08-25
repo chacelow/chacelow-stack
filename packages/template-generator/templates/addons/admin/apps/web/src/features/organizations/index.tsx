@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Check, ChevronsUpDown, Plus, Users } from "lucide-react";
+import { Building2, Check, ChevronsUpDown, Copy, MailPlus, Plus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -25,6 +25,9 @@ export function Organizations() {
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("member");
   const [memberId, setMemberId] = useState<string | null>(null);
   const [role, setRole] = useState("member");
   const members = useQuery({
@@ -64,6 +67,27 @@ export function Organizations() {
     setCreateOpen(false);
     setName("");
     setSlug("");
+  };
+  const createInvitation = async () => {
+    const result = await authClient.organization.inviteMember({
+      email: inviteEmail.trim(),
+      role: inviteRole,
+    });
+    if (result.error) {
+      toast.error(result.error.message ?? "Could not create invitation");
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: trpc.organization.invitations.queryKey() });
+    setInviteOpen(false);
+    setInviteEmail("");
+    setInviteRole("member");
+    toast.success("Invitation created. Copy its link from the pending invitations list.");
+  };
+
+  const copyInvitationLink = async (invitationId: string) => {
+    const link = `${window.location.origin}/accept-invitation/${invitationId}`;
+    await navigator.clipboard.writeText(link);
+    toast.success("Invitation link copied");
   };
 
   const setActiveOrganization = async (organizationId: string) => {
@@ -122,7 +146,10 @@ export function Organizations() {
 
           <div className="space-y-4">
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2"><Users className="size-4" />Members</CardTitle></CardHeader>
+              <CardHeader className="flex-row items-center justify-between gap-3">
+                <CardTitle className="flex items-center gap-2"><Users className="size-4" />Members</CardTitle>
+                <Button disabled={!activeOrganization.data} onClick={() => setInviteOpen(true)} size="sm" variant="outline"><MailPlus />Invite member</Button>
+              </CardHeader>
               <CardContent className="divide-y">
                 {(members.data ?? []).map((item) => (
                   <div className="flex min-h-16 items-center justify-between gap-3" key={item.id}>
@@ -134,11 +161,12 @@ export function Organizations() {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle>Pending invitations</CardTitle><CardDescription>Invitations are issued by Better Auth and stored in the active organization.</CardDescription></CardHeader>
+              <CardHeader><CardTitle>Pending invitations</CardTitle><CardDescription>Email delivery is not configured by default. Copy the real acceptance link and send it securely.</CardDescription></CardHeader>
               <CardContent className="divide-y">
                 {(invitations.data ?? []).map((item) => (
                   <div className="flex min-h-14 items-center justify-between gap-3" key={item.id}>
-                    <span className="text-sm">{item.email}</span><Badge variant="secondary">{item.status}</Badge>
+                    <span className="min-w-0 truncate text-sm">{item.email}</span>
+                    <div className="flex items-center gap-2"><Badge variant="secondary">{item.status}</Badge><Button aria-label={`Copy invitation link for ${item.email}`} onClick={() => copyInvitationLink(item.id)} size="icon" variant="ghost"><Copy /></Button></div>
                   </div>
                 ))}
                 {activeOrganization.data && invitations.data?.length === 0 ? <p className="py-8 text-center text-muted-foreground text-sm">No pending invitations.</p> : null}
@@ -152,6 +180,13 @@ export function Organizations() {
         <DialogContent><DialogHeader><DialogTitle>Create organization</DialogTitle><DialogDescription>Create a real Better Auth organization and become its owner.</DialogDescription></DialogHeader>
           <div className="grid gap-4"><div className="grid gap-2"><Label htmlFor="organization-name">Name</Label><Input id="organization-name" value={name} onChange={(event) => { setName(event.target.value); setSlug(event.target.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-")); }} /></div><div className="grid gap-2"><Label htmlFor="organization-slug">Slug</Label><Input id="organization-slug" value={slug} onChange={(event) => setSlug(event.target.value)} /></div></div>
           <DialogFooter><Button disabled={!name.trim() || !slug.trim()} onClick={createOrganization}>Create</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent><DialogHeader><DialogTitle>Invite member</DialogTitle><DialogDescription>Create a real Better Auth invitation. This template exposes a copyable link because email delivery is not configured.</DialogDescription></DialogHeader>
+          <div className="grid gap-4"><div className="grid gap-2"><Label htmlFor="invitation-email">Email</Label><Input id="invitation-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></div><div className="grid gap-2"><Label htmlFor="invitation-role">Role</Label><Select value={inviteRole} onValueChange={setInviteRole}><SelectTrigger id="invitation-role"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="member">member</SelectItem><SelectItem value="admin">admin</SelectItem></SelectContent></Select></div></div>
+          <DialogFooter><Button disabled={!inviteEmail.trim()} onClick={createInvitation}>Create invitation</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -12,7 +12,7 @@
     "check-types": "turbo run check-types",
     "dev:web": "turbo run dev -F web --",
     "dev:server": "turbo run dev -F server --",
-    "db:push": "turbo run db:push -F @{{projectName}}/db --",
+    "db:push": "pnpm --filter @{{projectName}}/db exec drizzle-kit push",
     "db:studio": "turbo run db:studio -F @{{projectName}}/db --",
     "db:generate": "turbo run db:generate -F @{{projectName}}/db --",
     "db:migrate": "turbo run db:migrate -F @{{projectName}}/db --",

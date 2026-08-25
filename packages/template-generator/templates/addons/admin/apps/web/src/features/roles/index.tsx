@@ -70,7 +70,7 @@ const toSlug = (name: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-export function Tasks() {
+export function Roles() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const rolesQuery = useQuery(trpc.admin.roles.queryOptions());

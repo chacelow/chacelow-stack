@@ -87,16 +87,6 @@ describe("SearchProvider and CommandMenu", () => {
     await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).toBeInTheDocument();
   });
 
-  it("navigates to a top-level route and closes the palette when a nav item is selected", async () => {
-    const screen = await renderWithSearchProvider();
-
-    await openCommandPalette(screen);
-
-    await userEvent.click(screen.getByText("Tasks"));
-
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/tasks" });
-    await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
-  });
 
   it("navigates for nested sidebar items (group with sub-items)", async () => {
     const screen = await renderWithSearchProvider();

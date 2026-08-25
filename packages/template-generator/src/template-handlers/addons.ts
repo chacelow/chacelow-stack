@@ -46,11 +46,25 @@ export async function processAddonTemplates(
   }
   for (const demoPath of [
     "apps/web/src/features/chats",
-    "apps/web/src/features/tasks/data/tasks.ts",
-    "apps/web/src/features/users/data/users.ts",
+    "apps/web/src/features/tasks",
+    "apps/web/src/features/apps",
+    "apps/web/src/features/users/components",
+    "apps/web/src/features/users/data",
     "apps/web/src/features/dashboard/components",
     "apps/web/src/routes/_authenticated/chats",
     "apps/web/src/routes/clerk",
+    "apps/web/src/routes/(auth)/forgot-password.tsx",
+    "apps/web/src/routes/(auth)/otp.tsx",
+    "apps/web/src/routes/(auth)/sign-in-2.tsx",
+    "apps/web/src/routes/_authenticated/settings/notifications.tsx",
+    "apps/web/src/routes/_authenticated/settings/display.tsx",
+    "apps/web/src/features/auth/forgot-password",
+    "apps/web/src/features/auth/sign-in/sign-in-2.tsx",
+    "apps/web/src/features/auth/otp",
+    "apps/web/src/features/settings/notifications",
+    "apps/web/src/features/settings/display",
+    "apps/web/src/components/coming-soon.tsx",
+    "apps/web/src/lib/show-submitted-data.tsx",
   ]) {
     vfs.deletePath(demoPath);
   }
@@ -62,11 +76,11 @@ export async function processAddonTemplates(
       "packages/api/src/rbac.ts",
       "packages/api/src/routers/admin.ts",
       "apps/web/src/features/users",
-      "apps/web/src/features/tasks",
-      "apps/web/src/features/apps",
+      "apps/web/src/features/roles",
+      "apps/web/src/features/audit",
       "apps/web/src/routes/_authenticated/users",
-      "apps/web/src/routes/_authenticated/tasks",
-      "apps/web/src/routes/_authenticated/apps",
+      "apps/web/src/routes/_authenticated/roles",
+      "apps/web/src/routes/_authenticated/audit",
     ]) {
       vfs.deletePath(rbacPath);
     }
@@ -77,8 +91,12 @@ export async function processAddonTemplates(
       "packages/db/src/schema/organization.ts",
       "packages/api/src/routers/organization.ts",
       "apps/web/src/features/organizations",
+      "apps/web/src/routes/_authenticated/organizations",
+      "apps/web/src/routes/_authenticated/accept-invitation",
     ]) {
       vfs.deletePath(organizationPath);
     }
   }
+
+  vfs.deletePath("apps/web/src/routeTree.gen.ts");
 }

@@ -37,7 +37,7 @@ const auditContext = (ctx: {
 
 export const adminRouter = router({
   access: protectedProcedure.query(async ({ ctx }) => {
-    const access = await getUserAccess(ctx.session.user.id);
+    const access = await getUserAccess(ctx.session.user.id, ctx.session.user.email);
     const allowed =
       access.isSuperAdmin ||
       access.permissions.some(

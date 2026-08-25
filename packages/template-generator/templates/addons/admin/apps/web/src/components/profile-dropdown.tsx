@@ -57,17 +57,10 @@ export function ProfileDropdown() {
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link to="/settings">
-                Billing
-                <DropdownMenuShortcut>⌘B</DropdownMenuShortcut>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/settings">
                 Settings
                 <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem>New Team</DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={openSignOut} variant="destructive">

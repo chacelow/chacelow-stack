@@ -345,8 +345,8 @@ dev-dist
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -b && vite build",
-    "check-types": "tsc -b --pretty false",
+    "build": "vite build && tsc -b --pretty false",
+    "check-types": "vite build && tsc -b --pretty false",
     "dev": "vite",
     "serve": "vite preview"
   },
@@ -3560,14 +3560,13 @@ function LanguageItem({
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { AppTitle } from "@/components/layout/app-title";
 import { useLayout } from "@/context/layout-provider";
 import { authClient } from "@/lib/auth-client";
 
-// import { AppTitle } from './app-title'
 import { sidebarData } from "./data/sidebar-data";
 import { NavGroup } from "./nav-group";
 import { NavUser } from "./nav-user";
-import { TeamSwitcher } from "./team-switcher";
 
 export function AppSidebar() {
   const { collapsible, variant } = useLayout();
@@ -3575,11 +3574,7 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible={collapsible} variant={variant}>
       <SidebarHeader>
-        <TeamSwitcher teams={sidebarData.teams} />
-
-        {/* Replace <TeamSwitch /> with the following <AppTitle />
-         /* if you want to use the normal app title instead of TeamSwitch dropdown */}
-        {/* <AppTitle /> */}
+        <AppTitle />
       </SidebarHeader>
       <SidebarContent>
         {sidebarData.navGroups.map((props) => (
@@ -3629,8 +3624,8 @@ export function AppTitle() {
               onClick={() => setOpenMobile(false)}
               className="grid flex-1 text-start text-sm leading-tight"
             >
-              <span className="truncate font-bold">Shadcn-Admin</span>
-              <span className="truncate text-xs">Vite + ShadcnUI</span>
+              <span className="truncate font-bold">Chacelow Admin</span>
+              <span className="truncate text-xs">Admin workspace</span>
             </Link>
             <ToggleSidebar />
           </div>
@@ -3751,18 +3746,18 @@ export const sidebarData: SidebarData = {
             {
               icon: Building2,
               title: "Organizations",
-              url: "/help-center",
+              url: "/organizations",
             },
             {{/if}}
             {
               icon: UserCog,
               title: "Roles & permissions",
-              url: "/tasks",
+              url: "/roles",
             },
             {
               icon: ScrollText,
               title: "Audit log",
-              url: "/apps",
+              url: "/audit",
             },
           ],
           title: "System management",
@@ -4039,7 +4034,7 @@ function checkIsActive(href: string, item: NavItem, mainNav = false) {
 }
 `],
   ["addons/admin/apps/web/src/components/layout/nav-user.tsx", `import { Link } from "@tanstack/react-router";
-import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Sparkles } from "lucide-react";
+import { BadgeCheck, ChevronsUpDown, LogOut } from "lucide-react";
 
 import { SignOutDialog } from "@/components/sign-out-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -4113,29 +4108,10 @@ export function NavUser({ user }: NavUserProps) {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem>
-                  <Sparkles />
-                  Upgrade to Pro
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
                 <DropdownMenuItem asChild>
                   <Link to="/settings/account">
                     <BadgeCheck />
                     Account
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link to="/settings">
-                    <CreditCard />
-                    Billing
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link to="/settings/notifications">
-                    <Bell />
-                    Notifications
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
@@ -4664,17 +4640,10 @@ export function ProfileDropdown() {
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link to="/settings">
-                Billing
-                <DropdownMenuShortcut>⌘B</DropdownMenuShortcut>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/settings">
                 Settings
                 <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem>New Team</DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={openSignOut} variant="destructive">
@@ -8125,16 +8094,6 @@ describe("SearchProvider and CommandMenu", () => {
     await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).toBeInTheDocument();
   });
 
-  it("navigates to a top-level route and closes the palette when a nav item is selected", async () => {
-    const screen = await renderWithSearchProvider();
-
-    await openCommandPalette(screen);
-
-    await userEvent.click(screen.getByText("Tasks"));
-
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/tasks" });
-    await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
-  });
 
   it("navigates for nested sidebar items (group with sub-items)", async () => {
     const screen = await renderWithSearchProvider();
@@ -8439,7 +8398,7 @@ export const apps = [
   },
 ];
 `],
-  ["addons/admin/apps/web/src/features/apps/index.tsx", `import { useQuery } from "@tanstack/react-query";
+  ["addons/admin/apps/web/src/features/audit/index.tsx", `import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { type BusinessColumn, BusinessDataTable } from "@/components/business-data-table";
@@ -8471,7 +8430,7 @@ const filterAudit = (item: AuditItem, query: string) =>
   item.targetType.toLowerCase().includes(query);
 const getAuditId = (item: AuditItem) => item.id;
 
-export function Apps() {
+export function Audit() {
   const trpc = useTRPC();
   const logsQuery = useQuery(trpc.admin.auditLogs.queryOptions());
   const logs = (logsQuery.data ?? []) as AuditItem[];
@@ -8551,7 +8510,7 @@ type AuthLayoutProps = {
 export function AuthLayout({ children }: AuthLayoutProps) {
   return (
     <div className='container grid h-svh max-w-none items-center justify-center'>
-      <div className='mx-auto flex w-full flex-col justify-center space-y-2 py-8 sm:p-8'>
+      <div className='mx-auto flex w-[calc(100vw-2rem)] max-w-sm flex-col justify-center space-y-2 py-8'>
         <div className='mb-4 flex items-center justify-center'>
           <Logo className='me-2' />
           <h1 className='text-xl font-medium'>{{projectName}}</h1>
@@ -9064,7 +9023,7 @@ describe("UserAuthForm", () => {
 `],
   ["addons/admin/apps/web/src/features/auth/sign-in/components/user-auth-form.tsx", `// biome-ignore-all lint/performance/noJsxPropsBind: react-hook-form requires render callbacks.
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { Loader2, LogIn } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -9092,7 +9051,7 @@ const formSchema = z.object({
   password: z
     .string()
     .min(1, "Please enter your password.")
-    .min(7, "Password must be at least 7 characters long."),
+    .min(8, "Password must be at least 8 characters long."),
 });
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
@@ -9156,12 +9115,6 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
                 <PasswordInput placeholder="********" {...field} />
               </FormControl>
               <FormMessage />
-              <Link
-                className="absolute inset-e-0 -top-0.5 font-medium text-muted-foreground text-sm hover:opacity-75"
-                to="/forgot-password"
-              >
-                Forgot password?
-              </Link>
             </FormItem>
           )}
         />
@@ -9176,14 +9129,7 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
 `],
   ["addons/admin/apps/web/src/features/auth/sign-in/index.tsx", `import { Link, useSearch } from "@tanstack/react-router";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { AuthLayout } from "../auth-layout";
 import { UserAuthForm } from "./components/user-auth-form";
@@ -9193,7 +9139,7 @@ export function SignIn() {
 
   return (
     <AuthLayout>
-      <Card className="max-w-sm gap-4">
+      <Card className="w-full gap-4">
         <CardHeader>
           <CardTitle className="text-lg tracking-tight">Sign in</CardTitle>
           <CardDescription>
@@ -9210,19 +9156,6 @@ export function SignIn() {
         <CardContent>
           <UserAuthForm redirectTo={redirect} />
         </CardContent>
-        <CardFooter>
-          <p className="px-8 text-center text-sm text-muted-foreground">
-            By clicking sign in, you agree to our{" "}
-            <a href="/terms" className="underline underline-offset-4 hover:text-primary">
-              Terms of Service
-            </a>{" "}
-            and{" "}
-            <a href="/privacy" className="underline underline-offset-4 hover:text-primary">
-              Privacy Policy
-            </a>
-            .
-          </p>
-        </CardFooter>
       </Card>
     </AuthLayout>
   );
@@ -9389,13 +9322,13 @@ describe("SignUpForm", () => {
 });
 `],
   ["addons/admin/apps/web/src/features/auth/sign-up/components/sign-up-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+import { useNavigate } from "@tanstack/react-router";
 import { Loader2, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { IconFacebook, IconGithub } from "@/assets/brand-icons";
 import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui/button";
 import {
@@ -9407,17 +9340,19 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { sleep, cn } from "@/lib/utils";
+import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 
 const formSchema = z
   .object({
+    name: z.string().trim().min(2, "Name must be at least 2 characters."),
     email: z.email({
       error: (iss) => (iss.input === "" ? "Please enter your email." : undefined),
     }),
     password: z
       .string()
       .min(1, "Please enter your password.")
-      .min(7, "Password must be at least 7 characters long."),
+      .min(8, "Password must be at least 8 characters long."),
     confirmPassword: z.string().min(1, "Please confirm your password."),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -9427,27 +9362,31 @@ const formSchema = z
 
 export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFormElement>) {
   const [isLoading, setIsLoading] = useState(false);
-
+  const navigate = useNavigate();
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      name: "",
       email: "",
       password: "",
       confirmPassword: "",
     },
   });
 
-  function onSubmit(data: z.infer<typeof formSchema>) {
+  async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true);
-
-    toast.promise(sleep(2000), {
-      loading: "Creating account...",
-      success: () => {
-        setIsLoading(false);
-        return \`Account created for \${data.email}.\`;
-      },
-      error: "Error",
+    const { error } = await authClient.signUp.email({
+      email: data.email.trim(),
+      name: data.name.trim(),
+      password: data.password,
     });
+    setIsLoading(false);
+    if (error) {
+      toast.error(error.message ?? "Could not create account");
+      return;
+    }
+    toast.success("Account created");
+    await navigate({ replace: true, to: "/" });
   }
 
   return (
@@ -9459,12 +9398,25 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
       >
         <FormField
           control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name</FormLabel>
+              <FormControl>
+                <Input autoComplete="name" placeholder="Your name" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
           name="email"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input placeholder="name@example.com" {...field} />
+                <Input autoComplete="email" placeholder="name@example.com" type="email" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -9477,7 +9429,7 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
             <FormItem>
               <FormLabel>Password</FormLabel>
               <FormControl>
-                <PasswordInput placeholder="********" {...field} />
+                <PasswordInput autoComplete="new-password" placeholder="********" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -9490,7 +9442,7 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
             <FormItem>
               <FormLabel>Confirm Password</FormLabel>
               <FormControl>
-                <PasswordInput placeholder="********" {...field} />
+                <PasswordInput autoComplete="new-password" placeholder="********" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -9501,23 +9453,6 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
           Create Account
         </Button>
 
-        <div className="relative my-2">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" className="w-full" type="button" disabled={isLoading}>
-            <IconGithub className="h-4 w-4" /> GitHub
-          </Button>
-          <Button variant="outline" className="w-full" type="button" disabled={isLoading}>
-            <IconFacebook className="h-4 w-4" /> Facebook
-          </Button>
-        </div>
       </form>
     </Form>
   );
@@ -9529,7 +9464,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -9540,7 +9474,7 @@ import { SignUpForm } from "./components/sign-up-form";
 export function SignUp() {
   return (
     <AuthLayout>
-      <Card className="max-w-sm gap-4">
+      <Card className="w-full gap-4">
         <CardHeader>
           <CardTitle className="text-lg tracking-tight">Create an account</CardTitle>
           <CardDescription>
@@ -9554,19 +9488,6 @@ export function SignUp() {
         <CardContent>
           <SignUpForm />
         </CardContent>
-        <CardFooter>
-          <p className="px-8 text-center text-sm text-muted-foreground">
-            By creating an account, you agree to our{" "}
-            <a href="/terms" className="underline underline-offset-4 hover:text-primary">
-              Terms of Service
-            </a>{" "}
-            and{" "}
-            <a href="/privacy" className="underline underline-offset-4 hover:text-primary">
-              Privacy Policy
-            </a>
-            .
-          </p>
-        </CardFooter>
       </Card>
     </AuthLayout>
   );
@@ -10919,8 +10840,55 @@ export function UnauthorisedError() {
   );
 }
 `],
+  ["addons/admin/apps/web/src/features/organizations/accept-invitation.tsx", `import { useNavigate, useParams } from "@tanstack/react-router";
+import { Building2, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { authClient } from "@/lib/auth-client";
+
+export function AcceptInvitation() {
+  const { invitationId } = useParams({ from: "/_authenticated/accept-invitation/$invitationId" });
+  const navigate = useNavigate();
+  const [isAccepting, setIsAccepting] = useState(false);
+
+  const accept = async () => {
+    setIsAccepting(true);
+    const result = await authClient.organization.acceptInvitation({ invitationId });
+    setIsAccepting(false);
+    if (result.error) {
+      toast.error(result.error.message ?? "Could not accept invitation");
+      return;
+    }
+    toast.success("Invitation accepted");
+    await navigate({ replace: true, to: "/organizations" });
+  };
+
+  return (
+    <main className="grid min-h-svh place-items-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <Building2 className="mb-2 size-8 text-primary" />
+          <CardTitle>Organization invitation</CardTitle>
+          <CardDescription>
+            Join the organization using the invitation issued for your signed-in email address.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button className="w-full" disabled={isAccepting} onClick={accept}>
+            {isAccepting ? <Loader2 className="animate-spin" /> : null}
+            Accept invitation
+          </Button>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
+`],
   ["addons/admin/apps/web/src/features/organizations/index.tsx", `import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Check, ChevronsUpDown, Plus, Users } from "lucide-react";
+import { Building2, Check, ChevronsUpDown, Copy, MailPlus, Plus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -10946,6 +10914,9 @@ export function Organizations() {
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("member");
   const [memberId, setMemberId] = useState<string | null>(null);
   const [role, setRole] = useState("member");
   const members = useQuery({
@@ -10985,6 +10956,27 @@ export function Organizations() {
     setCreateOpen(false);
     setName("");
     setSlug("");
+  };
+  const createInvitation = async () => {
+    const result = await authClient.organization.inviteMember({
+      email: inviteEmail.trim(),
+      role: inviteRole,
+    });
+    if (result.error) {
+      toast.error(result.error.message ?? "Could not create invitation");
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: trpc.organization.invitations.queryKey() });
+    setInviteOpen(false);
+    setInviteEmail("");
+    setInviteRole("member");
+    toast.success("Invitation created. Copy its link from the pending invitations list.");
+  };
+
+  const copyInvitationLink = async (invitationId: string) => {
+    const link = \`\${window.location.origin}/accept-invitation/\${invitationId}\`;
+    await navigator.clipboard.writeText(link);
+    toast.success("Invitation link copied");
   };
 
   const setActiveOrganization = async (organizationId: string) => {
@@ -11043,7 +11035,10 @@ export function Organizations() {
 
           <div className="space-y-4">
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2"><Users className="size-4" />Members</CardTitle></CardHeader>
+              <CardHeader className="flex-row items-center justify-between gap-3">
+                <CardTitle className="flex items-center gap-2"><Users className="size-4" />Members</CardTitle>
+                <Button disabled={!activeOrganization.data} onClick={() => setInviteOpen(true)} size="sm" variant="outline"><MailPlus />Invite member</Button>
+              </CardHeader>
               <CardContent className="divide-y">
                 {(members.data ?? []).map((item) => (
                   <div className="flex min-h-16 items-center justify-between gap-3" key={item.id}>
@@ -11055,11 +11050,12 @@ export function Organizations() {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle>Pending invitations</CardTitle><CardDescription>Invitations are issued by Better Auth and stored in the active organization.</CardDescription></CardHeader>
+              <CardHeader><CardTitle>Pending invitations</CardTitle><CardDescription>Email delivery is not configured by default. Copy the real acceptance link and send it securely.</CardDescription></CardHeader>
               <CardContent className="divide-y">
                 {(invitations.data ?? []).map((item) => (
                   <div className="flex min-h-14 items-center justify-between gap-3" key={item.id}>
-                    <span className="text-sm">{item.email}</span><Badge variant="secondary">{item.status}</Badge>
+                    <span className="min-w-0 truncate text-sm">{item.email}</span>
+                    <div className="flex items-center gap-2"><Badge variant="secondary">{item.status}</Badge><Button aria-label={\`Copy invitation link for \${item.email}\`} onClick={() => copyInvitationLink(item.id)} size="icon" variant="ghost"><Copy /></Button></div>
                   </div>
                 ))}
                 {activeOrganization.data && invitations.data?.length === 0 ? <p className="py-8 text-center text-muted-foreground text-sm">No pending invitations.</p> : null}
@@ -11076,6 +11072,13 @@ export function Organizations() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent><DialogHeader><DialogTitle>Invite member</DialogTitle><DialogDescription>Create a real Better Auth invitation. This template exposes a copyable link because email delivery is not configured.</DialogDescription></DialogHeader>
+          <div className="grid gap-4"><div className="grid gap-2"><Label htmlFor="invitation-email">Email</Label><Input id="invitation-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></div><div className="grid gap-2"><Label htmlFor="invitation-role">Role</Label><Select value={inviteRole} onValueChange={setInviteRole}><SelectTrigger id="invitation-role"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="member">member</SelectItem><SelectItem value="admin">admin</SelectItem></SelectContent></Select></div></div>
+          <DialogFooter><Button disabled={!inviteEmail.trim()} onClick={createInvitation}>Create invitation</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={memberId !== null} onOpenChange={(open) => { if (!open) setMemberId(null); }}>
         <DialogContent><DialogHeader><DialogTitle>Update member role</DialogTitle><DialogDescription>Roles are scoped to the active organization.</DialogDescription></DialogHeader>
           <Select value={role} onValueChange={setRole}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{availableRoles.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
@@ -11083,6 +11086,349 @@ export function Organizations() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/roles/index.tsx", `// biome-ignore-all lint/performance/noJsxPropsBind: role table actions intentionally close over row identifiers.
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MoreHorizontal, Plus } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
+
+import { type BusinessColumn, BusinessDataTable } from "@/components/business-data-table";
+import { ConfigDrawer } from "@/components/config-drawer";
+import { Header } from "@/components/layout/header";
+import { Main } from "@/components/layout/main";
+import { ProfileDropdown } from "@/components/profile-dropdown";
+import { Search } from "@/components/search";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useTRPC } from "@/lib/trpc";
+
+interface PermissionItem {
+  action: string;
+  description: string;
+  key: string;
+  resource: string;
+}
+interface RoleItem {
+  description: string | null;
+  id: string;
+  isSystem: boolean;
+  name: string;
+  permissionKeys: string[];
+  slug: string;
+  userCount: number;
+}
+interface RoleDraft {
+  description: string;
+  id?: string;
+  isSystem: boolean;
+  name: string;
+  permissionKeys: string[];
+  slug: string;
+}
+
+const EMPTY_ROLE: RoleDraft = {
+  description: "",
+  isSystem: false,
+  name: "",
+  permissionKeys: [],
+  slug: "",
+};
+const filterRole = (role: RoleItem, query: string) =>
+  !query ||
+  role.name.toLowerCase().includes(query) ||
+  role.description?.toLowerCase().includes(query) === true;
+const getRoleId = (role: RoleItem) => role.id;
+const toSlug = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+export function Roles() {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const rolesQuery = useQuery(trpc.admin.roles.queryOptions());
+  const permissionsQuery = useQuery(trpc.admin.permissions.queryOptions());
+  const roles = (rolesQuery.data ?? []) as RoleItem[];
+  const permissions = (permissionsQuery.data ?? []) as PermissionItem[];
+  const [draft, setDraft] = useState<RoleDraft | null>(null);
+  const refresh = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: trpc.admin.roles.queryKey() }),
+    [queryClient, trpc.admin.roles],
+  );
+  const createRole = useMutation(
+    trpc.admin.createRole.mutationOptions({
+      onSuccess: async () => {
+        await refresh();
+        setDraft(null);
+        toast.success("Role created");
+      },
+    }),
+  );
+  const updateRole = useMutation(
+    trpc.admin.updateRole.mutationOptions({
+      onSuccess: async () => {
+        await refresh();
+        setDraft(null);
+        toast.success("Role updated");
+      },
+    }),
+  );
+  const deleteRole = useMutation(
+    trpc.admin.deleteRole.mutationOptions({
+      onSuccess: async () => {
+        await refresh();
+        setDraft(null);
+        toast.success("Role deleted");
+      },
+    }),
+  );
+  const openNew = useCallback(() => setDraft(EMPTY_ROLE), []);
+  const close = useCallback(() => setDraft(null), []);
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setDraft(null);
+    }
+  }, []);
+  const changeName = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const name = event.target.value;
+    setDraft((current) =>
+      current ? { ...current, name, slug: current.id ? current.slug : toSlug(name) } : current,
+    );
+  }, []);
+  const changeDescription = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft((current) => (current ? { ...current, description: event.target.value } : current));
+  }, []);
+  const togglePermission = useCallback((key: string, checked: boolean) => {
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        permissionKeys: checked
+          ? [...current.permissionKeys, key]
+          : current.permissionKeys.filter((value) => value !== key),
+      };
+    });
+  }, []);
+  const save = useCallback(() => {
+    if (!draft) {
+      return;
+    }
+    if (draft.id) {
+      updateRole.mutate({
+        description: draft.description,
+        id: draft.id,
+        name: draft.name,
+        permissionKeys: draft.permissionKeys,
+      });
+      return;
+    }
+    createRole.mutate({
+      description: draft.description,
+      name: draft.name,
+      permissionKeys: draft.permissionKeys,
+      slug: draft.slug,
+    });
+  }, [createRole, draft, updateRole]);
+  const remove = useCallback(() => {
+    if (draft?.id && !draft.isSystem) {
+      deleteRole.mutate({ id: draft.id });
+    }
+  }, [deleteRole, draft]);
+  const columns = useMemo<BusinessColumn<RoleItem>[]>(
+    () => [
+      {
+        header: "Role",
+        render: (role) => (
+          <div>
+            <div className="flex items-center gap-2 font-medium">
+              {role.name}
+              {role.isSystem ? <Badge variant="outline">Protected</Badge> : null}
+            </div>
+            <div className="text-muted-foreground text-xs">{role.description}</div>
+          </div>
+        ),
+      },
+      {
+        header: "Permissions",
+        render: (role) => (
+          <div className="flex flex-wrap gap-1">
+            {role.permissionKeys.slice(0, 3).map((key) => (
+              <Badge key={key} variant="secondary">
+                {key}
+              </Badge>
+            ))}
+            {role.permissionKeys.length > 3 ? (
+              <Badge variant="outline">+{role.permissionKeys.length - 3}</Badge>
+            ) : null}
+          </div>
+        ),
+      },
+      { header: "Members", render: (role) => role.userCount },
+      {
+        className: "w-16 text-right",
+        header: "Actions",
+        render: (role) => (
+          <Button
+            aria-label={\`Manage \${role.name}\`}
+            onClick={() =>
+              setDraft({
+                description: role.description ?? "",
+                id: role.id,
+                isSystem: role.isSystem,
+                name: role.name,
+                permissionKeys: role.permissionKeys,
+                slug: role.slug,
+              })
+            }
+            size="icon"
+            variant="ghost"
+          >
+            <MoreHorizontal />
+          </Button>
+        ),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <>
+      <Header fixed>
+        <Search className="me-auto" />
+        <ThemeSwitch />
+        <ConfigDrawer />
+        <ProfileDropdown />
+      </Header>
+      <Main className="flex flex-1 flex-col gap-4 sm:gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="font-bold text-2xl tracking-tight">Roles & permissions</h2>
+            <p className="text-muted-foreground">
+              Define reusable access policies for your workspace.
+            </p>
+          </div>
+          <Button onClick={openNew}>
+            <Plus />
+            Add role
+          </Button>
+        </div>
+        <BusinessDataTable
+          columns={columns}
+          data={roles}
+          empty="No roles found."
+          filter={filterRole}
+          getRowId={getRoleId}
+          placeholder="Filter roles..."
+        />
+      </Main>
+      <Dialog onOpenChange={handleOpenChange} open={draft !== null}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{draft?.id ? \`Edit \${draft.name}\` : "Add role"}</DialogTitle>
+            <DialogDescription>Set role details and choose permissions.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="role-name">Role name</Label>
+              <Input
+                disabled={draft?.isSystem}
+                id="role-name"
+                onChange={changeName}
+                value={draft?.name ?? ""}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="role-description">Description</Label>
+              <Textarea
+                disabled={draft?.isSystem}
+                id="role-description"
+                onChange={changeDescription}
+                value={draft?.description ?? ""}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Permissions</Label>
+            <div className="grid max-h-72 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
+              {permissions.map((permission) => (
+                <PermissionChoice
+                  checked={draft?.permissionKeys.includes(permission.key) ?? false}
+                  disabled={draft?.isSystem ?? false}
+                  key={permission.key}
+                  onToggle={togglePermission}
+                  permission={permission}
+                />
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            {draft?.id && !draft.isSystem ? (
+              <Button onClick={remove} variant="destructive">
+                Delete role
+              </Button>
+            ) : null}
+            <Button onClick={close} variant="outline">
+              Cancel
+            </Button>
+            <Button disabled={draft?.isSystem || !draft?.name || !draft.slug} onClick={save}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function PermissionChoice({
+  checked,
+  disabled,
+  onToggle,
+  permission,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onToggle: (key: string, checked: boolean) => void;
+  permission: PermissionItem;
+}) {
+  const id = \`permission-\${permission.key}\`;
+  const handleToggle = useCallback(
+    (value: boolean | "indeterminate") => onToggle(permission.key, value === true),
+    [onToggle, permission.key],
+  );
+  return (
+    <Label
+      className="flex min-h-14 cursor-pointer items-start gap-3 rounded-md p-3 hover:bg-muted has-disabled:cursor-not-allowed has-disabled:opacity-60"
+      htmlFor={id}
+    >
+      <Checkbox checked={checked} disabled={disabled} id={id} onCheckedChange={handleToggle} />
+      <span className="grid gap-0.5">
+        <span>
+          {permission.resource}: {permission.action}
+        </span>
+        <span className="font-normal text-muted-foreground text-xs">{permission.description}</span>
+      </span>
+    </Label>
   );
 }
 `],
@@ -11194,7 +11540,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { fonts } from "@/config/fonts";
 import { useFont } from "@/context/font-provider";
 import { useTheme } from "@/context/theme-provider";
-import { showSubmittedData } from "@/lib/show-submitted-data";
 import { cn } from "@/lib/utils";
 
 const appearanceFormSchema = z.object({
@@ -11223,7 +11568,6 @@ export function AppearanceForm() {
     if (data.font != font) setFont(data.font);
     if (data.theme != theme) setTheme(data.theme);
 
-    showSubmittedData(data);
   }
 
   return (
@@ -11580,7 +11924,7 @@ export function SettingsDisplay() {
 }
 `],
   ["addons/admin/apps/web/src/features/settings/index.tsx", `import { Outlet } from "@tanstack/react-router";
-import { Monitor, Bell, Palette, Wrench, UserCog } from "lucide-react";
+import { Palette, Wrench, UserCog } from "lucide-react";
 
 import { ConfigDrawer } from "@/components/config-drawer";
 import { Header } from "@/components/layout/header";
@@ -11608,16 +11952,6 @@ const sidebarNavItems = [
     href: "/settings/appearance",
     icon: <Palette size={18} />,
   },
-  {
-    title: "Notifications",
-    href: "/settings/notifications",
-    icon: <Bell size={18} />,
-  },
-  {
-    title: "Display",
-    href: "/settings/display",
-    icon: <Monitor size={18} />,
-  },
 ];
 
 export function Settings() {
@@ -11634,9 +11968,7 @@ export function Settings() {
       <Main fixed>
         <div className="space-y-0.5">
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Settings</h1>
-          <p className="text-muted-foreground">
-            Manage your account settings and set e-mail preferences.
-          </p>
+          <p className="text-muted-foreground">Manage your account and local appearance.</p>
         </div>
         <Separator className="my-4 lg:my-6" />
         <div className="flex flex-1 flex-col space-y-2 overflow-hidden md:space-y-2 lg:flex-row lg:space-y-0 lg:space-x-12">
@@ -13589,349 +13921,6 @@ export const tasks = Array.from({ length: 100 }, () => {
     dueDate: faker.date.future(),
   };
 });
-`],
-  ["addons/admin/apps/web/src/features/tasks/index.tsx", `// biome-ignore-all lint/performance/noJsxPropsBind: role table actions intentionally close over row identifiers.
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal, Plus } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
-
-import { type BusinessColumn, BusinessDataTable } from "@/components/business-data-table";
-import { ConfigDrawer } from "@/components/config-drawer";
-import { Header } from "@/components/layout/header";
-import { Main } from "@/components/layout/main";
-import { ProfileDropdown } from "@/components/profile-dropdown";
-import { Search } from "@/components/search";
-import { ThemeSwitch } from "@/components/theme-switch";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { useTRPC } from "@/lib/trpc";
-
-interface PermissionItem {
-  action: string;
-  description: string;
-  key: string;
-  resource: string;
-}
-interface RoleItem {
-  description: string | null;
-  id: string;
-  isSystem: boolean;
-  name: string;
-  permissionKeys: string[];
-  slug: string;
-  userCount: number;
-}
-interface RoleDraft {
-  description: string;
-  id?: string;
-  isSystem: boolean;
-  name: string;
-  permissionKeys: string[];
-  slug: string;
-}
-
-const EMPTY_ROLE: RoleDraft = {
-  description: "",
-  isSystem: false,
-  name: "",
-  permissionKeys: [],
-  slug: "",
-};
-const filterRole = (role: RoleItem, query: string) =>
-  !query ||
-  role.name.toLowerCase().includes(query) ||
-  role.description?.toLowerCase().includes(query) === true;
-const getRoleId = (role: RoleItem) => role.id;
-const toSlug = (name: string) =>
-  name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-
-export function Tasks() {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  const rolesQuery = useQuery(trpc.admin.roles.queryOptions());
-  const permissionsQuery = useQuery(trpc.admin.permissions.queryOptions());
-  const roles = (rolesQuery.data ?? []) as RoleItem[];
-  const permissions = (permissionsQuery.data ?? []) as PermissionItem[];
-  const [draft, setDraft] = useState<RoleDraft | null>(null);
-  const refresh = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: trpc.admin.roles.queryKey() }),
-    [queryClient, trpc.admin.roles],
-  );
-  const createRole = useMutation(
-    trpc.admin.createRole.mutationOptions({
-      onSuccess: async () => {
-        await refresh();
-        setDraft(null);
-        toast.success("Role created");
-      },
-    }),
-  );
-  const updateRole = useMutation(
-    trpc.admin.updateRole.mutationOptions({
-      onSuccess: async () => {
-        await refresh();
-        setDraft(null);
-        toast.success("Role updated");
-      },
-    }),
-  );
-  const deleteRole = useMutation(
-    trpc.admin.deleteRole.mutationOptions({
-      onSuccess: async () => {
-        await refresh();
-        setDraft(null);
-        toast.success("Role deleted");
-      },
-    }),
-  );
-  const openNew = useCallback(() => setDraft(EMPTY_ROLE), []);
-  const close = useCallback(() => setDraft(null), []);
-  const handleOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      setDraft(null);
-    }
-  }, []);
-  const changeName = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const name = event.target.value;
-    setDraft((current) =>
-      current ? { ...current, name, slug: current.id ? current.slug : toSlug(name) } : current,
-    );
-  }, []);
-  const changeDescription = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setDraft((current) => (current ? { ...current, description: event.target.value } : current));
-  }, []);
-  const togglePermission = useCallback((key: string, checked: boolean) => {
-    setDraft((current) => {
-      if (!current) {
-        return current;
-      }
-      return {
-        ...current,
-        permissionKeys: checked
-          ? [...current.permissionKeys, key]
-          : current.permissionKeys.filter((value) => value !== key),
-      };
-    });
-  }, []);
-  const save = useCallback(() => {
-    if (!draft) {
-      return;
-    }
-    if (draft.id) {
-      updateRole.mutate({
-        description: draft.description,
-        id: draft.id,
-        name: draft.name,
-        permissionKeys: draft.permissionKeys,
-      });
-      return;
-    }
-    createRole.mutate({
-      description: draft.description,
-      name: draft.name,
-      permissionKeys: draft.permissionKeys,
-      slug: draft.slug,
-    });
-  }, [createRole, draft, updateRole]);
-  const remove = useCallback(() => {
-    if (draft?.id && !draft.isSystem) {
-      deleteRole.mutate({ id: draft.id });
-    }
-  }, [deleteRole, draft]);
-  const columns = useMemo<BusinessColumn<RoleItem>[]>(
-    () => [
-      {
-        header: "Role",
-        render: (role) => (
-          <div>
-            <div className="flex items-center gap-2 font-medium">
-              {role.name}
-              {role.isSystem ? <Badge variant="outline">Protected</Badge> : null}
-            </div>
-            <div className="text-muted-foreground text-xs">{role.description}</div>
-          </div>
-        ),
-      },
-      {
-        header: "Permissions",
-        render: (role) => (
-          <div className="flex flex-wrap gap-1">
-            {role.permissionKeys.slice(0, 3).map((key) => (
-              <Badge key={key} variant="secondary">
-                {key}
-              </Badge>
-            ))}
-            {role.permissionKeys.length > 3 ? (
-              <Badge variant="outline">+{role.permissionKeys.length - 3}</Badge>
-            ) : null}
-          </div>
-        ),
-      },
-      { header: "Members", render: (role) => role.userCount },
-      {
-        className: "w-16 text-right",
-        header: "Actions",
-        render: (role) => (
-          <Button
-            aria-label={\`Manage \${role.name}\`}
-            onClick={() =>
-              setDraft({
-                description: role.description ?? "",
-                id: role.id,
-                isSystem: role.isSystem,
-                name: role.name,
-                permissionKeys: role.permissionKeys,
-                slug: role.slug,
-              })
-            }
-            size="icon"
-            variant="ghost"
-          >
-            <MoreHorizontal />
-          </Button>
-        ),
-      },
-    ],
-    [],
-  );
-
-  return (
-    <>
-      <Header fixed>
-        <Search className="me-auto" />
-        <ThemeSwitch />
-        <ConfigDrawer />
-        <ProfileDropdown />
-      </Header>
-      <Main className="flex flex-1 flex-col gap-4 sm:gap-6">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="font-bold text-2xl tracking-tight">Roles & permissions</h2>
-            <p className="text-muted-foreground">
-              Define reusable access policies for your workspace.
-            </p>
-          </div>
-          <Button onClick={openNew}>
-            <Plus />
-            Add role
-          </Button>
-        </div>
-        <BusinessDataTable
-          columns={columns}
-          data={roles}
-          empty="No roles found."
-          filter={filterRole}
-          getRowId={getRoleId}
-          placeholder="Filter roles..."
-        />
-      </Main>
-      <Dialog onOpenChange={handleOpenChange} open={draft !== null}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{draft?.id ? \`Edit \${draft.name}\` : "Add role"}</DialogTitle>
-            <DialogDescription>Set role details and choose permissions.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="role-name">Role name</Label>
-              <Input
-                disabled={draft?.isSystem}
-                id="role-name"
-                onChange={changeName}
-                value={draft?.name ?? ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role-description">Description</Label>
-              <Textarea
-                disabled={draft?.isSystem}
-                id="role-description"
-                onChange={changeDescription}
-                value={draft?.description ?? ""}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Permissions</Label>
-            <div className="grid max-h-72 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
-              {permissions.map((permission) => (
-                <PermissionChoice
-                  checked={draft?.permissionKeys.includes(permission.key) ?? false}
-                  disabled={draft?.isSystem ?? false}
-                  key={permission.key}
-                  onToggle={togglePermission}
-                  permission={permission}
-                />
-              ))}
-            </div>
-          </div>
-          <DialogFooter>
-            {draft?.id && !draft.isSystem ? (
-              <Button onClick={remove} variant="destructive">
-                Delete role
-              </Button>
-            ) : null}
-            <Button onClick={close} variant="outline">
-              Cancel
-            </Button>
-            <Button disabled={draft?.isSystem || !draft?.name || !draft.slug} onClick={save}>
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-function PermissionChoice({
-  checked,
-  disabled,
-  onToggle,
-  permission,
-}: {
-  checked: boolean;
-  disabled: boolean;
-  onToggle: (key: string, checked: boolean) => void;
-  permission: PermissionItem;
-}) {
-  const id = \`permission-\${permission.key}\`;
-  const handleToggle = useCallback(
-    (value: boolean | "indeterminate") => onToggle(permission.key, value === true),
-    [onToggle, permission.key],
-  );
-  return (
-    <Label
-      className="flex min-h-14 cursor-pointer items-start gap-3 rounded-md p-3 hover:bg-muted has-disabled:cursor-not-allowed has-disabled:opacity-60"
-      htmlFor={id}
-    >
-      <Checkbox checked={checked} disabled={disabled} id={id} onCheckedChange={handleToggle} />
-      <span className="grid gap-0.5">
-        <span>
-          {permission.resource}: {permission.action}
-        </span>
-        <span className="font-normal text-muted-foreground text-xs">{permission.description}</span>
-      </span>
-    </Label>
-  );
-}
 `],
   ["addons/admin/apps/web/src/features/users/components/data-table-bulk-actions.tsx", `import { type Table } from "@tanstack/react-table";
 import { Trash2, UserX, UserCheck, Mail } from "lucide-react";
@@ -17141,10 +17130,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function sleep(ms: number = 1000) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * Generates page numbers for pagination with ellipsis
  * @param currentPage - Current page number (1-based)
@@ -17361,20 +17346,20 @@ export const Route = createRootRouteWithContext<{
   errorComponent: GeneralError,
 });
 `],
-  ["addons/admin/apps/web/src/routes/_authenticated/apps/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
-import z from "zod";
+  ["addons/admin/apps/web/src/routes/_authenticated/accept-invitation/$invitationId.tsx.hbs", `import { createFileRoute } from "@tanstack/react-router";
 
-import { Apps } from "@/features/apps";
+import { AcceptInvitation } from "@/features/organizations/accept-invitation";
 
-const appsSearchSchema = z.object({
-  type: z.enum(["all", "connected", "notConnected"]).optional().catch(undefined),
-  filter: z.string().optional().catch(""),
-  sort: z.enum(["asc", "desc"]).optional().catch(undefined),
+export const Route = createFileRoute("/_authenticated/accept-invitation/$invitationId")({
+  component: AcceptInvitation,
 });
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/audit/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/_authenticated/apps/")({
-  validateSearch: appsSearchSchema,
-  component: Apps,
+import { Audit } from "@/features/audit";
+
+export const Route = createFileRoute("/_authenticated/audit/")({
+  component: Audit,
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/chats/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
@@ -17430,24 +17415,28 @@ function RouteComponent() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/routes/_authenticated/help-center/index.tsx.hbs", `import { createFileRoute } from "@tanstack/react-router";
-
-{{#if (includes addons "organization")}}
-import { Organizations } from "@/features/organizations";
-{{else}}
-import { ComingSoon } from "@/components/coming-soon";
-{{/if}}
-
-export const Route = createFileRoute("/_authenticated/help-center/")({
-  component: {{#if (includes addons "organization")}}Organizations{{else}}ComingSoon{{/if}},
-});
-`],
   ["addons/admin/apps/web/src/routes/_authenticated/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
 
 import { Dashboard } from "@/features/dashboard";
 
 export const Route = createFileRoute("/_authenticated/")({
   component: Dashboard,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/organizations/index.tsx.hbs", `import { createFileRoute } from "@tanstack/react-router";
+
+import { Organizations } from "@/features/organizations";
+
+export const Route = createFileRoute("/_authenticated/organizations/")({
+  component: Organizations,
+});
+`],
+  ["addons/admin/apps/web/src/routes/_authenticated/roles/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+
+import { Roles } from "@/features/roles";
+
+export const Route = createFileRoute("/_authenticated/roles/")({
+  component: Roles,
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/route.tsx", `import { createFileRoute, redirect } from "@tanstack/react-router";
@@ -17516,62 +17505,11 @@ export const Route = createFileRoute("/_authenticated/settings")({
   component: Settings,
 });
 `],
-  ["addons/admin/apps/web/src/routes/_authenticated/tasks/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
-import z from "zod";
-
-import { Tasks } from "@/features/tasks";
-import { priorities, statuses } from "@/features/tasks/data/data";
-
-const taskSearchSchema = z.object({
-  page: z.number().optional().catch(1),
-  pageSize: z.number().optional().catch(10),
-  status: z
-    .array(z.enum(statuses.map((status) => status.value)))
-    .optional()
-    .catch([]),
-  priority: z
-    .array(z.enum(priorities.map((priority) => priority.value)))
-    .optional()
-    .catch([]),
-  filter: z.string().optional().catch(""),
-});
-
-export const Route = createFileRoute("/_authenticated/tasks/")({
-  validateSearch: taskSearchSchema,
-  component: Tasks,
-});
-`],
   ["addons/admin/apps/web/src/routes/_authenticated/users/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
-import z from "zod";
 
 import { Users } from "@/features/users";
-import { roles } from "@/features/users/data/data";
-
-const usersSearchSchema = z.object({
-  page: z.number().optional().catch(1),
-  pageSize: z.number().optional().catch(10),
-  // Facet filters
-  status: z
-    .array(
-      z.union([
-        z.literal("active"),
-        z.literal("inactive"),
-        z.literal("invited"),
-        z.literal("suspended"),
-      ]),
-    )
-    .optional()
-    .catch([]),
-  role: z
-    .array(z.enum(roles.map((r) => r.value as (typeof roles)[number]["value"])))
-    .optional()
-    .catch([]),
-  // Per-column text filter (example for username)
-  username: z.string().optional().catch(""),
-});
 
 export const Route = createFileRoute("/_authenticated/users/")({
-  validateSearch: usersSearchSchema,
   component: Users,
 });
 `],
@@ -19271,7 +19209,7 @@ volumes:
     "check-types": "turbo run check-types",
     "dev:web": "turbo run dev -F web --",
     "dev:server": "turbo run dev -F server --",
-    "db:push": "turbo run db:push -F @{{projectName}}/db --",
+    "db:push": "pnpm --filter @{{projectName}}/db exec drizzle-kit push",
     "db:studio": "turbo run db:studio -F @{{projectName}}/db --",
     "db:generate": "turbo run db:generate -F @{{projectName}}/db --",
     "db:migrate": "turbo run db:migrate -F @{{projectName}}/db --",
@@ -19426,7 +19364,7 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
 {{#if (includes addons "rbac")}}
 export const permissionProcedure = (permission: PermissionKey) =>
   protectedProcedure.use(async ({ ctx, next }) => {
-    const allowed = await hasPermission(ctx.session.user.id, permission);
+    const allowed = await hasPermission(ctx.session.user.id, ctx.session.user.email, permission);
     if (!allowed) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Permission denied" });
     }
@@ -19502,6 +19440,7 @@ export type PermissionKey = (typeof PERMISSIONS)[number]["key"];
 export const ALL_PERMISSION_KEYS = PERMISSIONS.map(({ key }) => key);
 `],
   ["addons/admin/packages/api/src/rbac.ts.hbs", `import { db } from "@{{projectName}}/db";
+import { env } from "@{{projectName}}/env/server";
 import {
   auditLog,
   permission,
@@ -19559,7 +19498,7 @@ const DEFAULT_ROLES: ReadonlyArray<{
   },
 ];
 
-export async function ensureRbacSeed(userId?: string) {
+export async function ensureRbacSeed(user?: { email: string; id: string }) {
   await db
     .insert(permission)
     .values(
@@ -19616,7 +19555,7 @@ export async function ensureRbacSeed(userId?: string) {
     )
     .onConflictDoNothing();
 
-  if (userId) {
+  if (user && env.RBAC_BOOTSTRAP_ADMIN_EMAIL === user.email.toLowerCase()) {
     const existingSuperAdmins = await db
       .select({ userId: userRole.userId })
       .from(userRole)
@@ -19625,14 +19564,14 @@ export async function ensureRbacSeed(userId?: string) {
     if (existingSuperAdmins.length === 0) {
       await db
         .insert(userRole)
-        .values({ roleId: SUPER_ADMIN_SLUG, userId })
+        .values({ roleId: SUPER_ADMIN_SLUG, userId: user.id })
         .onConflictDoNothing();
     }
   }
 }
 
-export async function getUserAccess(userId: string) {
-  await ensureRbacSeed(userId);
+export async function getUserAccess(userId: string, userEmail: string) {
+  await ensureRbacSeed({ email: userEmail, id: userId });
 
   const rows = await db
     .select({
@@ -19673,8 +19612,8 @@ export async function getUserAccess(userId: string) {
   };
 }
 
-export async function hasPermission(userId: string, required: PermissionKey) {
-  const access = await getUserAccess(userId);
+export async function hasPermission(userId: string, userEmail: string, required: PermissionKey) {
+  const access = await getUserAccess(userId, userEmail);
   return access.isSuperAdmin || access.permissions.includes(required);
 }
 
@@ -19799,7 +19738,7 @@ const auditContext = (ctx: {
 
 export const adminRouter = router({
   access: protectedProcedure.query(async ({ ctx }) => {
-    const access = await getUserAccess(ctx.session.user.id);
+    const access = await getUserAccess(ctx.session.user.id, ctx.session.user.email);
     const allowed =
       access.isSuperAdmin ||
       access.permissions.some(
@@ -20871,7 +20810,7 @@ export const rolePermissionRelations = relations(rolePermission, ({ one }) => ({
   }
 }
 `],
-  ["addons/admin/packages/env/src/server.ts", `import "dotenv/config";
+  ["addons/admin/packages/env/src/server.ts.hbs", `import "dotenv/config";
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
 
@@ -20881,6 +20820,9 @@ export const env = createEnv({
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
     CORS_ORIGIN: z.url(),
+    {{#if (includes addons "rbac")}}
+    RBAC_BOOTSTRAP_ADMIN_EMAIL: z.email().optional(),
+    {{/if}}
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   },
   runtimeEnv: process.env,
@@ -25423,8 +25365,7 @@ export function cn(...inputs: ClassValue[]) {
       "persistent": true
     },
     "db:push": {
-      "cache": false,
-      "interactive": true
+      "cache": false
     },
     "db:generate": {
       "cache": false,
@@ -61242,4 +61183,4 @@ export default function Success() {
 `]
 ]);
 
-export const TEMPLATE_COUNT = 861;
+export const TEMPLATE_COUNT = 863;

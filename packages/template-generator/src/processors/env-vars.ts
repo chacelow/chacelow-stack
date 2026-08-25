@@ -431,6 +431,7 @@ function buildServerVars(
   serverDeploy: ProjectConfig["serverDeploy"],
   payments: ProjectConfig["payments"],
   examples: ProjectConfig["examples"],
+  addons: ProjectConfig["addons"],
 ): EnvVariable[] {
   const hasReactRouter = frontend.includes("react-router");
   const hasSvelte = frontend.includes("svelte");
@@ -518,6 +519,11 @@ function buildServerVars(
       condition: hasBetterAuth,
     },
     {
+      key: "RBAC_BOOTSTRAP_ADMIN_EMAIL",
+      value: "admin@example.com",
+      condition: hasBetterAuth && addons?.includes("rbac") === true,
+    },
+    {
       key: "CLERK_SECRET_KEY",
       value: "",
       condition: hasClerk,
@@ -569,6 +575,7 @@ export function processEnvVariables(vfs: VirtualFileSystem, config: ProjectConfi
     serverDeploy,
     runtime,
     payments,
+    addons,
   } = config;
 
   const hasReactRouter = frontend.includes("react-router");
@@ -692,6 +699,7 @@ export function processEnvVariables(vfs: VirtualFileSystem, config: ProjectConfi
     serverDeploy,
     payments,
     examples,
+    addons,
   );
 
   if (backend === "self") {

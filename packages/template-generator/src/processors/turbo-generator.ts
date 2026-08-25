@@ -144,7 +144,7 @@ function getDatabaseTasks(dbSupport: DbScriptSupport): TurboTasks {
   const tasks: TurboTasks = {};
 
   if (dbSupport.hasDbPush) {
-    tasks["db:push"] = { cache: false, interactive: true };
+    tasks["db:push"] = { cache: false };
   }
 
   if (dbSupport.hasDbGenerate) {

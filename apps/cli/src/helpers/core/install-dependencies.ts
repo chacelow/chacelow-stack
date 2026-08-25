@@ -25,10 +25,13 @@ export async function installDependencies({
 
   const result = await Result.tryPromise({
     try: async () => {
+      const args = packageManager === "pnpm"
+        ? ["install", "--registry=https://registry.npmjs.org"]
+        : ["install"];
       await $({
         cwd: projectDir,
         stderr: "inherit",
-      })`${packageManager} install`;
+      })`${packageManager} ${args}`;
     },
     catch: (e) =>
       new ProjectCreationError({

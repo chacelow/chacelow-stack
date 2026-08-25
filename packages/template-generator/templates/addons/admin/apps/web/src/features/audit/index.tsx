@@ -30,7 +30,7 @@ const filterAudit = (item: AuditItem, query: string) =>
   item.targetType.toLowerCase().includes(query);
 const getAuditId = (item: AuditItem) => item.id;
 
-export function Apps() {
+export function Audit() {
   const trpc = useTRPC();
   const logsQuery = useQuery(trpc.admin.auditLogs.queryOptions());
   const logs = (logsQuery.data ?? []) as AuditItem[];

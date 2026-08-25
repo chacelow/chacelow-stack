@@ -1,6 +1,6 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: react-hook-form requires render callbacks.
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { Loader2, LogIn } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -28,7 +28,7 @@ const formSchema = z.object({
   password: z
     .string()
     .min(1, "Please enter your password.")
-    .min(7, "Password must be at least 7 characters long."),
+    .min(8, "Password must be at least 8 characters long."),
 });
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
@@ -92,12 +92,6 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
                 <PasswordInput placeholder="********" {...field} />
               </FormControl>
               <FormMessage />
-              <Link
-                className="absolute inset-e-0 -top-0.5 font-medium text-muted-foreground text-sm hover:opacity-75"
-                to="/forgot-password"
-              >
-                Forgot password?
-              </Link>
             </FormItem>
           )}
         />

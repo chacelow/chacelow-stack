@@ -17,7 +17,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { fonts } from "@/config/fonts";
 import { useFont } from "@/context/font-provider";
 import { useTheme } from "@/context/theme-provider";
-import { showSubmittedData } from "@/lib/show-submitted-data";
 import { cn } from "@/lib/utils";
 
 const appearanceFormSchema = z.object({
@@ -46,7 +45,6 @@ export function AppearanceForm() {
     if (data.font != font) setFont(data.font);
     if (data.theme != theme) setTheme(data.theme);
 
-    showSubmittedData(data);
   }
 
   return (

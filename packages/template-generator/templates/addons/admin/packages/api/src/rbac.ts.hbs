@@ -1,4 +1,5 @@
 import { db } from "@{{projectName}}/db";
+import { env } from "@{{projectName}}/env/server";
 import {
   auditLog,
   permission,
@@ -56,7 +57,7 @@ const DEFAULT_ROLES: ReadonlyArray<{
   },
 ];
 
-export async function ensureRbacSeed(userId?: string) {
+export async function ensureRbacSeed(user?: { email: string; id: string }) {
   await db
     .insert(permission)
     .values(
@@ -113,7 +114,7 @@ export async function ensureRbacSeed(userId?: string) {
     )
     .onConflictDoNothing();
 
-  if (userId) {
+  if (user && env.RBAC_BOOTSTRAP_ADMIN_EMAIL === user.email.toLowerCase()) {
     const existingSuperAdmins = await db
       .select({ userId: userRole.userId })
       .from(userRole)
@@ -122,14 +123,14 @@ export async function ensureRbacSeed(userId?: string) {
     if (existingSuperAdmins.length === 0) {
       await db
         .insert(userRole)
-        .values({ roleId: SUPER_ADMIN_SLUG, userId })
+        .values({ roleId: SUPER_ADMIN_SLUG, userId: user.id })
         .onConflictDoNothing();
     }
   }
 }
 
-export async function getUserAccess(userId: string) {
-  await ensureRbacSeed(userId);
+export async function getUserAccess(userId: string, userEmail: string) {
+  await ensureRbacSeed({ email: userEmail, id: userId });
 
   const rows = await db
     .select({
@@ -170,8 +171,8 @@ export async function getUserAccess(userId: string) {
   };
 }
 
-export async function hasPermission(userId: string, required: PermissionKey) {
-  const access = await getUserAccess(userId);
+export async function hasPermission(userId: string, userEmail: string, required: PermissionKey) {
+  const access = await getUserAccess(userId, userEmail);
   return access.isSuperAdmin || access.permissions.includes(required);
 }
 

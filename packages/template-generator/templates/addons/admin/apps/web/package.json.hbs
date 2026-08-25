@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -b && vite build",
-    "check-types": "tsc -b --pretty false",
+    "build": "vite build && tsc -b --pretty false",
+    "check-types": "vite build && tsc -b --pretty false",
     "dev": "vite",
     "serve": "vite preview"
   },
