@@ -87,7 +87,7 @@ CMD ["bun", "dist/index.mjs"]
     "build": "tsdown",
     "check-types": "tsc -b",
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
-    "dev": "bun run --hot src/index.ts",
+    "dev": "bun --cwd=../.. --env-file=apps/server/.env --hot apps/server/src/index.ts",
     "start": "bun run dist/index.mjs"
   },
   "dependencies": {

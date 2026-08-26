@@ -23,7 +23,8 @@ export function processRuntimeDeps(vfs: VirtualFileSystem, config: ProjectConfig
   pkgJson.scripts = pkgJson.scripts || {};
 
   if (runtime === "bun") {
-    pkgJson.scripts.dev = "bun run --hot src/index.ts";
+    pkgJson.scripts.dev =
+      "bun --cwd=../.. --env-file=apps/server/.env --hot apps/server/src/index.ts";
     pkgJson.scripts.start = "bun run dist/index.mjs";
 
     addPackageDependency({
