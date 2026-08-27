@@ -4,14 +4,17 @@ import { AuthenticatedLayout } from "@/components/layout/authenticated-layout";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/_authenticated")({
-  beforeLoad: async ({ location }) => {
-    const { data } = await authClient.getSession();
-    if (!data?.session) {
-      throw redirect({
-        search: { redirect: location.href },
-        to: "/sign-in",
-      });
-    }
-  },
-  component: AuthenticatedLayout,
+	beforeLoad: async ({ location }) => {
+		const { data } = await authClient.getSession();
+		if (!data?.session) {
+			throw redirect({
+				search: { redirect: location.href },
+				to: "/sign-in",
+			});
+		}
+		if (data.user.banned) {
+			throw redirect({ to: "/403" });
+		}
+	},
+	component: AuthenticatedLayout,
 });

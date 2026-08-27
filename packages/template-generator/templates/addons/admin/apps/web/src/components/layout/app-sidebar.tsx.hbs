@@ -1,0 +1,44 @@
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { AppTitle } from "@/components/layout/app-title";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarRail,
+} from "@/components/ui/sidebar";
+import { useLayout } from "@/context/layout-provider";
+import { authClient } from "@/lib/auth-client";
+
+import { useSidebarData } from "./data/sidebar-data";
+import { NavGroup } from "./nav-group";
+import { NavUser } from "./nav-user";
+
+export function AppSidebar() {
+  const { collapsible, variant } = useLayout();
+  const { data: session } = authClient.useSession();
+  const sidebarData = useSidebarData();
+  const { t } = useTranslation();
+  return (
+    <Sidebar collapsible={collapsible} variant={variant}>
+      <SidebarHeader>
+        <AppTitle />
+      </SidebarHeader>
+      <SidebarContent>
+        {sidebarData.navGroups.map((props) => (
+          <NavGroup key={props.title} {...props} />
+        ))}
+      </SidebarContent>
+      <SidebarFooter>
+        <NavUser
+          user=\{{
+            avatar: session?.user.image ?? "",
+            email: session?.user.email ?? "",
+            name: session?.user.name ?? t("common.user"),
+          }}
+        />
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}

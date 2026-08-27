@@ -1,0 +1,164 @@
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ChevronDownIcon } from "@radix-ui/react-icons";
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { fonts } from "@/config/fonts";
+import { useFont } from "@/context/font-provider";
+import { useTheme } from "@/context/theme-provider";
+import { cn } from "@/lib/utils";
+
+const appearanceFormSchema = z.object({
+  font: z.enum(fonts),
+  theme: z.enum(["light", "dark"]),
+});
+
+type AppearanceFormValues = z.infer<typeof appearanceFormSchema>;
+
+export function AppearanceForm() {
+  const { font, setFont } = useFont();
+  const { theme, setTheme } = useTheme();
+  const { t } = useTranslation();
+
+  // This can come from your database or API.
+  const defaultValues: Partial<AppearanceFormValues> = {
+    font,
+    theme: theme as "light" | "dark",
+  };
+
+  const form = useForm<AppearanceFormValues>({
+    defaultValues,
+    resolver: zodResolver(appearanceFormSchema),
+  });
+
+  function onSubmit(data: AppearanceFormValues) {
+    if (data.font !== font) {
+      setFont(data.font);
+    }
+    if (data.theme !== theme) {
+      setTheme(data.theme);
+    }
+  }
+
+  return (
+    <Form {...form}>
+      <form className="space-y-8" onSubmit={form.handleSubmit(onSubmit)}>
+        <FormField
+          control={form.control}
+          name="font"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("settings_form.font")}</FormLabel>
+              <div className="relative w-max">
+                <FormControl>
+                  <select
+                    className={cn(
+                      buttonVariants({ variant: "outline" }),
+                      "w-50 appearance-none font-normal capitalize",
+                      "dark:bg-background dark:hover:bg-background"
+                    )}
+                    {...field}
+                  >
+                    {fonts.map((font) => (
+                      <option key={font} value={font}>
+                        {font}
+                      </option>
+                    ))}
+                  </select>
+                </FormControl>
+                <ChevronDownIcon className="absolute inset-e-3 top-2.5 h-4 w-4 opacity-50" />
+              </div>
+              <FormDescription className="font-manrope">
+                {t("settings_form.font_desc")}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="theme"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("settings_form.theme")}</FormLabel>
+              <FormDescription>{t("settings_form.theme_desc")}</FormDescription>
+              <FormMessage />
+              <RadioGroup
+                className="grid max-w-md grid-cols-2 gap-8 pt-2"
+                defaultValue={field.value}
+                onValueChange={field.onChange}
+              >
+                <FormItem>
+                  <FormLabel className="[&:has([data-state=checked])>div]:border-primary">
+                    <FormControl>
+                      <RadioGroupItem className="sr-only" value="light" />
+                    </FormControl>
+                    <div className="items-center rounded-md border-2 border-muted p-1 hover:border-accent">
+                      <div className="space-y-2 rounded-sm bg-[#ecedef] p-2">
+                        <div className="space-y-2 rounded-md bg-white p-2 shadow-xs">
+                          <div className="h-2 w-20 rounded-lg bg-[#ecedef]" />
+                          <div className="h-2 w-25 rounded-lg bg-[#ecedef]" />
+                        </div>
+                        <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-xs">
+                          <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
+                          <div className="h-2 w-25 rounded-lg bg-[#ecedef]" />
+                        </div>
+                        <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-xs">
+                          <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
+                          <div className="h-2 w-25 rounded-lg bg-[#ecedef]" />
+                        </div>
+                      </div>
+                    </div>
+                    <span className="block w-full p-2 text-center font-normal">
+                      {t("settings_form.light")}
+                    </span>
+                  </FormLabel>
+                </FormItem>
+                <FormItem>
+                  <FormLabel className="[&:has([data-state=checked])>div]:border-primary">
+                    <FormControl>
+                      <RadioGroupItem className="sr-only" value="dark" />
+                    </FormControl>
+                    <div className="items-center rounded-md border-2 border-muted bg-popover p-1 hover:bg-accent hover:text-accent-foreground">
+                      <div className="space-y-2 rounded-sm bg-slate-950 p-2">
+                        <div className="space-y-2 rounded-md bg-slate-800 p-2 shadow-xs">
+                          <div className="h-2 w-20 rounded-lg bg-slate-400" />
+                          <div className="h-2 w-25 rounded-lg bg-slate-400" />
+                        </div>
+                        <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-xs">
+                          <div className="h-4 w-4 rounded-full bg-slate-400" />
+                          <div className="h-2 w-25 rounded-lg bg-slate-400" />
+                        </div>
+                        <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-xs">
+                          <div className="h-4 w-4 rounded-full bg-slate-400" />
+                          <div className="h-2 w-25 rounded-lg bg-slate-400" />
+                        </div>
+                      </div>
+                    </div>
+                    <span className="block w-full p-2 text-center font-normal">
+                      {t("settings_form.dark")}
+                    </span>
+                  </FormLabel>
+                </FormItem>
+              </RadioGroup>
+            </FormItem>
+          )}
+        />
+
+        <Button type="submit">{t("settings_form.update_preferences")}</Button>
+      </form>
+    </Form>
+  );
+}

@@ -1,0 +1,139 @@
+import { i18n } from "@{{projectName}}/i18n/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { userEvent } from "vitest/browser";
+import { render } from "vitest-browser-react";
+
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AccessProvider, type UserAccess } from "@/context/access-context";
+import { DirectionProvider } from "@/context/direction-provider";
+import { LayoutProvider } from "@/context/layout-provider";
+import { SearchProvider } from "@/context/search-provider";
+import { ThemeProvider } from "@/context/theme-provider";
+
+import { Users } from ".";
+
+const mutation = vi.fn(async () => ({ success: true }));
+const user = {
+	banned: false,
+	email: "alice@example.com",
+	id: "alice",
+	name: "Alice",
+	roles: [],
+};
+const role = { id: "viewer", name: "Viewer" };
+
+vi.mock("@/components/config-drawer", () => ({ ConfigDrawer: () => null }));
+vi.mock("@/components/profile-dropdown", () => ({
+	ProfileDropdown: () => null,
+}));
+vi.mock("@/components/search", () => ({ Search: () => null }));
+vi.mock("@/components/theme-switch", () => ({ ThemeSwitch: () => null }));
+vi.mock("@/lib/auth-client", () => ({
+	authClient: {
+		signOut: vi.fn(),
+		useSession: () => ({ data: { user } }),
+	},
+}));
+
+vi.mock("@/lib/trpc", () => ({
+	useTRPC: () => ({
+		admin: {
+			assignableRoles: {
+				queryOptions: () => ({
+					queryFn: async () => [role],
+					queryKey: ["assignable-roles"],
+				}),
+			},
+			revokeUserSessions: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			roles: {
+				queryOptions: () => ({
+					queryFn: async () => [role],
+					queryKey: ["roles"],
+				}),
+			},
+			setUserBanned: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			setUserRoles: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			users: {
+				queryKey: () => ["users"],
+				queryOptions: () => ({
+					queryFn: async () => [user],
+					queryKey: ["users"],
+				}),
+			},
+		},
+	}),
+}));
+
+async function renderUsers(permissions: UserAccess["permissions"]) {
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	return render(
+		<QueryClientProvider client={queryClient}>
+			<AccessProvider access=\{{ isSuperAdmin: false, permissions, roles: [] }}>
+				<DirectionProvider>
+					<ThemeProvider>
+						<LayoutProvider>
+							<SidebarProvider>
+								<SearchProvider>
+									<Users />
+								</SearchProvider>
+							</SidebarProvider>
+						</LayoutProvider>
+					</ThemeProvider>
+				</DirectionProvider>
+			</AccessProvider>
+		</QueryClientProvider>,
+	);
+}
+
+describe("Users 操作权限", () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		await i18n.changeLanguage("en");
+	});
+
+	it("只读用户看不到任何用户 mutation 入口", async () => {
+		const screen = await renderUsers(["user:read"]);
+
+		await expect
+			.element(screen.getByText("Alice", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Manage Alice" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("只展示当前权限对应的用户操作", async () => {
+		const screen = await renderUsers(["user:read", "user:update"]);
+
+		await userEvent.click(screen.getByRole("button", { name: "Manage Alice" }));
+		await userEvent.click(screen.getByText("Manage access", { exact: true }));
+
+		await expect
+			.element(screen.getByRole("button", { name: "Suspend account" }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Revoke sessions" }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("checkbox", { name: "Viewer" }))
+			.not.toBeInTheDocument();
+	});
+});

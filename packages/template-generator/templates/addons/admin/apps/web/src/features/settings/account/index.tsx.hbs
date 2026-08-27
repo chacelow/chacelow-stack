@@ -1,0 +1,15 @@
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { ContentSection } from "../components/content-section";
+import { AccountForm } from "./account-form";
+
+export function SettingsAccount() {
+  const { t } = useTranslation();
+  return (
+    <ContentSection
+      desc={t("settings.account_security_desc")}
+      title={t("navigation.account_security")}
+    >
+      <AccountForm />
+    </ContentSection>
+  );
+}

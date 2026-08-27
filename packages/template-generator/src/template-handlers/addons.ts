@@ -1,5 +1,6 @@
 import type { ProjectConfig } from "@chacelow-stack/types";
 
+import type { JsonObject } from "../core/json-types";
 import type { VirtualFileSystem } from "../core/virtual-fs";
 import { type TemplateData, processTemplatesFromPrefix } from "./utils";
 
@@ -75,6 +76,15 @@ export async function processAddonTemplates(
       "packages/api/src/permissions.ts",
       "packages/api/src/rbac.ts",
       "packages/api/src/routers/admin.ts",
+      "apps/server/src/permissions.integration.test.ts",
+      "apps/server/test/global-setup.ts",
+      "apps/server/vitest.integration.config.ts",
+      "apps/web/src/components/layout/app-sidebar.test.tsx",
+      "apps/web/src/components/permission-guard.tsx",
+      "apps/web/src/components/permission-guard.test.tsx",
+      "apps/web/src/context/access-context.tsx",
+      "apps/web/src/routes/_authenticated/-access-routes.test.tsx",
+      "packages/api/CONTEXT.md",
       "apps/web/src/features/users",
       "apps/web/src/features/roles",
       "apps/web/src/features/audit",
@@ -88,6 +98,7 @@ export async function processAddonTemplates(
 
   if (!config.addons.includes("organization")) {
     for (const organizationPath of [
+      "apps/server/src/organization.integration.test.ts",
       "packages/db/src/schema/organization.ts",
       "packages/api/src/routers/organization.ts",
       "apps/web/src/features/organizations",
@@ -95,6 +106,18 @@ export async function processAddonTemplates(
       "apps/web/src/routes/_authenticated/accept-invitation",
     ]) {
       vfs.deletePath(organizationPath);
+    }
+
+    for (const localePath of [
+      "packages/i18n/src/locales/en.json",
+      "packages/i18n/src/locales/zh.json",
+    ]) {
+      const locale = vfs.readJson<JsonObject>(localePath);
+      if (!locale) continue;
+      delete locale.organization;
+      const navigation = locale.navigation as JsonObject | undefined;
+      if (navigation) delete navigation.organizations;
+      vfs.writeJson(localePath, locale);
     }
   }
 

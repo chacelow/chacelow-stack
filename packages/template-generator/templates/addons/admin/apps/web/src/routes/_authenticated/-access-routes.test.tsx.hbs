@@ -1,0 +1,104 @@
+import type { PermissionKey } from "@{{projectName}}/api/permissions";
+import type * as ReactRouter from "@tanstack/react-router";
+import type { ComponentType } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+
+import { AccessProvider } from "@/context/access-context";
+
+import { Route as AuditRoute } from "./audit";
+import { Route as DashboardRoute } from "./index";
+import { Route as RolesRoute } from "./roles";
+import { Route as SettingsRoute } from "./settings";
+import { Route as UsersRoute } from "./users";
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+	const actual = await importOriginal<typeof ReactRouter>();
+	return {
+		...actual,
+		useNavigate: () => vi.fn(),
+		useRouter: () => ({ history: { go: vi.fn() } }),
+	};
+});
+vi.mock("@/features/audit", () => ({
+	Audit: () => <div data-testid="audit-route" />,
+}));
+vi.mock("@/features/dashboard", () => ({
+	Dashboard: () => <div data-testid="dashboard-route" />,
+}));
+vi.mock("@/features/roles", () => ({
+	Roles: () => <div data-testid="roles-route" />,
+}));
+vi.mock("@/features/settings/profile", () => ({
+	SettingsProfile: () => <div data-testid="settings-route" />,
+}));
+vi.mock("@/features/users", () => ({
+	Users: () => <div data-testid="users-route" />,
+}));
+
+function getRouteComponent(route: {
+	options: { component?: ComponentType };
+}): ComponentType {
+	if (!route.options.component) {
+		throw new Error("路由必须声明 component");
+	}
+	return route.options.component;
+}
+
+async function renderRoute(
+	Component: ComponentType,
+	permissions: readonly PermissionKey[],
+) {
+	return render(
+		<AccessProvider access=\{{ isSuperAdmin: false, permissions, roles: [] }}>
+			<Component />
+		</AccessProvider>,
+	);
+}
+
+const protectedRoutes = [
+	{
+		Component: getRouteComponent(UsersRoute),
+		permission: "user:read" as const,
+		testId: "users-route",
+	},
+	{
+		Component: getRouteComponent(RolesRoute),
+		permission: "role:read" as const,
+		testId: "roles-route",
+	},
+	{
+		Component: getRouteComponent(AuditRoute),
+		permission: "audit:read" as const,
+		testId: "audit-route",
+	},
+];
+
+describe("已认证真实路由权限边界", () => {
+	for (const { Component, permission, testId } of protectedRoutes) {
+		it(`拒绝缺少 ${permission} 的真实路由访问`, async () => {
+			const screen = await renderRoute(Component, []);
+			await expect
+				.element(screen.getByText("403", { exact: true }))
+				.toBeInTheDocument();
+			await expect.element(screen.getByTestId(testId)).not.toBeInTheDocument();
+		});
+
+		it(`允许具有 ${permission} 的真实路由访问`, async () => {
+			const screen = await renderRoute(Component, [permission]);
+			await expect.element(screen.getByTestId(testId)).toBeInTheDocument();
+		});
+	}
+
+	it("仪表盘和个人设置不要求管理权限", async () => {
+		const dashboard = await renderRoute(getRouteComponent(DashboardRoute), []);
+		await expect
+			.element(dashboard.getByTestId("dashboard-route"))
+			.toBeInTheDocument();
+
+		const settings = await renderRoute(getRouteComponent(SettingsRoute), []);
+		await expect
+			.element(settings.getByTestId("settings-route"))
+			.toBeInTheDocument();
+	});
+});

@@ -1,0 +1,20 @@
+import { defineConfig } from "vitest/config";
+
+const databaseUrl =
+	"postgresql://postgres:password@127.0.0.1:55433/{{projectName}}_test";
+
+export default defineConfig({
+	test: {
+		env: {
+			BETTER_AUTH_SECRET: "permission-tests-secret-at-least-32-chars",
+			BETTER_AUTH_URL: "http://localhost:3000",
+			CORS_ORIGIN: "http://localhost:3001",
+			DATABASE_URL: databaseUrl,
+			NODE_ENV: "test",
+		},
+		fileParallelism: false,
+		globalSetup: ["./test/global-setup.ts"],
+		include: ["src/**/*.integration.test.ts"],
+		testTimeout: 30_000,
+	},
+});

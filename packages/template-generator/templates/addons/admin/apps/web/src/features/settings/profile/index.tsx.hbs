@@ -1,0 +1,15 @@
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { ContentSection } from "../components/content-section";
+import { ProfileForm } from "./profile-form";
+
+export function SettingsProfile() {
+  const { t } = useTranslation();
+  return (
+    <ContentSection
+      desc={t("settings.profile_desc")}
+      title={t("settings.profile")}
+    >
+      <ProfileForm />
+    </ContentSection>
+  );
+}

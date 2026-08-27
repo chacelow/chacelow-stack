@@ -1,0 +1,155 @@
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useNavigate } from "@tanstack/react-router";
+import { Loader2, UserPlus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
+import { z } from "zod";
+
+import { PasswordInput } from "@/components/password-input";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
+
+interface SignUpValues {
+  confirmPassword: string;
+  email: string;
+  name: string;
+  password: string;
+}
+
+export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFormElement>) {
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const formSchema = useMemo(
+    () =>
+      z
+        .object({
+          name: z.string().trim().min(2, t("validation.name_min")),
+          email: z.email({
+            error: (issue) =>
+              issue.input === ""
+                ? t("validation.email_required")
+                : t("validation.email_invalid"),
+          }),
+          password: z
+            .string()
+            .min(1, t("validation.password_required"))
+            .min(8, t("validation.password_min_8")),
+          confirmPassword: z.string().min(1, t("validation.confirm_password_required")),
+        })
+        .refine((data) => data.password === data.confirmPassword, {
+          message: t("validation.passwords_not_match"),
+          path: ["confirmPassword"],
+        }),
+    [t],
+  );
+  const form = useForm<SignUpValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+    },
+  });
+
+  async function onSubmit(data: SignUpValues) {
+    setIsLoading(true);
+    const { error } = await authClient.signUp.email({
+      email: data.email.trim(),
+      name: data.name.trim(),
+      password: data.password,
+    });
+    setIsLoading(false);
+    if (error) {
+      toast.error(t("auth.sign_up_error"));
+      return;
+    }
+    toast.success(t("auth.account_created", { email: data.email }));
+    await navigate({ replace: true, to: "/" });
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className={cn("grid gap-3", className)}
+        {...props}
+      >
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("auth.name")}</FormLabel>
+              <FormControl>
+                <Input autoComplete="name" placeholder={t("settings_form.your_name")} {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("auth.email")}</FormLabel>
+              <FormControl>
+                <Input
+                  autoComplete="email"
+                  placeholder="name@example.com"
+                  type="email"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("auth.password")}</FormLabel>
+              <FormControl>
+                <PasswordInput autoComplete="new-password" placeholder="********" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("auth.confirm_password")}</FormLabel>
+              <FormControl>
+                <PasswordInput autoComplete="new-password" placeholder="********" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button className="mt-2" disabled={isLoading}>
+          {isLoading ? <Loader2 className="animate-spin" /> : <UserPlus />}
+          {t("auth.create_account_btn")}
+        </Button>
+      </form>
+    </Form>
+  );
+}

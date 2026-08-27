@@ -93,7 +93,7 @@ function getBaseTasks(frontend: string[], addons: string[]): TurboTasks {
     buildOutputs.push("artifacts/**");
   }
 
-  return {
+  const tasks: TurboTasks = {
     build: {
       dependsOn: ["^build"],
       inputs: ["$TURBO_DEFAULT$", ".env*"],
@@ -110,6 +110,10 @@ function getBaseTasks(frontend: string[], addons: string[]): TurboTasks {
       persistent: true,
     },
   };
+  if (addons.includes("admin")) {
+    tasks.test = { cache: false };
+  }
+  return tasks;
 }
 
 function getElectrobunTasks(): TurboTasks {

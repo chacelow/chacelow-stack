@@ -1,0 +1,55 @@
+import { execSync } from "node:child_process";
+import { rm } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import EmbeddedPostgres from "embedded-postgres";
+
+const workspaceRoot = fileURLToPath(new URL("../../..", import.meta.url));
+const databaseDir = path.join(
+	workspaceRoot,
+	".cache",
+	"permission-tests-postgres",
+);
+const databaseUrl =
+	"postgresql://postgres:password@127.0.0.1:55433/{{projectName}}_test";
+
+export default async function setupPermissionTestDatabase() {
+	const postgres = new EmbeddedPostgres({
+		databaseDir,
+		onLog: () => undefined,
+		password: "password",
+		persistent: false,
+		port: 55_433,
+		user: "postgres",
+	});
+
+	try {
+		await postgres.stop();
+	} catch {
+		// 只有上次测试异常退出时才存在需要停止的测试实例。
+	}
+	await rm(databaseDir, { force: true, recursive: true });
+
+	try {
+		await postgres.initialise();
+		await postgres.start();
+		await postgres.createDatabase("{{projectName}}_test");
+
+		execSync("pnpm exec drizzle-kit push --force", {
+			cwd: path.join(workspaceRoot, "packages", "db"),
+			env: {
+				...process.env,
+				DATABASE_URL: databaseUrl,
+			},
+			stdio: "inherit",
+		});
+	} catch (error) {
+		await postgres.stop();
+		throw error;
+	}
+
+	return async () => {
+		await postgres.stop();
+		await rm(databaseDir, { force: true, recursive: true });
+	};
+}

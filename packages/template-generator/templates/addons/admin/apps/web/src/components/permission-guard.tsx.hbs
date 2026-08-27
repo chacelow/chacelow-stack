@@ -1,0 +1,16 @@
+import type { PermissionKey } from "@{{projectName}}/api/permissions";
+import type { ReactNode } from "react";
+
+import { useAccess } from "@/context/access-context";
+import { ForbiddenError } from "@/features/errors/forbidden";
+
+export function PermissionGuard({
+  children,
+  permission,
+}: {
+  children: ReactNode;
+  permission: PermissionKey;
+}) {
+  const { can } = useAccess();
+  return can(permission) ? children : <ForbiddenError />;
+}

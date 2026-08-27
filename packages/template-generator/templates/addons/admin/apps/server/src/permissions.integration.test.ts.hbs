@@ -1,0 +1,356 @@
+import { ensureRbacSeed, SUPER_ADMIN_SLUG } from "@{{projectName}}/api/rbac";
+import type { AppRouter } from "@{{projectName}}/api/routers/index";
+import { db } from "@{{projectName}}/db";
+import { userRole } from "@{{projectName}}/db/schema/rbac";
+import type { HTTPBatchLinkOptions, TRPCClient } from "@trpc/client";
+import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import app from "./index";
+
+interface Actor {
+	client: TRPCClient<AppRouter>;
+	id: string;
+}
+
+type AppClientTypes = AppRouter["_def"]["_config"]["$types"];
+type AppFetch = NonNullable<HTTPBatchLinkOptions<AppClientTypes>["fetch"]>;
+
+let actorSequence = 0;
+
+async function createActor(name: string): Promise<Actor> {
+	actorSequence += 1;
+	const response = await app.request(
+		"http://localhost/api/auth/sign-up/email",
+		{
+			body: JSON.stringify({
+				email: `${name}-${actorSequence}@example.com`,
+				name,
+				password: "permission-test-password",
+			}),
+			headers: { "content-type": "application/json" },
+			method: "POST",
+		},
+	);
+	expect(response.status).toBe(200);
+	const body = (await response.json()) as { user: { id: string } };
+	const sessionCookie = response.headers
+		.getSetCookie()
+		.find((value) => value.includes("session_token"))
+		?.split(";", 1)[0];
+	expect(sessionCookie).toBeTruthy();
+
+	// 两个库的运行时 Response 兼容，但各自声明的 stream 类型不同。
+	const fetchFromApp = (async (url: URL | string, options?: RequestInit) => {
+		const request = new Request(url.toString(), options);
+		request.headers.set("cookie", sessionCookie ?? "");
+		return await app.request(request);
+	}) as AppFetch;
+
+	const client = createTRPCClient<AppRouter>({
+		links: [
+			httpBatchLink({
+				fetch: fetchFromApp,
+				url: "http://localhost/trpc",
+			}),
+		],
+	});
+
+	return { client, id: body.user.id };
+}
+
+describe("权限治理 API integration", () => {
+	let unprivilegedActor: Actor;
+	afterAll(async () => {
+		await db.$client.end();
+	});
+	let assignerActor: Actor;
+	let superAdmin: Actor;
+	let suspendedActor: Actor;
+	let unionActor: Actor;
+
+	beforeAll(async () => {
+		assignerActor = await createActor("Assigner");
+		superAdmin = await createActor("SuperAdmin");
+		suspendedActor = await createActor("Suspended");
+		unionActor = await createActor("Union");
+		unprivilegedActor = await createActor("Unprivileged");
+		await ensureRbacSeed();
+		await db
+			.insert(userRole)
+			.values({ roleId: SUPER_ADMIN_SLUG, userId: superAdmin.id });
+	});
+
+	it("服务端拒绝缺少对应读取权限的直接调用", async () => {
+		await expect(
+			unprivilegedActor.client.admin.users.query({ search: "" }),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+		await expect(
+			unprivilegedActor.client.admin.roles.query(),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+		await expect(
+			unprivilegedActor.client.admin.auditLogs.query(),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+	});
+
+	it("服务端拒绝无权限用户直接调用所有治理 mutation", async () => {
+		const mutations = [
+			() =>
+				unprivilegedActor.client.admin.setUserBanned.mutate({
+					banned: true,
+					userId: suspendedActor.id,
+				}),
+			() =>
+				unprivilegedActor.client.admin.revokeUserSessions.mutate({
+					userId: suspendedActor.id,
+				}),
+			() =>
+				unprivilegedActor.client.admin.setUserRoles.mutate({
+					roleIds: ["viewer"],
+					userId: suspendedActor.id,
+				}),
+			() =>
+				unprivilegedActor.client.admin.createRole.mutate({
+					description: "Denied",
+					name: "Denied Role",
+					permissionKeys: [],
+					slug: "denied-role",
+				}),
+			() =>
+				unprivilegedActor.client.admin.updateRole.mutate({
+					description: "Denied",
+					id: "viewer",
+					name: "Denied Role",
+					permissionKeys: [],
+				}),
+			() => unprivilegedActor.client.admin.deleteRole.mutate({ id: "viewer" }),
+		];
+
+		for (const mutate of mutations) {
+			await expect(mutate()).rejects.toMatchObject({
+				data: { code: "FORBIDDEN" },
+			});
+		}
+	});
+
+	it("暂停立即阻止现有会话，解除暂停恢复有效会话，但不恢复已撤销会话", async () => {
+		await superAdmin.client.admin.setUserBanned.mutate({
+			banned: true,
+			userId: suspendedActor.id,
+		});
+		await expect(
+			suspendedActor.client.privateData.query(),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+
+		await superAdmin.client.admin.setUserBanned.mutate({
+			banned: false,
+			userId: suspendedActor.id,
+		});
+		await expect(
+			suspendedActor.client.privateData.query(),
+		).resolves.toMatchObject({
+			user: { id: suspendedActor.id },
+		});
+
+		await superAdmin.client.admin.setUserBanned.mutate({
+			banned: true,
+			userId: suspendedActor.id,
+		});
+		await superAdmin.client.admin.revokeUserSessions.mutate({
+			userId: suspendedActor.id,
+		});
+		await superAdmin.client.admin.setUserBanned.mutate({
+			banned: false,
+			userId: suspendedActor.id,
+		});
+		await expect(
+			suspendedActor.client.privateData.query(),
+		).rejects.toMatchObject({
+			data: { code: "UNAUTHORIZED" },
+		});
+		const auditLogs = await superAdmin.client.admin.auditLogs.query();
+		expect(auditLogs.map(({ action }) => action)).toEqual(
+			expect.arrayContaining([
+				"user.banned",
+				"user.unbanned",
+				"user.sessions.revoked",
+			]),
+		);
+	});
+
+	it("服务端拒绝修改或删除受保护角色", async () => {
+		await expect(
+			superAdmin.client.admin.updateRole.mutate({
+				description: "Changed",
+				id: "viewer",
+				name: "Compromised",
+				permissionKeys: [],
+			}),
+		).rejects.toMatchObject({ data: { code: "BAD_REQUEST" } });
+		await expect(
+			superAdmin.client.admin.deleteRole.mutate({ id: "viewer" }),
+		).rejects.toMatchObject({ data: { code: "BAD_REQUEST" } });
+
+		const roles = await superAdmin.client.admin.roles.query();
+		expect(roles.find(({ id }) => id === "viewer")).toMatchObject({
+			isSystem: true,
+			name: "Viewer",
+			permissionKeys: ["dashboard:read"],
+		});
+	});
+
+	it("允许自定义角色生命周期并记录审计事件", async () => {
+		const created = await superAdmin.client.admin.createRole.mutate({
+			description: "Initial description",
+			name: "Custom Operator",
+			permissionKeys: ["user:read"],
+			slug: "custom-operator",
+		});
+		await superAdmin.client.admin.updateRole.mutate({
+			description: "Updated description",
+			id: created.id,
+			name: "Updated Operator",
+			permissionKeys: ["user:read", "audit:read"],
+		});
+		const rolesAfterUpdate = await superAdmin.client.admin.roles.query();
+		expect(rolesAfterUpdate.find(({ id }) => id === created.id)).toMatchObject({
+			isSystem: false,
+			name: "Updated Operator",
+			permissionKeys: expect.arrayContaining(["user:read", "audit:read"]),
+		});
+
+		await superAdmin.client.admin.deleteRole.mutate({ id: created.id });
+		const rolesAfterDelete = await superAdmin.client.admin.roles.query();
+		expect(rolesAfterDelete.some(({ id }) => id === created.id)).toBe(false);
+
+		const auditLogs = await superAdmin.client.admin.auditLogs.query();
+		expect(auditLogs.map(({ action }) => action)).toEqual(
+			expect.arrayContaining(["role.created", "role.updated", "role.deleted"]),
+		);
+	});
+
+	it("拒绝移除最后一名超级管理员", async () => {
+		await expect(
+			superAdmin.client.admin.setUserRoles.mutate({
+				roleIds: [],
+				userId: superAdmin.id,
+			}),
+		).rejects.toMatchObject({ data: { code: "BAD_REQUEST" } });
+	});
+
+	it("按并集合并多角色权限并保护各管理 API", async () => {
+		const userReader = await superAdmin.client.admin.createRole.mutate({
+			description: "Read users",
+			name: "User Reader",
+			permissionKeys: ["user:read"],
+			slug: "user-reader",
+		});
+		const auditReader = await superAdmin.client.admin.createRole.mutate({
+			description: "Read audit events",
+			name: "Audit Reader",
+			permissionKeys: ["audit:read"],
+			slug: "audit-reader",
+		});
+		await superAdmin.client.admin.setUserRoles.mutate({
+			roleIds: [userReader.id, auditReader.id],
+			userId: unionActor.id,
+		});
+
+		const access = await unionActor.client.admin.access.query();
+		expect(access.permissions).toEqual(
+			expect.arrayContaining(["user:read", "audit:read"]),
+		);
+		await expect(
+			unionActor.client.admin.users.query({ search: "" }),
+		).resolves.toBeInstanceOf(Array);
+		await expect(
+			unionActor.client.admin.auditLogs.query(),
+		).resolves.toBeInstanceOf(Array);
+		await expect(unionActor.client.admin.roles.query()).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+		const auditLogs = await superAdmin.client.admin.auditLogs.query();
+		expect(auditLogs.map(({ action }) => action)).toContain(
+			"user.roles.updated",
+		);
+	});
+
+	it("角色分配员不能查看或变更超级管理员角色", async () => {
+		const assignerRole = await superAdmin.client.admin.createRole.mutate({
+			description: "Assign user roles",
+			name: "Role Assigner",
+			permissionKeys: ["user:assign-role"],
+			slug: "role-assigner",
+		});
+		await superAdmin.client.admin.setUserRoles.mutate({
+			roleIds: [assignerRole.id],
+			userId: assignerActor.id,
+		});
+
+		const assignableRoles =
+			await assignerActor.client.admin.assignableRoles.query();
+		expect(assignableRoles).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id: "viewer", name: "Viewer" }),
+			]),
+		);
+		expect(assignableRoles).not.toContainEqual(
+			expect.objectContaining({ id: SUPER_ADMIN_SLUG }),
+		);
+		await expect(
+			assignerActor.client.admin.setUserRoles.mutate({
+				roleIds: [SUPER_ADMIN_SLUG],
+				userId: unprivilegedActor.id,
+			}),
+		).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+		await expect(
+			assignerActor.client.admin.setUserRoles.mutate({
+				roleIds: [],
+				userId: superAdmin.id,
+			}),
+		).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+		await expect(
+			assignerActor.client.admin.roles.query(),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+	});
+
+	it("并发移除超级管理员时始终保留一名", async () => {
+		const secondSuperAdmin = await createActor("SecondSuperAdmin");
+		await superAdmin.client.admin.setUserRoles.mutate({
+			roleIds: [SUPER_ADMIN_SLUG],
+			userId: secondSuperAdmin.id,
+		});
+
+		const results = await Promise.allSettled([
+			superAdmin.client.admin.setUserRoles.mutate({
+				roleIds: [],
+				userId: superAdmin.id,
+			}),
+			secondSuperAdmin.client.admin.setUserRoles.mutate({
+				roleIds: [],
+				userId: secondSuperAdmin.id,
+			}),
+		]);
+		expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(
+			1,
+		);
+		expect(results.filter(({ status }) => status === "rejected")).toHaveLength(
+			1,
+		);
+
+		const assignments = await db.select().from(userRole);
+		expect(
+			assignments.filter(({ roleId }) => roleId === SUPER_ADMIN_SLUG),
+		).toHaveLength(1);
+	});
+});

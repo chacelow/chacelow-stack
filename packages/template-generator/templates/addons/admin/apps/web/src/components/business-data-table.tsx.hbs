@@ -1,0 +1,129 @@
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { type ChangeEvent, useCallback, useMemo, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+export interface BusinessColumn<Row> {
+  className?: string;
+  header: string;
+  render: (row: Row) => React.ReactNode;
+}
+
+interface BusinessDataTableProps<Row> {
+  columns: BusinessColumn<Row>[];
+  data: Row[];
+  empty: string;
+  filter: (row: Row, query: string) => boolean;
+  getRowId: (row: Row) => string;
+  placeholder: string;
+}
+
+const PAGE_SIZE = 10;
+
+export function BusinessDataTable<Row>({
+  columns,
+  data,
+  empty,
+  filter,
+  getRowId,
+  placeholder,
+}: BusinessDataTableProps<Row>) {
+  const [query, setQuery] = useState("");
+  const { t } = useTranslation();
+  const [page, setPage] = useState(0);
+  const handleQueryChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setQuery(event.target.value);
+    setPage(0);
+  }, []);
+  const previousPage = useCallback(() => setPage((value) => Math.max(0, value - 1)), []);
+  const filtered = useMemo(
+    () => data.filter((row) => filter(row, query.trim().toLowerCase())),
+    [data, filter, query],
+  );
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const nextPage = useCallback(
+    () => setPage((value) => Math.min(pageCount - 1, value + 1)),
+    [pageCount],
+  );
+  const safePage = Math.min(page, pageCount - 1);
+  const rows = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
+  return (
+    <div className="flex flex-1 flex-col gap-4">
+      <div className="relative w-full max-w-sm">
+        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          className="pl-9"
+          onChange={handleQueryChange}
+          placeholder={placeholder}
+          value={query}
+        />
+      </div>
+      <div className="overflow-hidden rounded-md border">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {columns.map((column) => (
+                  <TableHead className={column.className} key={column.header}>
+                    {column.header}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={getRowId(row)}>
+                  {columns.map((column) => (
+                    <TableCell className={column.className} key={column.header}>
+                      {column.render(row)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        {rows.length === 0 ? (
+          <div className="grid min-h-32 place-items-center text-muted-foreground text-sm">
+            {empty}
+          </div>
+        ) : null}
+      </div>
+      <div className="flex items-center justify-between text-muted-foreground text-sm">
+        <span>{t("data_table.rows", { count: filtered.length })}</span>
+        <div className="flex items-center gap-2">
+          <span>{t("data_table.page_of", { current: safePage + 1, total: pageCount })}</span>
+          <Button
+            aria-label={t("data_table.previous_page")}
+            disabled={safePage === 0}
+            onClick={previousPage}
+            size="icon"
+            variant="outline"
+          >
+            <ChevronLeft />
+          </Button>
+          <Button
+            aria-label={t("data_table.next_page")}
+            disabled={safePage + 1 >= pageCount}
+            onClick={nextPage}
+            size="icon"
+            variant="outline"
+          >
+            <ChevronRight />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

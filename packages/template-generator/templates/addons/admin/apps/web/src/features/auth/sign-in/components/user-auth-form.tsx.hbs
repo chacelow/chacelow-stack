@@ -1,0 +1,118 @@
+// biome-ignore-all lint/performance/noJsxPropsBind: react-hook-form 需要 render callback。
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useNavigate } from "@tanstack/react-router";
+import { Loader2, LogIn } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
+import { z } from "zod";
+
+import { PasswordInput } from "@/components/password-input";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
+
+interface UserAuthValues {
+  email: string;
+  password: string;
+}
+
+interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
+  redirectTo?: string;
+}
+
+export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const formSchema = useMemo(
+    () =>
+      z.object({
+        email: z.email({
+          error: (issue) =>
+            issue.input === ""
+              ? t("validation.email_required")
+              : t("validation.email_invalid"),
+        }),
+        password: z
+          .string()
+          .min(1, t("validation.password_required"))
+          .min(8, t("validation.password_min_8")),
+      }),
+    [t],
+  );
+
+  const form = useForm<UserAuthValues>({
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+    resolver: zodResolver(formSchema),
+  });
+
+  async function onSubmit(data: UserAuthValues) {
+    setIsLoading(true);
+    const { error } = await authClient.signIn.email({
+      email: data.email,
+      password: data.password,
+    });
+    setIsLoading(false);
+    if (error) {
+      toast.error(t("auth.sign_in_error"));
+      return;
+    }
+    toast.success(t("auth.welcome_back", { email: data.email }));
+    await navigate({ replace: true, to: redirectTo || "/" });
+  }
+
+  return (
+    <Form {...form}>
+      <form
+        className={cn("grid gap-3", className)}
+        onSubmit={form.handleSubmit(onSubmit)}
+        {...props}
+      >
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("auth.email")}</FormLabel>
+              <FormControl>
+                <Input placeholder="name@example.com" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem className="relative">
+              <FormLabel>{t("auth.password")}</FormLabel>
+              <FormControl>
+                <PasswordInput placeholder="********" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button className="mt-2" disabled={isLoading}>
+          {isLoading ? <Loader2 className="animate-spin" /> : <LogIn />}
+          {t("auth.sign_in_btn")}
+        </Button>
+      </form>
+    </Form>
+  );
+}

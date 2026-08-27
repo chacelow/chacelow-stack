@@ -18,6 +18,12 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
       message: "Authentication required",
     });
   }
+  if (ctx.session.user.banned) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "User access is suspended",
+    });
+  }
   return next({
     ctx: {
       ...ctx,
@@ -29,7 +35,11 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
 {{#if (includes addons "rbac")}}
 export const permissionProcedure = (permission: PermissionKey) =>
   protectedProcedure.use(async ({ ctx, next }) => {
-    const allowed = await hasPermission(ctx.session.user.id, ctx.session.user.email, permission);
+    const allowed = await hasPermission(
+      ctx.session.user.id,
+      ctx.session.user.email,
+      permission,
+    );
     if (!allowed) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Permission denied" });
     }

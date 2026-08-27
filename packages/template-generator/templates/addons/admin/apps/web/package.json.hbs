@@ -3,10 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && tsc -b --pretty false",
-    "check-types": "vite build && tsc -b --pretty false",
+    "build": "pnpm --workspace-root check:i18n && vite build && tsc -b --pretty false",
+    "check-types": "pnpm --workspace-root check:i18n && vite build && tsc -b --pretty false",
     "dev": "vite",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "test": "vitest run",
+    "test:browser": "vitest run --browser.headless"{{#if (includes addons "rbac")}},
+    "test:permissions": "vitest run src/components/layout/app-sidebar.test.tsx src/components/permission-guard.test.tsx src/features/users/index.test.tsx src/features/roles/index.test.tsx src/routes/_authenticated/-access-routes.test.tsx"{{/if}}
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

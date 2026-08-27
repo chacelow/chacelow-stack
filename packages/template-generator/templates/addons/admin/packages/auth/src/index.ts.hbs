@@ -6,16 +6,24 @@ import {
   verification,
 } from "@{{projectName}}/db/schema/auth";
 {{#if (includes addons "organization")}}
-import { invitation, member, organization as organizationTable, organizationRole } from "@{{projectName}}/db/schema/organization";
+import {
+  invitation,
+  member,
+  organization as organizationTable,
+  organizationRole,
+} from "@{{projectName}}/db/schema/organization";
 {{/if}}
 import { env } from "@{{projectName}}/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin{{#if (includes addons "organization")}}, organization{{/if}} } from "better-auth/plugins";
+import {
+  admin{{#if (includes addons "organization")}},
+  organization{{/if}}
+} from "better-auth/plugins";
 
-export function createAuth() {
-  const db = createDb();
+ type Database = ReturnType<typeof createDb>;
 
+export function createAuth(database: Database = createDb()) {
   const isProduction = env.NODE_ENV === "production";
 
   return betterAuth({
@@ -27,15 +35,30 @@ export function createAuth() {
       },
     },
     baseURL: env.BETTER_AUTH_URL,
-    database: drizzleAdapter(db, {
+    database: drizzleAdapter(database, {
       provider: "pg",
-
-      schema: { account, session, user, verification{{#if (includes addons "organization")}}, organization: organizationTable, member, invitation, organizationRole{{/if}} },
+      schema: {
+        account,
+        session,
+        user,
+        verification,
+        {{#if (includes addons "organization")}}
+        organization: organizationTable,
+        member,
+        invitation,
+        organizationRole,
+        {{/if}}
+      },
     }),
     emailAndPassword: {
       enabled: true,
     },
-    plugins: [admin(){{#if (includes addons "organization")}}, organization({ dynamicAccessControl: { enabled: true } }){{/if}}],
+    plugins: [
+      admin(),
+      {{#if (includes addons "organization")}}
+      organization({ dynamicAccessControl: { enabled: true } }),
+      {{/if}}
+    ],
     secret: env.BETTER_AUTH_SECRET,
     trustedOrigins: [env.CORS_ORIGIN],
   });

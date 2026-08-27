@@ -1,0 +1,65 @@
+import type { PermissionKey } from "@{{projectName}}/api/permissions";
+import { useQuery } from "@tanstack/react-query";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
+
+import { useTRPC } from "@/lib/trpc";
+
+export interface UserAccess {
+  isSuperAdmin: boolean;
+  permissions: readonly PermissionKey[];
+  roles: ReadonlyArray<{ id: string; name: string; slug: string }>;
+}
+
+interface AccessContextValue {
+  access: UserAccess;
+  can: (permission: PermissionKey) => boolean;
+}
+
+const AccessContext = createContext<AccessContextValue | null>(null);
+
+export function AccessProvider({
+  access,
+  children,
+}: {
+  access: UserAccess;
+  children: ReactNode;
+}) {
+  const value = useMemo<AccessContextValue>(
+    () => ({
+      access,
+      can: (permission) =>
+        access.isSuperAdmin || access.permissions.includes(permission),
+    }),
+    [access],
+  );
+
+  return (
+    <AccessContext.Provider value={value}>{children}</AccessContext.Provider>
+  );
+}
+
+export function AuthenticatedAccessProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const trpc = useTRPC();
+  const accessQuery = useQuery(trpc.admin.access.queryOptions());
+
+  if (accessQuery.error) {
+    throw accessQuery.error;
+  }
+  if (!accessQuery.data) {
+    return null;
+  }
+
+  return <AccessProvider access={accessQuery.data}>{children}</AccessProvider>;
+}
+
+export function useAccess() {
+  const value = useContext(AccessContext);
+  if (!value) {
+    throw new Error("useAccess 必须在 AccessProvider 内使用");
+  }
+  return value;
+}

@@ -1,4 +1,4 @@
-import "@{{projectName}}/i18n";
+import { i18n } from "@{{projectName}}/i18n";
 import {
   QueryCache,
   QueryClient,
@@ -9,14 +9,17 @@ import { AxiosError } from "axios";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { toast } from "sonner";
+
 import { handleServerError } from "@/lib/handle-server-error";
 import { TRPCProvider, trpcClient } from "@/lib/trpc";
 import { useAuthStore } from "@/stores/auth-store";
+
 import { DirectionProvider } from "./context/direction-provider";
 import { FontProvider } from "./context/font-provider";
 import { ThemeProvider } from "./context/theme-provider";
 // Generated Routes
 import { routeTree } from "./routeTree.gen";
+
 // Styles
 import "./styles/index.css";
 
@@ -27,7 +30,7 @@ const queryClient = new QueryClient({
         handleServerError(error);
 
         if (error instanceof AxiosError && error.response?.status === 304) {
-          toast.error("Content not modified!");
+          toast.error(i18n.t("errors.content_not_modified"));
         }
       },
     },
@@ -58,13 +61,13 @@ const queryClient = new QueryClient({
     onError: (error) => {
       if (error instanceof AxiosError) {
         if (error.response?.status === 401) {
-          toast.error("Session expired!");
+          toast.error(i18n.t("errors.session_expired"));
           useAuthStore.getState().auth.reset();
           const redirect = `${router.history.location.href}`;
           router.navigate({ search: { redirect }, to: "/sign-in" });
         }
         if (error.response?.status === 500) {
-          toast.error("Internal Server Error!");
+          toast.error(i18n.t("errors.internal_server"));
           // Only navigate to error page in production to avoid disrupting HMR in development
           if (import.meta.env.PROD) {
             router.navigate({ to: "/500" });

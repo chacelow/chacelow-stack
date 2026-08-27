@@ -1,51 +1,164 @@
-import { invitation, member, organization, organizationRole } from "@{{projectName}}/db/schema/organization";
+import { db } from "@{{projectName}}/db";
 import { user } from "@{{projectName}}/db/schema/auth";
+import {
+  invitation,
+  member,
+  organization,
+  organizationRole,
+} from "@{{projectName}}/db/schema/organization";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { protectedProcedure, router } from "../index";
-import { db } from "@{{projectName}}/db";
+
+const BUILT_IN_ORGANIZATION_ROLES = new Set(["admin", "member", "owner"]);
+
+type OrganizationCapabilities = {
+  canManageInvitations: boolean;
+  canManageMembers: boolean;
+  canReadRoles: boolean;
+};
+
+function parseOrganizationRoles(value: string) {
+  return [...new Set(value.split(",").map((role) => role.trim()).filter(Boolean))];
+}
+
+function permissionIncludes(
+  permission: string,
+  resource: string,
+  action: string,
+) {
+  try {
+    const parsed = JSON.parse(permission) as Record<string, unknown>;
+    const actions = parsed[resource];
+    return Array.isArray(actions) && actions.includes(action);
+  } catch {
+    return false;
+  }
+}
+
+async function getOrganizationCapabilities(
+  organizationId: string,
+  roleValue: string,
+): Promise<OrganizationCapabilities> {
+  const roles = parseOrganizationRoles(roleValue);
+  if (roles.includes("owner") || roles.includes("admin")) {
+    return {
+      canManageInvitations: true,
+      canManageMembers: true,
+      canReadRoles: true,
+    };
+  }
+
+  const customRoles = roles.filter(
+    (role) => !BUILT_IN_ORGANIZATION_ROLES.has(role),
+  );
+  if (customRoles.length === 0) {
+    return {
+      canManageInvitations: false,
+      canManageMembers: false,
+      canReadRoles: false,
+    };
+  }
+  const permissions = await db
+    .select({ permission: organizationRole.permission })
+    .from(organizationRole)
+    .where(
+      and(
+        eq(organizationRole.organizationId, organizationId),
+        inArray(organizationRole.role, customRoles),
+      ),
+    );
+  return {
+    canManageInvitations: permissions.some(({ permission }) =>
+      permissionIncludes(permission, "invitation", "create"),
+    ),
+    canManageMembers: permissions.some(({ permission }) =>
+      permissionIncludes(permission, "member", "update"),
+    ),
+    canReadRoles: permissions.some(({ permission }) =>
+      permissionIncludes(permission, "ac", "read"),
+    ),
+  };
+}
 
 const activeOrganizationProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const organizationId = ctx.session.session.activeOrganizationId;
   if (!organizationId) {
-    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Select an organization first" });
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "Select an organization first",
+    });
   }
 
   const [currentMember] = await db
     .select({ id: member.id, role: member.role })
     .from(member)
-    .where(and(eq(member.organizationId, organizationId), eq(member.userId, ctx.session.user.id)))
+    .where(
+      and(
+        eq(member.organizationId, organizationId),
+        eq(member.userId, ctx.session.user.id),
+      ),
+    )
     .limit(1);
   if (!currentMember) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Organization membership required" });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Organization membership required",
+    });
   }
 
-  return next({ ctx: { ...ctx, organizationId, organizationMember: currentMember } });
+  return next({
+    ctx: { ...ctx, organizationId, organizationMember: currentMember },
+  });
 });
 
-const organizationAdminProcedure = activeOrganizationProcedure.use(({ ctx, next }) => {
-  const roles = ctx.organizationMember.role.split(",");
-  if (!roles.some((role) => role === "owner" || role === "admin")) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Organization administrator required" });
-  }
-  return next({ ctx });
-});
+const organizationPermissionProcedure = (
+  capability: keyof OrganizationCapabilities,
+) =>
+  activeOrganizationProcedure.use(async ({ ctx, next }) => {
+    const capabilities = await getOrganizationCapabilities(
+      ctx.organizationId,
+      ctx.organizationMember.role,
+    );
+    if (!capabilities[capability]) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Organization permission required",
+      });
+    }
+    return next({ ctx });
+  });
 
 export const organizationRouter = router({
   active: activeOrganizationProcedure.query(async ({ ctx }) => {
-    const [active] = await db
-      .select()
-      .from(organization)
-      .where(eq(organization.id, ctx.organizationId))
-      .limit(1);
-    return active ?? null;
+    const [active, capabilities] = await Promise.all([
+      db
+        .select()
+        .from(organization)
+        .where(eq(organization.id, ctx.organizationId))
+        .limit(1)
+        .then(([value]) => value),
+      getOrganizationCapabilities(
+        ctx.organizationId,
+        ctx.organizationMember.role,
+      ),
+    ]);
+    return active
+      ? { ...active, capabilities, memberRole: ctx.organizationMember.role }
+      : null;
   }),
-  invitations: organizationAdminProcedure.query(({ ctx }) =>
-    db.select().from(invitation).where(eq(invitation.organizationId, ctx.organizationId)).orderBy(desc(invitation.createdAt)),
+  invitations: organizationPermissionProcedure(
+    "canManageInvitations",
+  ).query(({ ctx }) =>
+    db
+      .select()
+      .from(invitation)
+      .where(eq(invitation.organizationId, ctx.organizationId))
+      .orderBy(desc(invitation.createdAt)),
   ),
-  members: organizationAdminProcedure.query(({ ctx }) =>
+  members: activeOrganizationProcedure.query(({ ctx }) =>
     db
       .select({
         createdAt: member.createdAt,
@@ -60,33 +173,100 @@ export const organizationRouter = router({
       .where(eq(member.organizationId, ctx.organizationId))
       .orderBy(desc(member.createdAt)),
   ),
-  roles: organizationAdminProcedure.query(({ ctx }) =>
-    db.select().from(organizationRole).where(eq(organizationRole.organizationId, ctx.organizationId)),
+  roles: organizationPermissionProcedure("canReadRoles").query(({ ctx }) =>
+    db
+      .select()
+      .from(organizationRole)
+      .where(eq(organizationRole.organizationId, ctx.organizationId)),
   ),
-  updateMemberRole: organizationAdminProcedure
-    .input(z.object({ memberId: z.string().min(1), role: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const [target] = await db
-        .select({ role: member.role })
-        .from(member)
-        .where(and(eq(member.id, input.memberId), eq(member.organizationId, ctx.organizationId)))
-        .limit(1);
-      if (!target) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
-      }
-      if (target.role.split(",").includes("owner") && !input.role.split(",").includes("owner")) {
-        const owners = await db
-          .select({ id: member.id })
+  updateMemberRole: organizationPermissionProcedure("canManageMembers")
+    .input(
+      z.object({
+        memberId: z.string().min(1),
+        role: z
+          .string()
+          .trim()
+          .min(1)
+          .max(240)
+          .refine(
+            (value) => parseOrganizationRoles(value).length > 0,
+            "At least one organization role is required",
+          ),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      db.transaction(async (tx) => {
+        const organizationMembers = await tx
+          .select({ id: member.id, role: member.role })
           .from(member)
-          .where(and(eq(member.organizationId, ctx.organizationId), eq(member.role, "owner")));
-        if (owners.length === 1) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The last organization owner cannot be removed" });
+          .where(eq(member.organizationId, ctx.organizationId))
+          .for("update");
+        const target = organizationMembers.find(
+          ({ id }) => id === input.memberId,
+        );
+        if (!target) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Member not found",
+          });
         }
-      }
-      await db
-        .update(member)
-        .set({ role: input.role })
-        .where(and(eq(member.id, input.memberId), eq(member.organizationId, ctx.organizationId)));
-      return { success: true };
-    }),
+
+        const nextRoles = parseOrganizationRoles(input.role);
+        const targetIsOwner = parseOrganizationRoles(target.role).includes("owner");
+        const nextIsOwner = nextRoles.includes("owner");
+        if (
+          targetIsOwner !== nextIsOwner &&
+          !parseOrganizationRoles(ctx.organizationMember.role).includes("owner")
+        ) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Only an organization owner can change owner membership",
+          });
+        }
+        const customRoles = nextRoles.filter(
+          (role) => !BUILT_IN_ORGANIZATION_ROLES.has(role),
+        );
+        if (customRoles.length > 0) {
+          const existingRoles = await tx
+            .select({ role: organizationRole.role })
+            .from(organizationRole)
+            .where(
+              and(
+                eq(organizationRole.organizationId, ctx.organizationId),
+                inArray(organizationRole.role, customRoles),
+              ),
+            );
+          if (existingRoles.length !== customRoles.length) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Unknown organization role",
+            });
+          }
+        }
+
+        if (
+          targetIsOwner &&
+          !nextIsOwner &&
+          organizationMembers.filter(({ role }) =>
+            parseOrganizationRoles(role).includes("owner"),
+          ).length === 1
+        ) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The last organization owner cannot be removed",
+          });
+        }
+
+        await tx
+          .update(member)
+          .set({ role: nextRoles.join(",") })
+          .where(
+            and(
+              eq(member.id, input.memberId),
+              eq(member.organizationId, ctx.organizationId),
+            ),
+          );
+        return { success: true };
+      }),
+    ),
 });

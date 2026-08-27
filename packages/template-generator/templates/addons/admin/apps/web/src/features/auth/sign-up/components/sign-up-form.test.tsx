@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, type RenderResult } from "vitest-browser-react";
 import { type Locator, userEvent } from "vitest/browser";
 
@@ -11,13 +11,21 @@ const FORM_MESSAGES = {
   passwordMismatch: "Passwords don't match.",
 } as const;
 
-const toastPromise = vi.hoisted(() =>
-  vi.fn((p: Promise<unknown>, opts: { success?: () => unknown }) => {
-    p.then(() => opts.success?.());
-  }),
-);
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  signUp: vi.fn(async () => ({ error: null })),
+}));
 
-vi.mock("sonner", () => ({ toast: { promise: toastPromise } }));
+vi.mock("@/lib/auth-client", () => ({
+  authClient: { signUp: { email: mocks.signUp } },
+}));
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return { ...actual, useNavigate: () => mocks.navigate };
+});
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
 
 describe("SignUpForm", () => {
   let screen: RenderResult;
@@ -28,6 +36,7 @@ describe("SignUpForm", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mocks.signUp.mockResolvedValue({ error: null });
 
     screen = await render(<SignUpForm />);
     emailInput = screen.getByRole("textbox", { name: /^Email$/i });
@@ -36,18 +45,14 @@ describe("SignUpForm", () => {
     submitButton = screen.getByRole("button", { name: /^Create Account$/i });
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("renders fields and submit button", async () => {
+  it("渲染注册字段与提交按钮", async () => {
     await expect.element(emailInput).toBeInTheDocument();
     await expect.element(passwordInput).toBeInTheDocument();
     await expect.element(confirmPasswordInput).toBeInTheDocument();
     await expect.element(submitButton).toBeInTheDocument();
   });
 
-  it("shows validation messages when submitting empty form", async () => {
+  it("提交空表单时显示校验信息", async () => {
     await userEvent.click(submitButton);
 
     await expect.element(screen.getByText(FORM_MESSAGES.emailEmpty)).toBeInTheDocument();
@@ -55,7 +60,7 @@ describe("SignUpForm", () => {
     await expect.element(screen.getByText(FORM_MESSAGES.confirmPasswordEmpty)).toBeInTheDocument();
   });
 
-  it("shows a mismatch error when passwords do not match", async () => {
+  it("两次密码不一致时显示校验信息", async () => {
     await userEvent.fill(emailInput, "a@b.com");
     await userEvent.fill(passwordInput, "1234567");
     await userEvent.fill(confirmPasswordInput, "7654321");
@@ -64,18 +69,22 @@ describe("SignUpForm", () => {
     await expect.element(screen.getByText(FORM_MESSAGES.passwordMismatch)).toBeInTheDocument();
   });
 
-  it("disables submit while submitting and re-enables after timeout", async () => {
-    vi.useFakeTimers();
-
+  it("提交期间禁用按钮并在请求完成后恢复", async () => {
+    let signUpComplete = false;
+    mocks.signUp.mockImplementationOnce(async () => {
+      await vi.waitFor(() => expect(signUpComplete).toBe(true));
+      return { error: null };
+    });
+    await userEvent.fill(screen.getByRole("textbox", { name: /^Name$/i }), "Alice");
     await userEvent.fill(emailInput, "a@b.com");
-    await userEvent.fill(passwordInput, "1234567");
-    await userEvent.fill(confirmPasswordInput, "1234567");
+    await userEvent.fill(passwordInput, "12345678");
+    await userEvent.fill(confirmPasswordInput, "12345678");
 
     await userEvent.click(submitButton);
     await expect.element(submitButton).toBeDisabled();
-
-    await vi.advanceTimersByTimeAsync(2000);
+    signUpComplete = true;
     await expect.element(submitButton).toBeEnabled();
-    expect(toastPromise).toHaveBeenCalledOnce();
+    expect(mocks.signUp).toHaveBeenCalledOnce();
+    expect(mocks.navigate).toHaveBeenCalledWith({ replace: true, to: "/" });
   });
 });

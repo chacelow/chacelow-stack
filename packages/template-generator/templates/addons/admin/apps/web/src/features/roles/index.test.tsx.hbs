@@ -1,0 +1,167 @@
+import { i18n } from "@{{projectName}}/i18n/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { userEvent } from "vitest/browser";
+import { render } from "vitest-browser-react";
+
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AccessProvider, type UserAccess } from "@/context/access-context";
+import { DirectionProvider } from "@/context/direction-provider";
+import { LayoutProvider } from "@/context/layout-provider";
+import { SearchProvider } from "@/context/search-provider";
+import { ThemeProvider } from "@/context/theme-provider";
+
+import { Roles } from ".";
+
+const mutation = vi.fn(async () => ({ success: true }));
+const permission = {
+	action: "read",
+	description: "View dashboard",
+	key: "dashboard:read",
+	resource: "Dashboard",
+};
+const protectedRole = {
+	description: "Protected role",
+	id: "viewer",
+	isSystem: true,
+	name: "Viewer",
+	permissionKeys: ["dashboard:read"],
+	slug: "viewer",
+	userCount: 1,
+};
+const customRole = {
+	description: "Custom role",
+	id: "custom",
+	isSystem: false,
+	name: "Custom",
+	permissionKeys: ["dashboard:read"],
+	slug: "custom",
+	userCount: 0,
+};
+
+vi.mock("@/components/config-drawer", () => ({ ConfigDrawer: () => null }));
+vi.mock("@/components/profile-dropdown", () => ({
+	ProfileDropdown: () => null,
+}));
+vi.mock("@/components/search", () => ({ Search: () => null }));
+vi.mock("@/components/theme-switch", () => ({ ThemeSwitch: () => null }));
+vi.mock("@/lib/trpc", () => ({
+	useTRPC: () => ({
+		admin: {
+			createRole: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			deleteRole: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			permissions: {
+				queryOptions: () => ({
+					queryFn: async () => [permission],
+					queryKey: ["permissions"],
+				}),
+			},
+			roles: {
+				queryKey: () => ["roles"],
+				queryOptions: () => ({
+					queryFn: async () => [protectedRole, customRole],
+					queryKey: ["roles"],
+				}),
+			},
+			updateRole: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+		},
+	}),
+}));
+
+async function renderRoles(permissions: UserAccess["permissions"]) {
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	return render(
+		<QueryClientProvider client={queryClient}>
+			<AccessProvider access=\{{ isSuperAdmin: false, permissions, roles: [] }}>
+				<DirectionProvider>
+					<ThemeProvider>
+						<LayoutProvider>
+							<SidebarProvider>
+								<SearchProvider>
+									<Roles />
+								</SearchProvider>
+							</SidebarProvider>
+						</LayoutProvider>
+					</ThemeProvider>
+				</DirectionProvider>
+			</AccessProvider>
+		</QueryClientProvider>,
+	);
+}
+
+describe("Roles 操作权限", () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		await i18n.changeLanguage("en");
+	});
+
+	it("只读用户只能查看自定义角色", async () => {
+		const screen = await renderRoles(["role:read"]);
+
+		await expect
+			.element(screen.getByRole("button", { name: "Add role" }))
+			.not.toBeInTheDocument();
+		await userEvent.click(
+			screen.getByRole("button", { name: "Manage Custom" }),
+		);
+		await expect.element(screen.getByLabelText("Name")).toBeDisabled();
+		await expect
+			.element(screen.getByRole("button", { name: "Save" }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Delete role" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("受保护角色对拥有全部角色权限的用户仍保持只读", async () => {
+		const screen = await renderRoles([
+			"role:read",
+			"role:create",
+			"role:update",
+			"role:delete",
+		]);
+
+		await userEvent.click(
+			screen.getByRole("button", { name: "Manage Viewer" }),
+		);
+		await expect.element(screen.getByLabelText("Name")).toBeDisabled();
+		await expect
+			.element(screen.getByRole("button", { name: "Save" }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Delete role" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("自定义角色只展示获准的 mutation", async () => {
+		const screen = await renderRoles(["role:read", "role:update"]);
+
+		await userEvent.click(
+			screen.getByRole("button", { name: "Manage Custom" }),
+		);
+		await expect.element(screen.getByLabelText("Name")).toBeEnabled();
+		await expect
+			.element(screen.getByRole("button", { name: "Save" }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Delete role" }))
+			.not.toBeInTheDocument();
+	});
+});

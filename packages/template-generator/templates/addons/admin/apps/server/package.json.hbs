@@ -7,6 +7,10 @@
     "check-types": "tsc -b",
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
     "dev": "bun --cwd=../.. --env-file=apps/server/.env --hot apps/server/src/index.ts",
+{{#if (includes addons "rbac")}}
+    "test": "vitest run --config vitest.integration.config.ts",
+    "test:permissions": "vitest run --config vitest.integration.config.ts",
+{{/if}}
     "start": "bun run dist/index.mjs"
   },
   "dependencies": {
@@ -23,6 +27,14 @@
   },
   "devDependencies": {
     "@{{projectName}}/config": "workspace:*",
+{{#if (includes addons "rbac")}}
+    "@trpc/client": "^11.18.0",
+    "embedded-postgres": "18.4.0-beta.17",
+    "vitest": "^4.1.11",
+{{#if (includes addons "organization")}}
+    "drizzle-orm": "^0.45.2",
+{{/if}}
+{{/if}}
     "@types/bun": "^1.3.14",
     "tsdown": "^0.22.14",
     "typescript": "^6.0.3"

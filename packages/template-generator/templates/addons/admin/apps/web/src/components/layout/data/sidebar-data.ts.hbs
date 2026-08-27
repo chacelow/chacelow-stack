@@ -1,99 +1,132 @@
+import { useTranslation } from "@{{projectName}}/i18n/react";
 import {
   Activity,
   Command,
   LayoutDashboard,
   Settings,
+  ShieldCheck,
   UserCog,
   {{#if (includes addons "rbac")}}
   ScrollText,
-  ShieldCheck,
   Users,
   {{/if}}
   {{#if (includes addons "organization")}}
   Building2,
   {{/if}}
 } from "lucide-react";
+import { useMemo } from "react";
+
+{{#if (includes addons "rbac")}}
+import { useAccess } from "@/context/access-context";
+{{/if}}
 import type { SidebarData } from "../types";
 
-export const sidebarData: SidebarData = {
-  navGroups: [
-    {
-      items: [
-        {
-          icon: LayoutDashboard,
-          title: "Dashboard",
-          url: "/",
-        },
-      ],
-      title: "Workspace",
-    },
-    {{#if (includes addons "rbac")}}
-    {
-      items: [
-        {
-          icon: ShieldCheck,
-          items: [
+export function useSidebarData(): SidebarData {
+  const { t } = useTranslation();
+  {{#if (includes addons "rbac")}}
+  const { can } = useAccess();
+  {{/if}}
+
+  return useMemo(() => {
+    const administrationItems = [
+      {{#if (includes addons "rbac")}}
+      ...(can("user:read")
+        ? [
             {
               icon: Users,
-              title: "Users",
-              url: "/users",
+              title: t("navigation.users"),
+              url: "/users" as const,
             },
-            {{#if (includes addons "organization")}}
-            {
-              icon: Building2,
-              title: "Organizations",
-              url: "/organizations",
-            },
-            {{/if}}
+          ]
+        : []),
+      ...(can("role:read")
+        ? [
             {
               icon: UserCog,
-              title: "Roles & permissions",
-              url: "/roles",
+              title: t("navigation.roles"),
+              url: "/roles" as const,
             },
+          ]
+        : []),
+      ...(can("audit:read")
+        ? [
             {
               icon: ScrollText,
-              title: "Audit log",
-              url: "/audit",
+              title: t("navigation.audit"),
+              url: "/audit" as const,
             },
-          ],
-          title: "System management",
-        },
-      ],
-      title: "Administration",
-    },
-    {{/if}}
-    {
-      items: [
+          ]
+        : []),
+      {{/if}}
+      {{#if (includes addons "organization")}}
+      {
+        icon: Building2,
+        title: t("navigation.organizations"),
+        url: "/organizations" as const,
+      },
+      {{/if}}
+    ];
+
+    return {
+      navGroups: [
         {
-          icon: Settings,
           items: [
             {
-              icon: UserCog,
-              title: "Profile",
-              url: "/settings",
-            },
-            {
-              icon: Activity,
-              title: "Account security",
-              url: "/settings/account",
+              icon: LayoutDashboard,
+              title: t("navigation.dashboard"),
+              url: "/" as const,
             },
           ],
-          title: "Settings",
+          title: t("navigation.workspace"),
+        },
+        ...(administrationItems.length > 0
+          ? [
+              {
+                items: [
+                  {
+                    icon: ShieldCheck,
+                    items: administrationItems,
+                    title: t("navigation.system_management"),
+                  },
+                ],
+                title: t("navigation.administration"),
+              },
+            ]
+          : []),
+        {
+          items: [
+            {
+              icon: Settings,
+              items: [
+                {
+                  icon: UserCog,
+                  title: t("navigation.profile"),
+                  url: "/settings" as const,
+                },
+                {
+                  icon: Activity,
+                  title: t("navigation.account_security"),
+                  url: "/settings/account" as const,
+                },
+              ],
+              title: t("navigation.settings"),
+            },
+          ],
+          title: t("navigation.account"),
         },
       ],
-      title: "Account",
-    },
-  ],
-  teams: [
-    {
-      logo: Command,
-      name: "{{projectName}}",
-      plan: "Vite + ShadcnUI",
-    },
-  ],
-  user: {
-    avatar: "",
-    email: "",
-    name: "",
-  },
-};
+      teams: [
+        {
+          logo: Command,
+          name: "{{projectName}}",
+          plan: "Vite + ShadcnUI",
+        },
+      ],
+      user: {
+        avatar: "",
+        email: "",
+        name: "",
+      },
+    };
+  }, [{{#if (includes addons "rbac")}}can, {{/if}}t]);
+}

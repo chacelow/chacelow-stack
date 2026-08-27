@@ -1,6 +1,7 @@
 import { supportedLanguages, useTranslation } from "@{{projectName}}/i18n/react";
 import { Check, Languages } from "lucide-react";
 import { useCallback } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,19 +12,19 @@ import {
 import { cn } from "@/lib/utils";
 
 export function LanguageSwitch() {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
 
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
-          aria-label="Switch language"
+          aria-label={t("language_switch.label")}
           className="scale-95 rounded-full"
           size="icon"
           variant="ghost"
         >
           <Languages className="size-[1.2rem]" />
-          <span className="sr-only">Switch language</span>
+          <span className="sr-only">{t("language_switch.label")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

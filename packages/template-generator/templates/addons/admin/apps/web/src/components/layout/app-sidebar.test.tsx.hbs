@@ -1,0 +1,111 @@
+import { i18n } from "@{{projectName}}/i18n/react";
+import type * as ReactRouter from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { userEvent } from "vitest/browser";
+import { render } from "vitest-browser-react";
+
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AccessProvider, type UserAccess } from "@/context/access-context";
+import { LayoutProvider } from "@/context/layout-provider";
+
+import { AppSidebar } from "./app-sidebar";
+
+vi.mock("@/lib/auth-client", () => ({
+	authClient: {
+		useSession: () => ({
+			data: { user: { email: "user@example.com", image: null, name: "User" } },
+		}),
+	},
+}));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+	const actual = await importOriginal<typeof ReactRouter>();
+	return {
+		...actual,
+		Link: ({ children, to }: { children?: ReactNode; to: string }) => (
+			<a href={to}>{children}</a>
+		),
+		useNavigate: () => vi.fn(),
+		useRouter: () => ({ history: { go: vi.fn() }, isServer: false }),
+		useLocation: () => "/",
+	};
+});
+
+async function renderSidebar(permissions: UserAccess["permissions"]) {
+	return render(
+		<AccessProvider access=\{{ isSuperAdmin: false, permissions, roles: [] }}>
+			<LayoutProvider>
+				<SidebarProvider>
+					<AppSidebar />
+				</SidebarProvider>
+			</LayoutProvider>
+		</AccessProvider>,
+	);
+}
+
+describe("AppSidebar 权限导航", () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		await i18n.changeLanguage("en");
+	});
+
+	it("只显示有效权限允许的管理入口，并保留个人设置", async () => {
+		const screen = await renderSidebar(["user:read"]);
+		await userEvent.click(
+			screen.getByRole("button", { name: /System Management/ }),
+		);
+		await userEvent.click(screen.getByRole("button", { name: /^Settings/ }));
+
+		await expect
+			.element(screen.getByText("Users", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Roles", { exact: true }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Audit Log", { exact: true }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Dashboard", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Profile", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Account Security", { exact: true }))
+			.toBeInTheDocument();
+	});
+
+{{#if (includes addons "organization")}}
+	it("没有 RBAC 管理权限时仍保留组织入口", async () => {
+		const screen = await renderSidebar([]);
+		await expect
+			.element(screen.getByText("Administration", { exact: true }))
+			.toBeInTheDocument();
+		await userEvent.click(
+			screen.getByRole("button", { name: /System Management/ }),
+		);
+		await expect
+			.element(screen.getByText("Organizations", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Users", { exact: true }))
+			.not.toBeInTheDocument();
+	});
+{{else}}
+	it("没有管理权限时隐藏空分组", async () => {
+		const screen = await renderSidebar([]);
+		await expect
+			.element(screen.getByText("Dashboard", { exact: true }))
+			.toBeInTheDocument();
+
+		await expect
+			.element(screen.getByText("Administration", { exact: true }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Account", { exact: true }))
+			.toBeInTheDocument();
+	});
+{{/if}}
+});

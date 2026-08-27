@@ -88,6 +88,10 @@ CMD ["bun", "dist/index.mjs"]
     "check-types": "tsc -b",
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
     "dev": "bun --cwd=../.. --env-file=apps/server/.env --hot apps/server/src/index.ts",
+{{#if (includes addons "rbac")}}
+    "test": "vitest run --config vitest.integration.config.ts",
+    "test:permissions": "vitest run --config vitest.integration.config.ts",
+{{/if}}
     "start": "bun run dist/index.mjs"
   },
   "dependencies": {
@@ -104,6 +108,14 @@ CMD ["bun", "dist/index.mjs"]
   },
   "devDependencies": {
     "@{{projectName}}/config": "workspace:*",
+{{#if (includes addons "rbac")}}
+    "@trpc/client": "^11.18.0",
+    "embedded-postgres": "18.4.0-beta.17",
+    "vitest": "^4.1.11",
+{{#if (includes addons "organization")}}
+    "drizzle-orm": "^0.45.2",
+{{/if}}
+{{/if}}
     "@types/bun": "^1.3.14",
     "tsdown": "^0.22.14",
     "typescript": "^6.0.3"
@@ -150,18 +162,710 @@ app.get("/", (c) => {
 
 export default app;
 `],
-  ["addons/admin/apps/server/tsconfig.json.hbs", `{
-  "extends": "@{{projectName}}/config/tsconfig.base.json",
-  "compilerOptions": {
-    "composite": true,
-    "outDir": "dist",
-    "paths": {
-      "@/*": ["./src/*"]
+  ["addons/admin/apps/server/src/organization.integration.test.ts.hbs", `import type { AppRouter } from "@{{projectName}}/api/routers/index";
+import { db } from "@{{projectName}}/db";
+import { session } from "@{{projectName}}/db/schema/auth";
+import {
+  invitation,
+  member,
+  organization,
+  organizationRole,
+} from "@{{projectName}}/db/schema/organization";
+import type { HTTPBatchLinkOptions, TRPCClient } from "@trpc/client";
+import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import app from "./index";
+
+interface Actor {
+  client: TRPCClient<AppRouter>;
+  id: string;
+}
+
+type AppClientTypes = AppRouter["_def"]["_config"]["$types"];
+type AppFetch = NonNullable<HTTPBatchLinkOptions<AppClientTypes>["fetch"]>;
+
+let actorSequence = 0;
+
+async function createActor(name: string): Promise<Actor> {
+  actorSequence += 1;
+  const response = await app.request(
+    "http://localhost/api/auth/sign-up/email",
+    {
+      body: JSON.stringify({
+        email: \`\${name}-\${actorSequence}@example.com\`,
+        name,
+        password: "organization-test-password",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
     },
-    "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx",
-    "strictNullChecks": true
-  }
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { user: { id: string } };
+  const sessionCookie = response.headers
+    .getSetCookie()
+    .find((value) => value.includes("session_token"))
+    ?.split(";", 1)[0];
+  expect(sessionCookie).toBeTruthy();
+
+  // 两个库的运行时 Response 兼容，但各自声明的 stream 类型不同。
+  const fetchFromApp = (async (url: URL | string, options?: RequestInit) => {
+    const request = new Request(url.toString(), options);
+    request.headers.set("cookie", sessionCookie ?? "");
+    return await app.request(request);
+  }) as AppFetch;
+
+  const client = createTRPCClient<AppRouter>({
+    links: [
+      httpBatchLink({
+        fetch: fetchFromApp,
+        url: "http://localhost/trpc",
+      }),
+    ],
+  });
+  return { client, id: body.user.id };
+}
+
+async function setActiveOrganization(actor: Actor, organizationId: string) {
+  await db
+    .update(session)
+    .set({ activeOrganizationId: organizationId })
+    .where(eq(session.userId, actor.id));
+}
+
+describe("组织租户隔离 API integration", () => {
+  const organizationAId = "organization-a";
+  const organizationBId = "organization-b";
+  const ownerAMemberId = "organization-a-owner";
+  const memberAMemberId = "organization-a-member";
+  const ownerBMemberId = "organization-b-owner";
+  let memberA: Actor;
+  let outsider: Actor;
+  let ownerA: Actor;
+  let ownerB: Actor;
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  beforeAll(async () => {
+    ownerA = await createActor("OrganizationAOwner");
+    memberA = await createActor("OrganizationAMember");
+    ownerB = await createActor("OrganizationBOwner");
+    outsider = await createActor("OrganizationOutsider");
+
+    await db.insert(organization).values([
+      { id: organizationAId, name: "Organization A", slug: "organization-a" },
+      { id: organizationBId, name: "Organization B", slug: "organization-b" },
+    ]);
+    await db.insert(member).values([
+      {
+        id: ownerAMemberId,
+        organizationId: organizationAId,
+        role: "owner",
+        userId: ownerA.id,
+      },
+      {
+        id: memberAMemberId,
+        organizationId: organizationAId,
+        role: "member",
+        userId: memberA.id,
+      },
+      {
+        id: ownerBMemberId,
+        organizationId: organizationBId,
+        role: "owner",
+        userId: ownerB.id,
+      },
+    ]);
+    await db.insert(invitation).values([
+      {
+        email: "invite-a@example.com",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        id: "invitation-a",
+        inviterId: ownerA.id,
+        organizationId: organizationAId,
+        role: "member",
+      },
+      {
+        email: "invite-b@example.com",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        id: "invitation-b",
+        inviterId: ownerB.id,
+        organizationId: organizationBId,
+        role: "member",
+      },
+    ]);
+    await db.insert(organizationRole).values([
+      {
+        id: "organization-a-billing-role",
+        organizationId: organizationAId,
+        permission: JSON.stringify({ billing: ["read"] }),
+        role: "billing",
+      },
+      {
+        id: "organization-a-manager-role",
+        organizationId: organizationAId,
+        permission: JSON.stringify({ member: ["update"] }),
+        role: "manager",
+      },
+      {
+        id: "organization-b-support-role",
+        organizationId: organizationBId,
+        permission: JSON.stringify({ support: ["read"] }),
+        role: "support",
+      },
+    ]);
+
+    await setActiveOrganization(ownerA, organizationAId);
+    await setActiveOrganization(memberA, organizationAId);
+    await setActiveOrganization(ownerB, organizationBId);
+    await setActiveOrganization(outsider, organizationAId);
+  });
+
+  it("只返回当前活动组织的数据", async () => {
+    const [active, members, invitations, roles] = await Promise.all([
+      ownerA.client.organization.active.query(),
+      ownerA.client.organization.members.query(),
+      ownerA.client.organization.invitations.query(),
+      ownerA.client.organization.roles.query(),
+    ]);
+
+    expect(active).toMatchObject({
+      id: organizationAId,
+      memberRole: "owner",
+    });
+    expect(members).toHaveLength(2);
+    expect(members.map(({ id }) => id)).toEqual(
+      expect.arrayContaining([memberAMemberId, ownerAMemberId]),
+    );
+    expect(invitations.map(({ id }) => id)).toEqual(["invitation-a"]);
+    expect(roles).toHaveLength(2);
+    expect(roles.map(({ role }) => role)).toEqual(
+      expect.arrayContaining(["billing", "manager"]),
+    );
+  });
+
+  it("拒绝非组织成员使用伪造的活动组织会话", async () => {
+    await expect(
+      outsider.client.organization.active.query(),
+    ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+  });
+
+  it("允许普通成员读取同租户成员但拒绝管理操作", async () => {
+    const visibleMembers = await memberA.client.organization.members.query();
+    expect(visibleMembers).toHaveLength(2);
+    expect(visibleMembers.every(({ id }) => id !== ownerBMemberId)).toBe(true);
+    await expect(
+      memberA.client.organization.updateMemberRole.mutate({
+        memberId: memberAMemberId,
+        role: "admin",
+      }),
+    ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+  });
+
+  it("拒绝通过其他租户的成员 ID 跨租户修改角色", async () => {
+    await expect(
+      ownerA.client.organization.updateMemberRole.mutate({
+        memberId: ownerBMemberId,
+        role: "member",
+      }),
+    ).rejects.toMatchObject({ data: { code: "NOT_FOUND" } });
+
+    const [tenantBOwner] = await db
+      .select({ role: member.role })
+      .from(member)
+      .where(eq(member.id, ownerBMemberId));
+    expect(tenantBOwner?.role).toBe("owner");
+  });
+
+  it("拒绝移除租户最后一名所有者", async () => {
+    await expect(
+      ownerA.client.organization.updateMemberRole.mutate({
+        memberId: ownerAMemberId,
+        role: "admin",
+      }),
+    ).rejects.toMatchObject({ data: { code: "PRECONDITION_FAILED" } });
+  });
+
+  it("只接受内置角色或当前租户已有的自定义角色", async () => {
+    await expect(
+      ownerA.client.organization.updateMemberRole.mutate({
+        memberId: memberAMemberId,
+        role: "support",
+      }),
+    ).rejects.toMatchObject({ data: { code: "BAD_REQUEST" } });
+
+    await ownerA.client.organization.updateMemberRole.mutate({
+      memberId: memberAMemberId,
+      role: "billing",
+    });
+    const [updatedMember] = await db
+      .select({ role: member.role })
+      .from(member)
+      .where(eq(member.id, memberAMemberId));
+    expect(updatedMember?.role).toBe("billing");
+  });
+
+  it("拒绝组织管理员授予所有者身份", async () => {
+    await ownerA.client.organization.updateMemberRole.mutate({
+      memberId: memberAMemberId,
+      role: "admin",
+    });
+    await expect(
+      memberA.client.organization.updateMemberRole.mutate({
+        memberId: memberAMemberId,
+        role: "owner",
+      }),
+    ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+    await ownerA.client.organization.updateMemberRole.mutate({
+      memberId: memberAMemberId,
+      role: "member",
+    });
+  });
+
+  it("按当前租户的动态角色权限授权成员管理", async () => {
+    await ownerA.client.organization.updateMemberRole.mutate({
+      memberId: memberAMemberId,
+      role: "manager",
+    });
+    await expect(
+      memberA.client.organization.updateMemberRole.mutate({
+        memberId: memberAMemberId,
+        role: "member",
+      }),
+    ).resolves.toEqual({ success: true });
+  });
+});
+`],
+  ["addons/admin/apps/server/src/permissions.integration.test.ts.hbs", `import { ensureRbacSeed, SUPER_ADMIN_SLUG } from "@{{projectName}}/api/rbac";
+import type { AppRouter } from "@{{projectName}}/api/routers/index";
+import { db } from "@{{projectName}}/db";
+import { userRole } from "@{{projectName}}/db/schema/rbac";
+import type { HTTPBatchLinkOptions, TRPCClient } from "@trpc/client";
+import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import app from "./index";
+
+interface Actor {
+	client: TRPCClient<AppRouter>;
+	id: string;
+}
+
+type AppClientTypes = AppRouter["_def"]["_config"]["$types"];
+type AppFetch = NonNullable<HTTPBatchLinkOptions<AppClientTypes>["fetch"]>;
+
+let actorSequence = 0;
+
+async function createActor(name: string): Promise<Actor> {
+	actorSequence += 1;
+	const response = await app.request(
+		"http://localhost/api/auth/sign-up/email",
+		{
+			body: JSON.stringify({
+				email: \`\${name}-\${actorSequence}@example.com\`,
+				name,
+				password: "permission-test-password",
+			}),
+			headers: { "content-type": "application/json" },
+			method: "POST",
+		},
+	);
+	expect(response.status).toBe(200);
+	const body = (await response.json()) as { user: { id: string } };
+	const sessionCookie = response.headers
+		.getSetCookie()
+		.find((value) => value.includes("session_token"))
+		?.split(";", 1)[0];
+	expect(sessionCookie).toBeTruthy();
+
+	// 两个库的运行时 Response 兼容，但各自声明的 stream 类型不同。
+	const fetchFromApp = (async (url: URL | string, options?: RequestInit) => {
+		const request = new Request(url.toString(), options);
+		request.headers.set("cookie", sessionCookie ?? "");
+		return await app.request(request);
+	}) as AppFetch;
+
+	const client = createTRPCClient<AppRouter>({
+		links: [
+			httpBatchLink({
+				fetch: fetchFromApp,
+				url: "http://localhost/trpc",
+			}),
+		],
+	});
+
+	return { client, id: body.user.id };
+}
+
+describe("权限治理 API integration", () => {
+	let unprivilegedActor: Actor;
+	afterAll(async () => {
+		await db.$client.end();
+	});
+	let assignerActor: Actor;
+	let superAdmin: Actor;
+	let suspendedActor: Actor;
+	let unionActor: Actor;
+
+	beforeAll(async () => {
+		assignerActor = await createActor("Assigner");
+		superAdmin = await createActor("SuperAdmin");
+		suspendedActor = await createActor("Suspended");
+		unionActor = await createActor("Union");
+		unprivilegedActor = await createActor("Unprivileged");
+		await ensureRbacSeed();
+		await db
+			.insert(userRole)
+			.values({ roleId: SUPER_ADMIN_SLUG, userId: superAdmin.id });
+	});
+
+	it("服务端拒绝缺少对应读取权限的直接调用", async () => {
+		await expect(
+			unprivilegedActor.client.admin.users.query({ search: "" }),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+		await expect(
+			unprivilegedActor.client.admin.roles.query(),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+		await expect(
+			unprivilegedActor.client.admin.auditLogs.query(),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+	});
+
+	it("服务端拒绝无权限用户直接调用所有治理 mutation", async () => {
+		const mutations = [
+			() =>
+				unprivilegedActor.client.admin.setUserBanned.mutate({
+					banned: true,
+					userId: suspendedActor.id,
+				}),
+			() =>
+				unprivilegedActor.client.admin.revokeUserSessions.mutate({
+					userId: suspendedActor.id,
+				}),
+			() =>
+				unprivilegedActor.client.admin.setUserRoles.mutate({
+					roleIds: ["viewer"],
+					userId: suspendedActor.id,
+				}),
+			() =>
+				unprivilegedActor.client.admin.createRole.mutate({
+					description: "Denied",
+					name: "Denied Role",
+					permissionKeys: [],
+					slug: "denied-role",
+				}),
+			() =>
+				unprivilegedActor.client.admin.updateRole.mutate({
+					description: "Denied",
+					id: "viewer",
+					name: "Denied Role",
+					permissionKeys: [],
+				}),
+			() => unprivilegedActor.client.admin.deleteRole.mutate({ id: "viewer" }),
+		];
+
+		for (const mutate of mutations) {
+			await expect(mutate()).rejects.toMatchObject({
+				data: { code: "FORBIDDEN" },
+			});
+		}
+	});
+
+	it("暂停立即阻止现有会话，解除暂停恢复有效会话，但不恢复已撤销会话", async () => {
+		await superAdmin.client.admin.setUserBanned.mutate({
+			banned: true,
+			userId: suspendedActor.id,
+		});
+		await expect(
+			suspendedActor.client.privateData.query(),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+
+		await superAdmin.client.admin.setUserBanned.mutate({
+			banned: false,
+			userId: suspendedActor.id,
+		});
+		await expect(
+			suspendedActor.client.privateData.query(),
+		).resolves.toMatchObject({
+			user: { id: suspendedActor.id },
+		});
+
+		await superAdmin.client.admin.setUserBanned.mutate({
+			banned: true,
+			userId: suspendedActor.id,
+		});
+		await superAdmin.client.admin.revokeUserSessions.mutate({
+			userId: suspendedActor.id,
+		});
+		await superAdmin.client.admin.setUserBanned.mutate({
+			banned: false,
+			userId: suspendedActor.id,
+		});
+		await expect(
+			suspendedActor.client.privateData.query(),
+		).rejects.toMatchObject({
+			data: { code: "UNAUTHORIZED" },
+		});
+		const auditLogs = await superAdmin.client.admin.auditLogs.query();
+		expect(auditLogs.map(({ action }) => action)).toEqual(
+			expect.arrayContaining([
+				"user.banned",
+				"user.unbanned",
+				"user.sessions.revoked",
+			]),
+		);
+	});
+
+	it("服务端拒绝修改或删除受保护角色", async () => {
+		await expect(
+			superAdmin.client.admin.updateRole.mutate({
+				description: "Changed",
+				id: "viewer",
+				name: "Compromised",
+				permissionKeys: [],
+			}),
+		).rejects.toMatchObject({ data: { code: "BAD_REQUEST" } });
+		await expect(
+			superAdmin.client.admin.deleteRole.mutate({ id: "viewer" }),
+		).rejects.toMatchObject({ data: { code: "BAD_REQUEST" } });
+
+		const roles = await superAdmin.client.admin.roles.query();
+		expect(roles.find(({ id }) => id === "viewer")).toMatchObject({
+			isSystem: true,
+			name: "Viewer",
+			permissionKeys: ["dashboard:read"],
+		});
+	});
+
+	it("允许自定义角色生命周期并记录审计事件", async () => {
+		const created = await superAdmin.client.admin.createRole.mutate({
+			description: "Initial description",
+			name: "Custom Operator",
+			permissionKeys: ["user:read"],
+			slug: "custom-operator",
+		});
+		await superAdmin.client.admin.updateRole.mutate({
+			description: "Updated description",
+			id: created.id,
+			name: "Updated Operator",
+			permissionKeys: ["user:read", "audit:read"],
+		});
+		const rolesAfterUpdate = await superAdmin.client.admin.roles.query();
+		expect(rolesAfterUpdate.find(({ id }) => id === created.id)).toMatchObject({
+			isSystem: false,
+			name: "Updated Operator",
+			permissionKeys: expect.arrayContaining(["user:read", "audit:read"]),
+		});
+
+		await superAdmin.client.admin.deleteRole.mutate({ id: created.id });
+		const rolesAfterDelete = await superAdmin.client.admin.roles.query();
+		expect(rolesAfterDelete.some(({ id }) => id === created.id)).toBe(false);
+
+		const auditLogs = await superAdmin.client.admin.auditLogs.query();
+		expect(auditLogs.map(({ action }) => action)).toEqual(
+			expect.arrayContaining(["role.created", "role.updated", "role.deleted"]),
+		);
+	});
+
+	it("拒绝移除最后一名超级管理员", async () => {
+		await expect(
+			superAdmin.client.admin.setUserRoles.mutate({
+				roleIds: [],
+				userId: superAdmin.id,
+			}),
+		).rejects.toMatchObject({ data: { code: "BAD_REQUEST" } });
+	});
+
+	it("按并集合并多角色权限并保护各管理 API", async () => {
+		const userReader = await superAdmin.client.admin.createRole.mutate({
+			description: "Read users",
+			name: "User Reader",
+			permissionKeys: ["user:read"],
+			slug: "user-reader",
+		});
+		const auditReader = await superAdmin.client.admin.createRole.mutate({
+			description: "Read audit events",
+			name: "Audit Reader",
+			permissionKeys: ["audit:read"],
+			slug: "audit-reader",
+		});
+		await superAdmin.client.admin.setUserRoles.mutate({
+			roleIds: [userReader.id, auditReader.id],
+			userId: unionActor.id,
+		});
+
+		const access = await unionActor.client.admin.access.query();
+		expect(access.permissions).toEqual(
+			expect.arrayContaining(["user:read", "audit:read"]),
+		);
+		await expect(
+			unionActor.client.admin.users.query({ search: "" }),
+		).resolves.toBeInstanceOf(Array);
+		await expect(
+			unionActor.client.admin.auditLogs.query(),
+		).resolves.toBeInstanceOf(Array);
+		await expect(unionActor.client.admin.roles.query()).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+		const auditLogs = await superAdmin.client.admin.auditLogs.query();
+		expect(auditLogs.map(({ action }) => action)).toContain(
+			"user.roles.updated",
+		);
+	});
+
+	it("角色分配员不能查看或变更超级管理员角色", async () => {
+		const assignerRole = await superAdmin.client.admin.createRole.mutate({
+			description: "Assign user roles",
+			name: "Role Assigner",
+			permissionKeys: ["user:assign-role"],
+			slug: "role-assigner",
+		});
+		await superAdmin.client.admin.setUserRoles.mutate({
+			roleIds: [assignerRole.id],
+			userId: assignerActor.id,
+		});
+
+		const assignableRoles =
+			await assignerActor.client.admin.assignableRoles.query();
+		expect(assignableRoles).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id: "viewer", name: "Viewer" }),
+			]),
+		);
+		expect(assignableRoles).not.toContainEqual(
+			expect.objectContaining({ id: SUPER_ADMIN_SLUG }),
+		);
+		await expect(
+			assignerActor.client.admin.setUserRoles.mutate({
+				roleIds: [SUPER_ADMIN_SLUG],
+				userId: unprivilegedActor.id,
+			}),
+		).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+		await expect(
+			assignerActor.client.admin.setUserRoles.mutate({
+				roleIds: [],
+				userId: superAdmin.id,
+			}),
+		).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+		await expect(
+			assignerActor.client.admin.roles.query(),
+		).rejects.toMatchObject({
+			data: { code: "FORBIDDEN" },
+		});
+	});
+
+	it("并发移除超级管理员时始终保留一名", async () => {
+		const secondSuperAdmin = await createActor("SecondSuperAdmin");
+		await superAdmin.client.admin.setUserRoles.mutate({
+			roleIds: [SUPER_ADMIN_SLUG],
+			userId: secondSuperAdmin.id,
+		});
+
+		const results = await Promise.allSettled([
+			superAdmin.client.admin.setUserRoles.mutate({
+				roleIds: [],
+				userId: superAdmin.id,
+			}),
+			secondSuperAdmin.client.admin.setUserRoles.mutate({
+				roleIds: [],
+				userId: secondSuperAdmin.id,
+			}),
+		]);
+		expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(
+			1,
+		);
+		expect(results.filter(({ status }) => status === "rejected")).toHaveLength(
+			1,
+		);
+
+		const assignments = await db.select().from(userRole);
+		expect(
+			assignments.filter(({ roleId }) => roleId === SUPER_ADMIN_SLUG),
+		).toHaveLength(1);
+	});
+});
+`],
+  ["addons/admin/apps/server/test/global-setup.ts.hbs", `import { execSync } from "node:child_process";
+import { rm } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import EmbeddedPostgres from "embedded-postgres";
+
+const workspaceRoot = fileURLToPath(new URL("../../..", import.meta.url));
+const databaseDir = path.join(
+	workspaceRoot,
+	".cache",
+	"permission-tests-postgres",
+);
+const databaseUrl =
+	"postgresql://postgres:password@127.0.0.1:55433/{{projectName}}_test";
+
+export default async function setupPermissionTestDatabase() {
+	const postgres = new EmbeddedPostgres({
+		databaseDir,
+		onLog: () => undefined,
+		password: "password",
+		persistent: false,
+		port: 55_433,
+		user: "postgres",
+	});
+
+	try {
+		await postgres.stop();
+	} catch {
+		// 只有上次测试异常退出时才存在需要停止的测试实例。
+	}
+	await rm(databaseDir, { force: true, recursive: true });
+
+	try {
+		await postgres.initialise();
+		await postgres.start();
+		await postgres.createDatabase("{{projectName}}_test");
+
+		execSync("pnpm exec drizzle-kit push --force", {
+			cwd: path.join(workspaceRoot, "packages", "db"),
+			env: {
+				...process.env,
+				DATABASE_URL: databaseUrl,
+			},
+			stdio: "inherit",
+		});
+	} catch (error) {
+		await postgres.stop();
+		throw error;
+	}
+
+	return async () => {
+		await postgres.stop();
+		await rm(databaseDir, { force: true, recursive: true });
+	};
+}
+`],
+  ["addons/admin/apps/server/tsconfig.json.hbs", `{
+	"extends": "@{{projectName}}/config/tsconfig.base.json",
+	"compilerOptions": {
+		"composite": true,
+		"outDir": "dist",
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"jsx": "react-jsx",
+		"jsxImportSource": "hono/jsx",
+		"types": ["bun"],
+		"strictNullChecks": true
+	}
 }
 `],
   ["addons/admin/apps/server/tsdown.config.ts.hbs", `import { defineConfig } from "tsdown";
@@ -174,6 +878,27 @@ export default defineConfig({
   deps: {
     alwaysBundle: [/@{{projectName}}\\/.*/],
   },
+});
+`],
+  ["addons/admin/apps/server/vitest.integration.config.ts.hbs", `import { defineConfig } from "vitest/config";
+
+const databaseUrl =
+	"postgresql://postgres:password@127.0.0.1:55433/{{projectName}}_test";
+
+export default defineConfig({
+	test: {
+		env: {
+			BETTER_AUTH_SECRET: "permission-tests-secret-at-least-32-chars",
+			BETTER_AUTH_URL: "http://localhost:3000",
+			CORS_ORIGIN: "http://localhost:3001",
+			DATABASE_URL: databaseUrl,
+			NODE_ENV: "test",
+		},
+		fileParallelism: false,
+		globalSetup: ["./test/global-setup.ts"],
+		include: ["src/**/*.integration.test.ts"],
+		testTimeout: 30_000,
+	},
 });
 `],
   ["addons/admin/apps/web/.gitignore", `# Dependencies
@@ -345,10 +1070,13 @@ dev-dist
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && tsc -b --pretty false",
-    "check-types": "vite build && tsc -b --pretty false",
+    "build": "pnpm --workspace-root check:i18n && vite build && tsc -b --pretty false",
+    "check-types": "pnpm --workspace-root check:i18n && vite build && tsc -b --pretty false",
     "dev": "vite",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "test": "vitest run",
+    "test:browser": "vitest run --browser.headless"{{#if (includes addons "rbac")}},
+    "test:permissions": "vitest run src/components/layout/app-sidebar.test.tsx src/components/permission-guard.test.tsx src/features/users/index.test.tsx src/features/roles/index.test.tsx src/routes/_authenticated/-access-routes.test.tsx"{{/if}}
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -1673,7 +2401,8 @@ export function Logo({ className, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/business-data-table.tsx", `import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+  ["addons/admin/apps/web/src/components/business-data-table.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { type ChangeEvent, useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -1713,6 +2442,7 @@ export function BusinessDataTable<Row>({
   placeholder,
 }: BusinessDataTableProps<Row>) {
   const [query, setQuery] = useState("");
+  const { t } = useTranslation();
   const [page, setPage] = useState(0);
   const handleQueryChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setQuery(event.target.value);
@@ -1774,15 +2504,20 @@ export function BusinessDataTable<Row>({
         ) : null}
       </div>
       <div className="flex items-center justify-between text-muted-foreground text-sm">
-        <span>{filtered.length} row(s)</span>
+        <span>{t("data_table.rows", { count: filtered.length })}</span>
         <div className="flex items-center gap-2">
-          <span>
-            Page {safePage + 1} of {pageCount}
-          </span>
-          <Button disabled={safePage === 0} onClick={previousPage} size="icon" variant="outline">
+          <span>{t("data_table.page_of", { current: safePage + 1, total: pageCount })}</span>
+          <Button
+            aria-label={t("data_table.previous_page")}
+            disabled={safePage === 0}
+            onClick={previousPage}
+            size="icon"
+            variant="outline"
+          >
             <ChevronLeft />
           </Button>
           <Button
+            aria-label={t("data_table.next_page")}
             disabled={safePage + 1 >= pageCount}
             onClick={nextPage}
             size="icon"
@@ -1813,7 +2548,8 @@ export function ComingSoon() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/command-menu.tsx", `import { useNavigate } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/components/command-menu.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight, ChevronRight, Laptop, Moon, Sun } from "lucide-react";
 import React from "react";
 
@@ -1829,13 +2565,15 @@ import {
 import { useSearch } from "@/context/search-provider";
 import { useTheme } from "@/context/theme-provider";
 
-import { sidebarData } from "./layout/data/sidebar-data";
+import { useSidebarData } from "./layout/data/sidebar-data";
 import { ScrollArea } from "./ui/scroll-area";
 
 export function CommandMenu() {
   const navigate = useNavigate();
   const { setTheme } = useTheme();
   const { open, setOpen } = useSearch();
+  const { t } = useTranslation();
+  const sidebarData = useSidebarData();
 
   const runCommand = React.useCallback(
     (command: () => unknown) => {
@@ -1846,11 +2584,17 @@ export function CommandMenu() {
   );
 
   return (
-    <CommandDialog modal open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Type a command or search..." />
+    <CommandDialog
+      description={t("command_menu.description")}
+      modal
+      onOpenChange={setOpen}
+      open={open}
+      title={t("command_menu.title")}
+    >
+      <CommandInput placeholder={t("search.type_command")} />
       <CommandList>
         <ScrollArea type="hover" className="h-72 pe-1">
-          <CommandEmpty>No results found.</CommandEmpty>
+          <CommandEmpty>{t("data_table.no_results")}</CommandEmpty>
           {sidebarData.navGroups.map((group) => (
             <CommandGroup key={group.title} heading={group.title}>
               {group.items.map((navItem, i) => {
@@ -1888,17 +2632,17 @@ export function CommandMenu() {
             </CommandGroup>
           ))}
           <CommandSeparator />
-          <CommandGroup heading="Theme">
+          <CommandGroup heading={t("theme.theme")}>
             <CommandItem onSelect={() => runCommand(() => setTheme("light"))}>
-              <Sun /> <span>Light</span>
+              <Sun /> <span>{t("theme.light")}</span>
             </CommandItem>
             <CommandItem onSelect={() => runCommand(() => setTheme("dark"))}>
               <Moon className="scale-90" />
-              <span>Dark</span>
+              <span>{t("theme.dark")}</span>
             </CommandItem>
             <CommandItem onSelect={() => runCommand(() => setTheme("system"))}>
               <Laptop />
-              <span>System</span>
+              <span>{t("theme.system")}</span>
             </CommandItem>
           </CommandGroup>
         </ScrollArea>
@@ -2171,7 +2915,8 @@ describe("ConfigDrawer (integration)", () => {
   });
 });
 `],
-  ["addons/admin/apps/web/src/components/config-drawer.tsx", `import { Root as Radio, Item } from "@radix-ui/react-radio-group";
+  ["addons/admin/apps/web/src/components/config-drawer.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Root as Radio, Item } from "@radix-ui/react-radio-group";
 import { CircleCheck, RotateCcw, Settings } from "lucide-react";
 import { type SVGProps } from "react";
 
@@ -2203,6 +2948,7 @@ import { cn } from "@/lib/utils";
 import { useSidebar } from "./ui/sidebar";
 
 export function ConfigDrawer() {
+  const { t } = useTranslation();
   const { setOpen } = useSidebar();
   const { resetDir } = useDirection();
   const { resetTheme } = useTheme();
@@ -2221,7 +2967,7 @@ export function ConfigDrawer() {
         <Button
           size="icon"
           variant="ghost"
-          aria-label="Open theme settings"
+          aria-label={t("theme.open_settings_aria")}
           className="rounded-full"
         >
           <Settings aria-hidden="true" />
@@ -2229,10 +2975,8 @@ export function ConfigDrawer() {
       </SheetTrigger>
       <SheetContent className="flex flex-col">
         <SheetHeader className="pb-0 text-start">
-          <SheetTitle>Theme Settings</SheetTitle>
-          <SheetDescription>
-            Adjust the appearance and layout to suit your preferences.
-          </SheetDescription>
+          <SheetTitle>{t("theme.settings_title")}</SheetTitle>
+          <SheetDescription>{t("theme.settings_desc")}</SheetDescription>
         </SheetHeader>
         <div className="space-y-6 overflow-y-auto px-4">
           <ThemeConfig />
@@ -2244,9 +2988,9 @@ export function ConfigDrawer() {
           <Button
             variant="destructive"
             onClick={handleReset}
-            aria-label="Reset all settings to default values"
+            aria-label={t("theme.reset_all_aria")}
           >
-            Reset
+            {t("theme.reset")}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -2303,11 +3047,12 @@ function RadioGroupItem({
   };
   isTheme?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <Item
       value={item.value}
       className={cn("group outline-none", "transition duration-200 ease-in")}
-      aria-label={\`Select \${item.label.toLowerCase()}\`}
+      aria-label={t("theme.select_option_aria", { option: item.label })}
       aria-describedby={\`\${item.value}-description\`}
     >
       <div
@@ -2318,7 +3063,7 @@ function RadioGroupItem({
         )}
         role="img"
         aria-hidden="false"
-        aria-label={\`\${item.label} option preview\`}
+        aria-label={t("theme.option_preview_aria", { option: item.label })}
       >
         <CircleCheck
           className={cn(
@@ -2345,35 +3090,36 @@ function RadioGroupItem({
 
 function ThemeConfig() {
   const { defaultTheme, theme, setTheme } = useTheme();
+  const { t } = useTranslation();
   return (
     <div>
       <SectionTitle
-        title="Theme"
+        title={t("theme.theme")}
         showReset={theme !== defaultTheme}
         onReset={() => setTheme(defaultTheme)}
-        resetAriaLabel="Reset theme preference to default"
+        resetAriaLabel={t("theme.reset_theme_aria")}
       />
       <Radio
         value={theme}
         onValueChange={setTheme}
         className="grid w-full max-w-md grid-cols-3 gap-4"
-        aria-label="Select theme preference"
+        aria-label={t("theme.select_theme_aria")}
         aria-describedby="theme-description"
       >
         {[
           {
             value: "system",
-            label: "System",
+            label: t("theme.system"),
             icon: IconThemeSystem,
           },
           {
             value: "light",
-            label: "Light",
+            label: t("theme.light"),
             icon: IconThemeLight,
           },
           {
             value: "dark",
-            label: "Dark",
+            label: t("theme.dark"),
             icon: IconThemeDark,
           },
         ].map((item) => (
@@ -2381,7 +3127,7 @@ function ThemeConfig() {
         ))}
       </Radio>
       <div id="theme-description" className="sr-only">
-        Choose between system preference, light mode, or dark mode
+        {t("theme.theme_desc_aria")}
       </div>
     </div>
   );
@@ -2389,35 +3135,36 @@ function ThemeConfig() {
 
 function SidebarConfig() {
   const { defaultVariant, variant, setVariant } = useLayout();
+  const { t } = useTranslation();
   return (
     <div className="max-md:hidden">
       <SectionTitle
-        title="Sidebar"
+        title={t("theme.sidebar")}
         showReset={defaultVariant !== variant}
         onReset={() => setVariant(defaultVariant)}
-        resetAriaLabel="Reset sidebar style to default"
+        resetAriaLabel={t("theme.reset_sidebar_aria")}
       />
       <Radio
         value={variant}
         onValueChange={setVariant}
         className="grid w-full max-w-md grid-cols-3 gap-4"
-        aria-label="Select sidebar style"
+        aria-label={t("theme.select_sidebar_aria")}
         aria-describedby="sidebar-description"
       >
         {[
           {
             value: "inset",
-            label: "Inset",
+            label: t("theme.inset"),
             icon: IconSidebarInset,
           },
           {
             value: "floating",
-            label: "Floating",
+            label: t("theme.floating"),
             icon: IconSidebarFloating,
           },
           {
             value: "sidebar",
-            label: "Sidebar",
+            label: t("theme.sidebar_style"),
             icon: IconSidebarSidebar,
           },
         ].map((item) => (
@@ -2425,7 +3172,7 @@ function SidebarConfig() {
         ))}
       </Radio>
       <div id="sidebar-description" className="sr-only">
-        Choose between inset, floating, or standard sidebar layout
+        {t("theme.sidebar_desc_aria")}
       </div>
     </div>
   );
@@ -2434,19 +3181,20 @@ function SidebarConfig() {
 function LayoutConfig() {
   const { open, setOpen } = useSidebar();
   const { defaultCollapsible, collapsible, setCollapsible } = useLayout();
+  const { t } = useTranslation();
 
   const radioState = open ? "default" : collapsible;
 
   return (
     <div className="max-md:hidden">
       <SectionTitle
-        title="Layout"
+        title={t("theme.layout")}
         showReset={radioState !== "default"}
         onReset={() => {
           setOpen(true);
           setCollapsible(defaultCollapsible);
         }}
-        resetAriaLabel="Reset layout options to default"
+        resetAriaLabel={t("theme.reset_layout_aria")}
       />
       <Radio
         value={radioState}
@@ -2459,23 +3207,23 @@ function LayoutConfig() {
           setCollapsible(v as Collapsible);
         }}
         className="grid w-full max-w-md grid-cols-3 gap-4"
-        aria-label="Select layout style"
+        aria-label={t("theme.select_layout_aria")}
         aria-describedby="layout-description"
       >
         {[
           {
             value: "default",
-            label: "Default",
+            label: t("theme.default"),
             icon: IconLayoutDefault,
           },
           {
             value: "icon",
-            label: "Compact",
+            label: t("theme.compact"),
             icon: IconLayoutCompact,
           },
           {
             value: "offcanvas",
-            label: "Full layout",
+            label: t("theme.full_layout"),
             icon: IconLayoutFull,
           },
         ].map((item) => (
@@ -2483,7 +3231,7 @@ function LayoutConfig() {
         ))}
       </Radio>
       <div id="layout-description" className="sr-only">
-        Choose between default expanded, compact icon-only, or full layout mode
+        {t("theme.layout_desc_aria")}
       </div>
     </div>
   );
@@ -2491,30 +3239,31 @@ function LayoutConfig() {
 
 function DirConfig() {
   const { defaultDir, dir, setDir } = useDirection();
+  const { t } = useTranslation();
   return (
     <div>
       <SectionTitle
-        title="Direction"
+        title={t("theme.direction")}
         showReset={defaultDir !== dir}
         onReset={() => setDir(defaultDir)}
-        resetAriaLabel="Reset text direction to default"
+        resetAriaLabel={t("theme.reset_direction_aria")}
       />
       <Radio
         value={dir}
         onValueChange={setDir}
         className="grid w-full max-w-md grid-cols-3 gap-4"
-        aria-label="Select site direction"
+        aria-label={t("theme.select_direction_aria")}
         aria-describedby="direction-description"
       >
         {[
           {
             value: "ltr",
-            label: "Left to Right",
+            label: t("theme.ltr"),
             icon: (props: SVGProps<SVGSVGElement>) => <IconDir dir="ltr" {...props} />,
           },
           {
             value: "rtl",
-            label: "Right to Left",
+            label: t("theme.rtl"),
             icon: (props: SVGProps<SVGSVGElement>) => <IconDir dir="rtl" {...props} />,
           },
         ].map((item) => (
@@ -2522,7 +3271,7 @@ function DirConfig() {
         ))}
       </Radio>
       <div id="direction-description" className="sr-only">
-        Choose between left-to-right or right-to-left site direction
+        {t("theme.direction_desc_aria")}
       </div>
     </div>
   );
@@ -2724,7 +3473,8 @@ describe("ConfirmDialog", () => {
   });
 });
 `],
-  ["addons/admin/apps/web/src/components/confirm-dialog.tsx", `import {
+  ["addons/admin/apps/web/src/components/confirm-dialog.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
@@ -2751,6 +3501,7 @@ type ConfirmDialogProps = {
 } & ({ form: string; handleConfirm?: undefined } | { form?: undefined; handleConfirm: () => void });
 
 export function ConfirmDialog(props: ConfirmDialogProps) {
+  const { t } = useTranslation();
   const {
     title,
     desc,
@@ -2776,7 +3527,9 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
         </AlertDialogHeader>
         {children}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isLoading}>{cancelBtnText ?? "Cancel"}</AlertDialogCancel>
+          <AlertDialogCancel disabled={isLoading}>
+            {cancelBtnText ?? t("confirm_dialog.cancel")}
+          </AlertDialogCancel>
           <Button
             type={form ? "submit" : "button"}
             form={form}
@@ -2784,7 +3537,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
             variant={destructive ? "destructive" : "default"}
             disabled={disabled || isLoading}
           >
-            {confirmText ?? "Continue"}
+            {confirmText ?? t("confirm_dialog.continue")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -2792,7 +3545,8 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/data-table/bulk-actions.tsx", `import { type Table } from "@tanstack/react-table";
+  ["addons/admin/apps/web/src/components/data-table/bulk-actions.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { type Table } from "@tanstack/react-table";
 import { X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
@@ -2827,11 +3581,15 @@ export function DataTableBulkActions<TData>({
   const selectedCount = selectedRows.length;
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [announcement, setAnnouncement] = useState("");
+  const { t } = useTranslation();
 
   // Announce selection changes to screen readers
   useEffect(() => {
     if (selectedCount > 0) {
-      const message = \`\${selectedCount} \${entityName}\${selectedCount > 1 ? "s" : ""} selected. Bulk actions toolbar is available.\`;
+      const message = t("data_table.selected_announcement", {
+        count: selectedCount,
+        entity: entityName,
+      });
 
       // Use queueMicrotask to defer state update and avoid cascading renders
       queueMicrotask(() => {
@@ -2842,7 +3600,7 @@ export function DataTableBulkActions<TData>({
       const timer = setTimeout(() => setAnnouncement(""), 3000);
       return () => clearTimeout(timer);
     }
-  }, [selectedCount, entityName]);
+  }, [entityName, selectedCount, t]);
 
   const handleClearSelection = () => {
     table.resetRowSelection();
@@ -2922,7 +3680,10 @@ export function DataTableBulkActions<TData>({
       <div
         ref={toolbarRef}
         role="toolbar"
-        aria-label={\`Bulk actions for \${selectedCount} selected \${entityName}\${selectedCount > 1 ? "s" : ""}\`}
+        aria-label={t("data_table.bulk_actions_aria", {
+          count: selectedCount,
+          entity: entityName,
+        })}
         aria-describedby="bulk-actions-description"
         tabIndex={-1}
         onKeyDown={handleKeyDown}
@@ -2947,15 +3708,15 @@ export function DataTableBulkActions<TData>({
                 size="icon"
                 onClick={handleClearSelection}
                 className="size-6 rounded-full"
-                aria-label="Clear selection"
-                title="Clear selection (Escape)"
+                aria-label={t("data_table.clear_selection")}
+                title={t("data_table.clear_selection_shortcut")}
               >
                 <X />
-                <span className="sr-only">Clear selection</span>
+                <span className="sr-only">{t("data_table.clear_selection")}</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Clear selection (Escape)</p>
+              <p>{t("data_table.clear_selection_shortcut")}</p>
             </TooltipContent>
           </Tooltip>
 
@@ -2965,15 +3726,12 @@ export function DataTableBulkActions<TData>({
             <Badge
               variant="default"
               className="min-w-8 rounded-lg"
-              aria-label={\`\${selectedCount} selected\`}
+              aria-label={t("data_table.selected_count", { count: selectedCount })}
             >
               {selectedCount}
             </Badge>{" "}
-            <span className="hidden sm:inline">
-              {entityName}
-              {selectedCount > 1 ? "s" : ""}
-            </span>{" "}
-            selected
+            <span className="hidden sm:inline">{entityName}</span>{" "}
+            {t("data_table.selected")}
           </div>
 
           <Separator className="h-5" orientation="vertical" aria-hidden="true" />
@@ -2985,7 +3743,8 @@ export function DataTableBulkActions<TData>({
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/data-table/column-header.tsx", `import { ArrowDownIcon, ArrowUpIcon, CaretSortIcon, EyeNoneIcon } from "@radix-ui/react-icons";
+  ["addons/admin/apps/web/src/components/data-table/column-header.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { ArrowDownIcon, ArrowUpIcon, CaretSortIcon, EyeNoneIcon } from "@radix-ui/react-icons";
 import { type Column } from "@tanstack/react-table";
 
 import { Button } from "@/components/ui/button";
@@ -3008,6 +3767,7 @@ export function DataTableColumnHeader<TData, TValue>({
   title,
   className,
 }: DataTableColumnHeaderProps<TData, TValue>) {
+  const { t } = useTranslation();
   if (!column.getCanSort()) {
     return <div className={cn(className)}>{title}</div>;
   }
@@ -3030,18 +3790,18 @@ export function DataTableColumnHeader<TData, TValue>({
         <DropdownMenuContent align="start">
           <DropdownMenuItem onClick={() => column.toggleSorting(false)}>
             <ArrowUpIcon className="size-3.5 text-muted-foreground/70" />
-            Asc
+            {t("data_table.asc")}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => column.toggleSorting(true)}>
             <ArrowDownIcon className="size-3.5 text-muted-foreground/70" />
-            Desc
+            {t("data_table.desc")}
           </DropdownMenuItem>
           {column.getCanHide() && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => column.toggleVisibility(false)}>
                 <EyeNoneIcon className="size-3.5 text-muted-foreground/70" />
-                Hide
+                {t("data_table.hide")}
               </DropdownMenuItem>
             </>
           )}
@@ -3051,9 +3811,10 @@ export function DataTableColumnHeader<TData, TValue>({
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/data-table/faceted-filter.tsx", `import { CheckIcon, PlusCircledIcon } from "@radix-ui/react-icons";
-import { type Column } from "@tanstack/react-table";
-import * as React from "react";
+  ["addons/admin/apps/web/src/components/data-table/faceted-filter.tsx.hbs", `import { CheckIcon, PlusCircledIcon } from "@radix-ui/react-icons";
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import type { Column } from "@tanstack/react-table";
+import type * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -3066,7 +3827,11 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -3087,32 +3852,41 @@ export function DataTableFacetedFilter<TData, TValue>({
 }: DataTableFacetedFilterProps<TData, TValue>) {
   const facets = column?.getFacetedUniqueValues();
   const selectedValues = new Set(column?.getFilterValue() as string[]);
+  const { t } = useTranslation();
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 border-dashed">
+        <Button className="h-8 border-dashed" size="sm" variant="outline">
           <PlusCircledIcon className="size-4" />
           {title}
           {selectedValues?.size > 0 && (
             <>
-              <Separator orientation="vertical" className="mx-2 h-4" />
-              <Badge variant="secondary" className="rounded-sm px-1 font-normal lg:hidden">
+              <Separator className="mx-2 h-4" orientation="vertical" />
+              <Badge
+                className="rounded-sm px-1 font-normal lg:hidden"
+                variant="secondary"
+              >
                 {selectedValues.size}
               </Badge>
               <div className="hidden space-x-1 lg:flex">
                 {selectedValues.size > 2 ? (
-                  <Badge variant="secondary" className="rounded-sm px-1 font-normal">
-                    {selectedValues.size} selected
+                  <Badge
+                    className="rounded-sm px-1 font-normal"
+                    variant="secondary"
+                  >
+                    {t("data_table.selected_count", {
+                      count: selectedValues.size,
+                    })}
                   </Badge>
                 ) : (
                   options
                     .filter((option) => selectedValues.has(option.value))
                     .map((option) => (
                       <Badge
-                        variant="secondary"
-                        key={option.value}
                         className="rounded-sm px-1 font-normal"
+                        key={option.value}
+                        variant="secondary"
                       >
                         {option.label}
                       </Badge>
@@ -3123,11 +3897,11 @@ export function DataTableFacetedFilter<TData, TValue>({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-50 p-0" align="start">
+      <PopoverContent align="start" className="w-50 p-0">
         <Command>
           <CommandInput placeholder={title} />
           <CommandList>
-            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandEmpty>{t("data_table.no_results")}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => {
                 const isSelected = selectedValues.has(option.value);
@@ -3141,7 +3915,9 @@ export function DataTableFacetedFilter<TData, TValue>({
                         selectedValues.add(option.value);
                       }
                       const filterValues = Array.from(selectedValues);
-                      column?.setFilterValue(filterValues.length ? filterValues : undefined);
+                      column?.setFilterValue(
+                        filterValues.length ? filterValues : undefined
+                      );
                     }}
                   >
                     <div
@@ -3149,12 +3925,14 @@ export function DataTableFacetedFilter<TData, TValue>({
                         "flex size-4 items-center justify-center rounded-sm border border-primary",
                         isSelected
                           ? "bg-primary text-primary-foreground"
-                          : "opacity-50 [&_svg]:invisible",
+                          : "opacity-50 [&_svg]:invisible"
                       )}
                     >
                       <CheckIcon className={cn("h-4 w-4 text-background")} />
                     </div>
-                    {option.icon && <option.icon className="size-4 text-muted-foreground" />}
+                    {option.icon && (
+                      <option.icon className="size-4 text-muted-foreground" />
+                    )}
                     <span>{option.label}</span>
                     {facets?.get(option.value) && (
                       <span className="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs">
@@ -3170,10 +3948,10 @@ export function DataTableFacetedFilter<TData, TValue>({
                 <CommandSeparator />
                 <CommandGroup>
                   <CommandItem
-                    onSelect={() => column?.setFilterValue(undefined)}
                     className="justify-center text-center"
+                    onSelect={() => column?.setFilterValue(undefined)}
                   >
-                    Clear filters
+                    {t("data_table.clear_filters")}
                   </CommandItem>
                 </CommandGroup>
               </>
@@ -3190,7 +3968,8 @@ export { DataTableColumnHeader } from "./column-header";
 export { DataTableToolbar } from "./toolbar";
 export { DataTableBulkActions } from "./bulk-actions";
 `],
-  ["addons/admin/apps/web/src/components/data-table/pagination.tsx", `import {
+  ["addons/admin/apps/web/src/components/data-table/pagination.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import {
   ChevronLeftIcon,
   ChevronRightIcon,
   DoubleArrowLeftIcon,
@@ -3217,6 +3996,7 @@ export function DataTablePagination<TData>({ table, className }: DataTablePagina
   const currentPage = table.getState().pagination.pageIndex + 1;
   const totalPages = table.getPageCount();
   const pageNumbers = getPageNumbers(currentPage, totalPages);
+  const { t } = useTranslation();
 
   return (
     <div
@@ -3225,11 +4005,11 @@ export function DataTablePagination<TData>({ table, className }: DataTablePagina
         "@max-2xl/content:flex-col-reverse @max-2xl/content:gap-4",
         className,
       )}
-      style={{ overflowClipMargin: 1 }}
+      style=\\{{ overflowClipMargin: 1 }}
     >
       <div className="flex w-full items-center justify-between">
         <div className="flex w-25 items-center justify-center text-sm font-medium @2xl/content:hidden">
-          Page {currentPage} of {totalPages}
+          {t("data_table.page_of", { current: currentPage, total: totalPages })}
         </div>
         <div className="flex items-center gap-2 @max-2xl/content:flex-row-reverse">
           <Select
@@ -3249,13 +4029,13 @@ export function DataTablePagination<TData>({ table, className }: DataTablePagina
               ))}
             </SelectContent>
           </Select>
-          <p className="hidden text-sm font-medium sm:block">Rows per page</p>
+          <p className="hidden text-sm font-medium sm:block">{t("data_table.rows_per_page")}</p>
         </div>
       </div>
 
       <div className="flex items-center sm:space-x-6 lg:space-x-8">
         <div className="flex w-25 items-center justify-center text-sm font-medium @max-3xl/content:hidden">
-          Page {currentPage} of {totalPages}
+          {t("data_table.page_of", { current: currentPage, total: totalPages })}
         </div>
         <div className="flex items-center space-x-2">
           <Button
@@ -3264,7 +4044,7 @@ export function DataTablePagination<TData>({ table, className }: DataTablePagina
             onClick={() => table.setPageIndex(0)}
             disabled={!table.getCanPreviousPage()}
           >
-            <span className="sr-only">Go to first page</span>
+            <span className="sr-only">{t("data_table.first_page")}</span>
             <DoubleArrowLeftIcon className="h-4 w-4" />
           </Button>
           <Button
@@ -3273,7 +4053,7 @@ export function DataTablePagination<TData>({ table, className }: DataTablePagina
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
-            <span className="sr-only">Go to previous page</span>
+            <span className="sr-only">{t("data_table.previous_page")}</span>
             <ChevronLeftIcon className="h-4 w-4" />
           </Button>
 
@@ -3288,7 +4068,9 @@ export function DataTablePagination<TData>({ table, className }: DataTablePagina
                   className="h-8 min-w-8 px-2"
                   onClick={() => table.setPageIndex((pageNumber as number) - 1)}
                 >
-                  <span className="sr-only">Go to page {pageNumber}</span>
+                  <span className="sr-only">
+                    {t("data_table.go_to_page", { page: pageNumber })}
+                  </span>
                   {pageNumber}
                 </Button>
               )}
@@ -3301,7 +4083,7 @@ export function DataTablePagination<TData>({ table, className }: DataTablePagina
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >
-            <span className="sr-only">Go to next page</span>
+            <span className="sr-only">{t("data_table.next_page")}</span>
             <ChevronRightIcon className="h-4 w-4" />
           </Button>
           <Button
@@ -3310,7 +4092,7 @@ export function DataTablePagination<TData>({ table, className }: DataTablePagina
             onClick={() => table.setPageIndex(table.getPageCount() - 1)}
             disabled={!table.getCanNextPage()}
           >
-            <span className="sr-only">Go to last page</span>
+            <span className="sr-only">{t("data_table.last_page")}</span>
             <DoubleArrowRightIcon className="h-4 w-4" />
           </Button>
         </div>
@@ -3319,7 +4101,8 @@ export function DataTablePagination<TData>({ table, className }: DataTablePagina
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/data-table/toolbar.tsx", `import { Cross2Icon } from "@radix-ui/react-icons";
+  ["addons/admin/apps/web/src/components/data-table/toolbar.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Cross2Icon } from "@radix-ui/react-icons";
 import { type Table } from "@tanstack/react-table";
 
 import { Button } from "@/components/ui/button";
@@ -3345,10 +4128,12 @@ type DataTableToolbarProps<TData> = {
 
 export function DataTableToolbar<TData>({
   table,
-  searchPlaceholder = "Filter...",
+  searchPlaceholder,
   searchKey,
   filters = [],
 }: DataTableToolbarProps<TData>) {
+  const { t } = useTranslation();
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t("data_table.filter");
   const isFiltered = table.getState().columnFilters.length > 0 || table.getState().globalFilter;
 
   return (
@@ -3356,14 +4141,14 @@ export function DataTableToolbar<TData>({
       <div className="flex flex-1 flex-col-reverse items-start gap-y-2 sm:flex-row sm:items-center sm:space-x-2">
         {searchKey ? (
           <Input
-            placeholder={searchPlaceholder}
+            placeholder={resolvedSearchPlaceholder}
             value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
             onChange={(event) => table.getColumn(searchKey)?.setFilterValue(event.target.value)}
             className="h-8 w-37.5 lg:w-62.5"
           />
         ) : (
           <Input
-            placeholder={searchPlaceholder}
+            placeholder={resolvedSearchPlaceholder}
             value={table.getState().globalFilter ?? ""}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
             className="h-8 w-37.5 lg:w-62.5"
@@ -3392,7 +4177,7 @@ export function DataTableToolbar<TData>({
             }}
             className="h-8 px-2 lg:px-3"
           >
-            Reset
+            {t("data_table.reset")}
             <Cross2Icon className="ms-2 h-4 w-4" />
           </Button>
         )}
@@ -3402,7 +4187,8 @@ export function DataTableToolbar<TData>({
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/data-table/view-options.tsx", `import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu";
+  ["addons/admin/apps/web/src/components/data-table/view-options.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu";
 import { MixerHorizontalIcon } from "@radix-ui/react-icons";
 import { type Table } from "@tanstack/react-table";
 
@@ -3420,16 +4206,17 @@ type DataTableViewOptionsProps<TData> = {
 };
 
 export function DataTableViewOptions<TData>({ table }: DataTableViewOptionsProps<TData>) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="ms-auto hidden h-8 lg:flex">
           <MixerHorizontalIcon className="size-4" />
-          View
+          {t("data_table.view")}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-37.5">
-        <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("data_table.toggle_columns")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {table
           .getAllColumns()
@@ -3451,7 +4238,9 @@ export function DataTableViewOptions<TData>({ table }: DataTableViewOptionsProps
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/date-picker.tsx", `import { format } from "date-fns";
+  ["addons/admin/apps/web/src/components/date-picker.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { format } from "date-fns";
+import { enUS, zhCN } from "date-fns/locale";
 import { Calendar as CalendarIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -3464,7 +4253,9 @@ type DatePickerProps = {
   placeholder?: string;
 };
 
-export function DatePicker({ selected, onSelect, placeholder = "Pick a date" }: DatePickerProps) {
+export function DatePicker({ selected, onSelect, placeholder }: DatePickerProps) {
+  const { i18n, t } = useTranslation();
+  const locale = i18n.resolvedLanguage === "zh" ? zhCN : enUS;
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -3473,7 +4264,11 @@ export function DatePicker({ selected, onSelect, placeholder = "Pick a date" }: 
           data-empty={!selected}
           className="w-60 justify-start text-start font-normal data-[empty=true]:text-muted-foreground"
         >
-          {selected ? format(selected, "MMM d, yyyy") : <span>{placeholder}</span>}
+          {selected ? (
+            format(selected, "PP", { locale })
+          ) : (
+            <span>{placeholder ?? t("common.pick_date")}</span>
+          )}
           <CalendarIcon className="ms-auto h-4 w-4 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -3481,6 +4276,7 @@ export function DatePicker({ selected, onSelect, placeholder = "Pick a date" }: 
         <Calendar
           mode="single"
           captionLayout="dropdown"
+          locale={locale}
           selected={selected}
           onSelect={onSelect}
           disabled={(date: Date) => date > new Date() || date < new Date("1900-01-01")}
@@ -3493,6 +4289,7 @@ export function DatePicker({ selected, onSelect, placeholder = "Pick a date" }: 
   ["addons/admin/apps/web/src/components/language-switch.tsx.hbs", `import { supportedLanguages, useTranslation } from "@{{projectName}}/i18n/react";
 import { Check, Languages } from "lucide-react";
 import { useCallback } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -3503,19 +4300,19 @@ import {
 import { cn } from "@/lib/utils";
 
 export function LanguageSwitch() {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
 
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
-          aria-label="Switch language"
+          aria-label={t("language_switch.label")}
           className="scale-95 rounded-full"
           size="icon"
           variant="ghost"
         >
           <Languages className="size-[1.2rem]" />
-          <span className="sr-only">Switch language</span>
+          <span className="sr-only">{t("language_switch.label")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -3553,24 +4350,139 @@ function LanguageItem({
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/layout/app-sidebar.tsx", `import {
+  ["addons/admin/apps/web/src/components/layout/app-sidebar.test.tsx.hbs", `import { i18n } from "@{{projectName}}/i18n/react";
+import type * as ReactRouter from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { userEvent } from "vitest/browser";
+import { render } from "vitest-browser-react";
+
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AccessProvider, type UserAccess } from "@/context/access-context";
+import { LayoutProvider } from "@/context/layout-provider";
+
+import { AppSidebar } from "./app-sidebar";
+
+vi.mock("@/lib/auth-client", () => ({
+	authClient: {
+		useSession: () => ({
+			data: { user: { email: "user@example.com", image: null, name: "User" } },
+		}),
+	},
+}));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+	const actual = await importOriginal<typeof ReactRouter>();
+	return {
+		...actual,
+		Link: ({ children, to }: { children?: ReactNode; to: string }) => (
+			<a href={to}>{children}</a>
+		),
+		useNavigate: () => vi.fn(),
+		useRouter: () => ({ history: { go: vi.fn() }, isServer: false }),
+		useLocation: () => "/",
+	};
+});
+
+async function renderSidebar(permissions: UserAccess["permissions"]) {
+	return render(
+		<AccessProvider access=\\{{ isSuperAdmin: false, permissions, roles: [] }}>
+			<LayoutProvider>
+				<SidebarProvider>
+					<AppSidebar />
+				</SidebarProvider>
+			</LayoutProvider>
+		</AccessProvider>,
+	);
+}
+
+describe("AppSidebar 权限导航", () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		await i18n.changeLanguage("en");
+	});
+
+	it("只显示有效权限允许的管理入口，并保留个人设置", async () => {
+		const screen = await renderSidebar(["user:read"]);
+		await userEvent.click(
+			screen.getByRole("button", { name: /System Management/ }),
+		);
+		await userEvent.click(screen.getByRole("button", { name: /^Settings/ }));
+
+		await expect
+			.element(screen.getByText("Users", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Roles", { exact: true }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Audit Log", { exact: true }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Dashboard", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Profile", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Account Security", { exact: true }))
+			.toBeInTheDocument();
+	});
+
+{{#if (includes addons "organization")}}
+	it("没有 RBAC 管理权限时仍保留组织入口", async () => {
+		const screen = await renderSidebar([]);
+		await expect
+			.element(screen.getByText("Administration", { exact: true }))
+			.toBeInTheDocument();
+		await userEvent.click(
+			screen.getByRole("button", { name: /System Management/ }),
+		);
+		await expect
+			.element(screen.getByText("Organizations", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Users", { exact: true }))
+			.not.toBeInTheDocument();
+	});
+{{else}}
+	it("没有管理权限时隐藏空分组", async () => {
+		const screen = await renderSidebar([]);
+		await expect
+			.element(screen.getByText("Dashboard", { exact: true }))
+			.toBeInTheDocument();
+
+		await expect
+			.element(screen.getByText("Administration", { exact: true }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("Account", { exact: true }))
+			.toBeInTheDocument();
+	});
+{{/if}}
+});
+`],
+  ["addons/admin/apps/web/src/components/layout/app-sidebar.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { AppTitle } from "@/components/layout/app-title";
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { AppTitle } from "@/components/layout/app-title";
 import { useLayout } from "@/context/layout-provider";
 import { authClient } from "@/lib/auth-client";
 
-import { sidebarData } from "./data/sidebar-data";
+import { useSidebarData } from "./data/sidebar-data";
 import { NavGroup } from "./nav-group";
 import { NavUser } from "./nav-user";
 
 export function AppSidebar() {
   const { collapsible, variant } = useLayout();
   const { data: session } = authClient.useSession();
+  const sidebarData = useSidebarData();
+  const { t } = useTranslation();
   return (
     <Sidebar collapsible={collapsible} variant={variant}>
       <SidebarHeader>
@@ -3583,10 +4495,10 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter>
         <NavUser
-          user={{
+          user=\\{{
             avatar: session?.user.image ?? "",
             email: session?.user.email ?? "",
-            name: session?.user.name ?? "User",
+            name: session?.user.name ?? t("common.user"),
           }}
         />
       </SidebarFooter>
@@ -3595,7 +4507,8 @@ export function AppSidebar() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/layout/app-title.tsx", `import { Link } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/components/layout/app-title.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Link } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
 
 import {
@@ -3610,6 +4523,7 @@ import { Button } from "../ui/button";
 
 export function AppTitle() {
   const { setOpenMobile } = useSidebar();
+  const { t } = useTranslation();
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -3624,8 +4538,8 @@ export function AppTitle() {
               onClick={() => setOpenMobile(false)}
               className="grid flex-1 text-start text-sm leading-tight"
             >
-              <span className="truncate font-bold">Chacelow Admin</span>
-              <span className="truncate text-xs">Admin workspace</span>
+              <span className="truncate font-bold">{{projectName}}</span>
+              <span className="truncate text-xs">{t("dashboard.workspace")}</span>
             </Link>
             <ToggleSidebar />
           </div>
@@ -3637,6 +4551,7 @@ export function AppTitle() {
 
 function ToggleSidebar({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar();
+  const { t } = useTranslation();
 
   return (
     <Button
@@ -3653,16 +4568,19 @@ function ToggleSidebar({ className, onClick, ...props }: React.ComponentProps<ty
     >
       <X className="md:hidden" />
       <Menu className="max-md:hidden" />
-      <span className="sr-only">Toggle Sidebar</span>
+      <span className="sr-only">{t("navigation.toggle_sidebar")}</span>
     </Button>
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/layout/authenticated-layout.tsx", `import { Outlet } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/components/layout/authenticated-layout.tsx.hbs", `import { Outlet } from "@tanstack/react-router";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { SkipToMain } from "@/components/skip-to-main";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+{{#if (includes addons "rbac")}}
+import { AuthenticatedAccessProvider } from "@/context/access-context";
+{{/if}}
 import { LayoutProvider } from "@/context/layout-provider";
 import { SearchProvider } from "@/context/search-provider";
 import { getCookie } from "@/lib/cookies";
@@ -3674,7 +4592,7 @@ type AuthenticatedLayoutProps = {
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie("sidebar_state") !== "false";
-  return (
+  const content = (
     <SearchProvider>
       <LayoutProvider>
         <SidebarProvider defaultOpen={defaultOpen}>
@@ -3682,15 +4600,13 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
           <AppSidebar />
           <SidebarInset
             className={cn(
-              // Set content container, so we can use container queries
+              // 设置内容容器，供 container queries 使用。
               "@container/content",
 
-              // If layout is fixed, set the height
-              // to 100svh to prevent overflow
+              // 固定布局使用视口高度，避免页面溢出。
               "has-data-[layout=fixed]:h-svh",
 
-              // If layout is fixed and sidebar is inset,
-              // set the height to 100svh - spacing (total margins) to prevent overflow
+              // inset 固定布局需要扣除外围间距。
               "peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-(var(--spacing)*4))]",
             )}
           >
@@ -3700,109 +4616,149 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
       </LayoutProvider>
     </SearchProvider>
   );
+
+  {{#if (includes addons "rbac")}}
+  return <AuthenticatedAccessProvider>{content}</AuthenticatedAccessProvider>;
+  {{else}}
+  return content;
+  {{/if}}
 }
 `],
-  ["addons/admin/apps/web/src/components/layout/data/sidebar-data.ts.hbs", `import {
+  ["addons/admin/apps/web/src/components/layout/data/sidebar-data.ts.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import {
   Activity,
   Command,
   LayoutDashboard,
   Settings,
+  ShieldCheck,
   UserCog,
   {{#if (includes addons "rbac")}}
   ScrollText,
-  ShieldCheck,
   Users,
   {{/if}}
   {{#if (includes addons "organization")}}
   Building2,
   {{/if}}
 } from "lucide-react";
+import { useMemo } from "react";
+
+{{#if (includes addons "rbac")}}
+import { useAccess } from "@/context/access-context";
+{{/if}}
 import type { SidebarData } from "../types";
 
-export const sidebarData: SidebarData = {
-  navGroups: [
-    {
-      items: [
-        {
-          icon: LayoutDashboard,
-          title: "Dashboard",
-          url: "/",
-        },
-      ],
-      title: "Workspace",
-    },
-    {{#if (includes addons "rbac")}}
-    {
-      items: [
-        {
-          icon: ShieldCheck,
-          items: [
+export function useSidebarData(): SidebarData {
+  const { t } = useTranslation();
+  {{#if (includes addons "rbac")}}
+  const { can } = useAccess();
+  {{/if}}
+
+  return useMemo(() => {
+    const administrationItems = [
+      {{#if (includes addons "rbac")}}
+      ...(can("user:read")
+        ? [
             {
               icon: Users,
-              title: "Users",
-              url: "/users",
+              title: t("navigation.users"),
+              url: "/users" as const,
             },
-            {{#if (includes addons "organization")}}
-            {
-              icon: Building2,
-              title: "Organizations",
-              url: "/organizations",
-            },
-            {{/if}}
+          ]
+        : []),
+      ...(can("role:read")
+        ? [
             {
               icon: UserCog,
-              title: "Roles & permissions",
-              url: "/roles",
+              title: t("navigation.roles"),
+              url: "/roles" as const,
             },
+          ]
+        : []),
+      ...(can("audit:read")
+        ? [
             {
               icon: ScrollText,
-              title: "Audit log",
-              url: "/audit",
+              title: t("navigation.audit"),
+              url: "/audit" as const,
             },
-          ],
-          title: "System management",
-        },
-      ],
-      title: "Administration",
-    },
-    {{/if}}
-    {
-      items: [
+          ]
+        : []),
+      {{/if}}
+      {{#if (includes addons "organization")}}
+      {
+        icon: Building2,
+        title: t("navigation.organizations"),
+        url: "/organizations" as const,
+      },
+      {{/if}}
+    ];
+
+    return {
+      navGroups: [
         {
-          icon: Settings,
           items: [
             {
-              icon: UserCog,
-              title: "Profile",
-              url: "/settings",
-            },
-            {
-              icon: Activity,
-              title: "Account security",
-              url: "/settings/account",
+              icon: LayoutDashboard,
+              title: t("navigation.dashboard"),
+              url: "/" as const,
             },
           ],
-          title: "Settings",
+          title: t("navigation.workspace"),
+        },
+        ...(administrationItems.length > 0
+          ? [
+              {
+                items: [
+                  {
+                    icon: ShieldCheck,
+                    items: administrationItems,
+                    title: t("navigation.system_management"),
+                  },
+                ],
+                title: t("navigation.administration"),
+              },
+            ]
+          : []),
+        {
+          items: [
+            {
+              icon: Settings,
+              items: [
+                {
+                  icon: UserCog,
+                  title: t("navigation.profile"),
+                  url: "/settings" as const,
+                },
+                {
+                  icon: Activity,
+                  title: t("navigation.account_security"),
+                  url: "/settings/account" as const,
+                },
+              ],
+              title: t("navigation.settings"),
+            },
+          ],
+          title: t("navigation.account"),
         },
       ],
-      title: "Account",
-    },
-  ],
-  teams: [
-    {
-      logo: Command,
-      name: "{{projectName}}",
-      plan: "Vite + ShadcnUI",
-    },
-  ],
-  user: {
-    avatar: "",
-    email: "",
-    name: "",
-  },
-};
+      teams: [
+        {
+          logo: Command,
+          name: "{{projectName}}",
+          plan: "Vite + ShadcnUI",
+        },
+      ],
+      user: {
+        avatar: "",
+        email: "",
+        name: "",
+      },
+    };
+  }, [{{#if (includes addons "rbac")}}can, {{/if}}t]);
+}
 `],
   ["addons/admin/apps/web/src/components/layout/header.tsx", `import { useEffect, useState } from "react";
+import { LanguageSwitch } from "@/components/language-switch";
 
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -3849,6 +4805,7 @@ export function Header({ className, fixed, children, ...props }: HeaderProps) {
         <SidebarTrigger variant="outline" className="max-md:scale-125" />
         <Separator orientation="vertical" className="h-6" />
         {children}
+        <LanguageSwitch />
       </div>
     </header>
   );
@@ -4033,7 +4990,8 @@ function checkIsActive(href: string, item: NavItem, mainNav = false) {
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/layout/nav-user.tsx", `import { Link } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/components/layout/nav-user.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Link } from "@tanstack/react-router";
 import { BadgeCheck, ChevronsUpDown, LogOut } from "lucide-react";
 
 import { SignOutDialog } from "@/components/sign-out-dialog";
@@ -4066,6 +5024,7 @@ type NavUserProps = {
 export function NavUser({ user }: NavUserProps) {
   const { isMobile } = useSidebar();
   const [open, setOpen] = useDialogState();
+  const { t } = useTranslation();
 
   return (
     <>
@@ -4111,14 +5070,14 @@ export function NavUser({ user }: NavUserProps) {
                 <DropdownMenuItem asChild>
                   <Link to="/settings/account">
                     <BadgeCheck />
-                    Account
+                    {t("navigation.account")}
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => setOpen(true)}>
                 <LogOut />
-                Sign out
+                {t("profile_dropdown.sign_out")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -4130,7 +5089,8 @@ export function NavUser({ user }: NavUserProps) {
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/layout/team-switcher.tsx", `import { ChevronsUpDown, Plus } from "lucide-react";
+  ["addons/admin/apps/web/src/components/layout/team-switcher.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { ChevronsUpDown, Plus } from "lucide-react";
 import * as React from "react";
 
 import {
@@ -4160,6 +5120,7 @@ type TeamSwitcherProps = {
 export function TeamSwitcher({ teams }: TeamSwitcherProps) {
   const { isMobile } = useSidebar();
   const [activeTeam, setActiveTeam] = React.useState(teams[0]);
+  const { t } = useTranslation();
 
   return (
     <SidebarMenu>
@@ -4186,7 +5147,9 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
             side={isMobile ? "bottom" : "right"}
             sideOffset={4}
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Teams</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              {t("team_switcher.teams")}
+            </DropdownMenuLabel>
             {teams.map((team, index) => (
               <DropdownMenuItem
                 key={team.name}
@@ -4205,7 +5168,9 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
               <div className="flex size-6 items-center justify-center rounded-md border bg-background">
                 <Plus className="size-4" />
               </div>
-              <div className="font-medium text-muted-foreground">Add team</div>
+              <div className="font-medium text-muted-foreground">
+                {t("team_switcher.add_team")}
+              </div>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -4214,7 +5179,8 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/layout/top-nav.tsx", `import { Link } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/components/layout/top-nav.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Link } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -4236,13 +5202,14 @@ type TopNavProps = React.HTMLAttributes<HTMLElement> & {
 };
 
 export function TopNav({ className, links, ...props }: TopNavProps) {
+  const { t } = useTranslation();
   return (
     <>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button size="icon" variant="outline" className={cn("md:size-7 lg:hidden", className)}>
             <Menu />
-            <span className="sr-only">Toggle navigation menu</span>
+            <span className="sr-only">{t("navigation.toggle_navigation")}</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="start">
@@ -4324,7 +5291,8 @@ type SidebarData = {
 
 export type { SidebarData, NavGroup, NavItem, NavCollapsible, NavLink };
 `],
-  ["addons/admin/apps/web/src/components/learn-more.tsx", `import { type Root, type Content, type Trigger } from "@radix-ui/react-popover";
+  ["addons/admin/apps/web/src/components/learn-more.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { type Root, type Content, type Trigger } from "@radix-ui/react-popover";
 import { CircleQuestionMark } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -4337,6 +5305,7 @@ type LearnMoreProps = React.ComponentProps<typeof Root> & {
 };
 
 export function LearnMore({ children, contentProps, triggerProps, ...props }: LearnMoreProps) {
+  const { t } = useTranslation();
   return (
     <Popover {...props}>
       <PopoverTrigger
@@ -4345,7 +5314,7 @@ export function LearnMore({ children, contentProps, triggerProps, ...props }: Le
         className={cn("size-5 rounded-full", triggerProps?.className)}
       >
         <Button variant="outline" size="icon">
-          <span className="sr-only">Learn more</span>
+          <span className="sr-only">{t("errors.learn_more")}</span>
           <CircleQuestionMark className="size-4 [&>circle]:hidden" />
         </Button>
       </PopoverTrigger>
@@ -4433,6 +5402,38 @@ const checkOverflow = (textContainer: HTMLDivElement | null) => {
   }
   return false;
 };
+`],
+  ["addons/admin/apps/web/src/components/mode-toggle.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Button } from "@{{projectName}}/ui/components/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@{{projectName}}/ui/components/dropdown-menu";
+import { Moon, Sun } from "lucide-react";
+
+import { useTheme } from "@/components/theme-provider";
+
+export function ModeToggle() {
+  const { setTheme } = useTheme();
+  const { t } = useTranslation();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="outline" size="icon" />}>
+        <Sun className="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
+        <Moon className="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
+        <span className="sr-only">{t("theme.toggle_theme")}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setTheme("light")}>{t("theme.light")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("dark")}>{t("theme.dark")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("system")}>{t("theme.system")}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 `],
   ["addons/admin/apps/web/src/components/navigation-progress.tsx", `import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
@@ -4543,7 +5544,8 @@ describe("PasswordInput", () => {
   });
 });
 `],
-  ["addons/admin/apps/web/src/components/password-input.tsx", `import { Eye, EyeOff } from "lucide-react";
+  ["addons/admin/apps/web/src/components/password-input.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Eye, EyeOff } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -4556,6 +5558,7 @@ type PasswordInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "typ
 
 export function PasswordInput({ className, disabled, ref, ...props }: PasswordInputProps) {
   const [showPassword, setShowPassword] = React.useState(false);
+  const { t } = useTranslation();
 
   return (
     <div className={cn("relative rounded-md", className)}>
@@ -4575,13 +5578,87 @@ export function PasswordInput({ className, disabled, ref, ...props }: PasswordIn
         onClick={() => setShowPassword((prev) => !prev)}
       >
         {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
-        <span className="sr-only">{showPassword ? "Hide password" : "Show password"}</span>
+        <span className="sr-only">
+          {showPassword ? t("common.hide_password") : t("common.show_password")}
+        </span>
       </Button>
     </div>
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/profile-dropdown.tsx", `import { Link } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/components/permission-guard.test.tsx", `import type * as ReactRouter from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+
+import { PermissionGuard } from "@/components/permission-guard";
+import { AccessProvider, type UserAccess } from "@/context/access-context";
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+	const actual = await importOriginal<typeof ReactRouter>();
+	return {
+		...actual,
+		Link: ({ children, to }: { children?: ReactNode; to: string }) => (
+			<a href={to}>{children}</a>
+		),
+		useNavigate: () => vi.fn(),
+		useRouter: () => ({ history: { go: vi.fn() } }),
+	};
+});
+
+async function renderGuard(permissions: UserAccess["permissions"]) {
+	return render(
+		<AccessProvider access={{ isSuperAdmin: false, permissions, roles: [] }}>
+			<PermissionGuard permission="user:read">
+				<div>User administration</div>
+			</PermissionGuard>
+		</AccessProvider>,
+	);
+}
+
+describe("PermissionGuard", () => {
+	it("拒绝缺少权限的直接路由访问", async () => {
+		const screen = await renderGuard([]);
+
+		await expect
+			.element(screen.getByText("403", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("User administration"))
+			.not.toBeInTheDocument();
+	});
+
+	it("允许具有所需权限的路由内容", async () => {
+		const screen = await renderGuard(["user:read"]);
+
+		await expect
+			.element(screen.getByText("User administration"))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByText("403", { exact: true }))
+			.not.toBeInTheDocument();
+	});
+});
+`],
+  ["addons/admin/apps/web/src/components/permission-guard.tsx.hbs", `import type { PermissionKey } from "@{{projectName}}/api/permissions";
+import type { ReactNode } from "react";
+
+import { useAccess } from "@/context/access-context";
+import { ForbiddenError } from "@/features/errors/forbidden";
+
+export function PermissionGuard({
+  children,
+  permission,
+}: {
+  children: ReactNode;
+  permission: PermissionKey;
+}) {
+  const { can } = useAccess();
+  return can(permission) ? children : <ForbiddenError />;
+}
+`],
+  ["addons/admin/apps/web/src/components/profile-dropdown.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Link } from "@tanstack/react-router";
 import { useCallback } from "react";
 
 import { SignOutDialog } from "@/components/sign-out-dialog";
@@ -4603,6 +5680,7 @@ import { authClient } from "@/lib/auth-client";
 export function ProfileDropdown() {
   const [open, setOpen] = useDialogState();
   const { data: session } = authClient.useSession();
+  const { t } = useTranslation();
   const openSignOut = useCallback(() => setOpen(true), [setOpen]);
 
   return (
@@ -4612,7 +5690,7 @@ export function ProfileDropdown() {
           <Button className="relative h-8 w-8 rounded-full" variant="ghost">
             <Avatar className="h-8 w-8">
               <AvatarImage
-                alt={session?.user.name ?? "User"}
+                alt={session?.user.name ?? t("common.user")}
                 src={session?.user.image ?? undefined}
               />
               <AvatarFallback>
@@ -4624,7 +5702,9 @@ export function ProfileDropdown() {
         <DropdownMenuContent align="end" className="w-56" forceMount>
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col gap-1.5">
-              <p className="font-medium text-sm leading-none">{session?.user.name ?? "User"}</p>
+              <p className="font-medium text-sm leading-none">
+                {session?.user.name ?? t("common.user")}
+              </p>
               <p className="text-muted-foreground text-xs leading-none">
                 {session?.user.email ?? ""}
               </p>
@@ -4634,20 +5714,20 @@ export function ProfileDropdown() {
           <DropdownMenuGroup>
             <DropdownMenuItem asChild>
               <Link to="/settings">
-                Profile
+                {t("profile_dropdown.profile")}
                 <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link to="/settings">
-                Settings
+                {t("profile_dropdown.settings")}
                 <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
               </Link>
             </DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={openSignOut} variant="destructive">
-            Sign out
+            {t("profile_dropdown.sign_out")}
             <DropdownMenuShortcut className="text-current">⇧⌘Q</DropdownMenuShortcut>
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -4658,7 +5738,8 @@ export function ProfileDropdown() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/search.tsx", `import { SearchIcon } from "lucide-react";
+  ["addons/admin/apps/web/src/components/search.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { SearchIcon } from "lucide-react";
 
 import { useSearch } from "@/context/search-provider";
 import { cn } from "@/lib/utils";
@@ -4667,10 +5748,11 @@ import { Button } from "./ui/button";
 
 export function Search({
   className = "",
-  placeholder = "Search",
+  placeholder,
   ...props
 }: React.ComponentProps<"button"> & { placeholder?: string }) {
   const { setOpen } = useSearch();
+  const { t } = useTranslation();
   return (
     <Button
       {...props}
@@ -4687,7 +5769,7 @@ export function Search({
         className="absolute inset-s-1.5 top-1/2 -translate-y-1/2"
         size={16}
       />
-      <span className="ms-4">{placeholder}</span>
+      <span className="ms-4">{placeholder ?? t("common.search")}</span>
       <kbd className="pointer-events-none absolute inset-e-[0.3rem] top-[0.3rem] hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 select-none group-hover:bg-accent sm:flex">
         <span className="text-xs">⌘</span>K
       </kbd>
@@ -4695,7 +5777,8 @@ export function Search({
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/select-dropdown.tsx", `import { Loader } from "lucide-react";
+  ["addons/admin/apps/web/src/components/select-dropdown.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Loader } from "lucide-react";
 
 import { FormControl } from "@/components/ui/form";
 import {
@@ -4728,6 +5811,7 @@ export function SelectDropdown({
   className = "",
   isControlled = false,
 }: SelectDropdownProps) {
+  const { t } = useTranslation();
   const defaultState = isControlled
     ? { value: defaultValue, onValueChange }
     : { defaultValue, onValueChange };
@@ -4735,7 +5819,7 @@ export function SelectDropdown({
     <Select {...defaultState}>
       <FormControl>
         <SelectTrigger disabled={disabled} className={cn(className)}>
-          <SelectValue placeholder={placeholder ?? "Select"} />
+          <SelectValue placeholder={placeholder ?? t("common.select")} />
         </SelectTrigger>
       </FormControl>
       <SelectContent>
@@ -4744,7 +5828,7 @@ export function SelectDropdown({
             <div className="flex items-center justify-center gap-2">
               <Loader className="h-5 w-5 animate-spin" />
               {"  "}
-              Loading...
+              {t("common.loading")}
             </div>
           </SelectItem>
         ) : (
@@ -4765,22 +5849,22 @@ import { userEvent } from "vitest/browser";
 
 import { SignOutDialog } from "./sign-out-dialog";
 
-const navigate = vi.fn();
-const reset = vi.fn();
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  signOut: vi.fn(async () => undefined),
+}));
 
 const MOCK_HREF = "https://app.test/dashboard?tab=1";
 
-vi.mock("@/stores/auth-store", () => ({
-  useAuthStore: () => ({
-    auth: { reset },
-  }),
+vi.mock("@/lib/auth-client", () => ({
+  authClient: { signOut: mocks.signOut },
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-router")>();
   return {
     ...actual,
-    useNavigate: () => navigate,
+    useNavigate: () => mocks.navigate,
     useLocation: () => ({ href: MOCK_HREF }),
   };
 });
@@ -4790,30 +5874,31 @@ describe("SignOutDialog", () => {
     vi.clearAllMocks();
   });
 
-  it("calls auth.reset and navigates to sign-in with current location as redirect", async () => {
+  it("退出认证会话后携带当前地址跳转到登录页", async () => {
     const { getByRole } = await render(<SignOutDialog open onOpenChange={vi.fn()} />);
 
     await userEvent.click(getByRole("button", { name: /^Sign out$/i }));
 
-    expect(reset).toHaveBeenCalledOnce();
-    expect(navigate).toHaveBeenCalledWith({
+    expect(mocks.signOut).toHaveBeenCalledOnce();
+    expect(mocks.navigate).toHaveBeenCalledWith({
       to: "/sign-in",
       search: { redirect: MOCK_HREF },
       replace: true,
     });
   });
 
-  it("does not call reset or navigate when Cancel is clicked", async () => {
+  it("取消退出时不清除会话也不跳转", async () => {
     const { getByRole } = await render(<SignOutDialog open onOpenChange={vi.fn()} />);
 
     await userEvent.click(getByRole("button", { name: /^Cancel$/i }));
 
-    expect(reset).not.toHaveBeenCalled();
-    expect(navigate).not.toHaveBeenCalled();
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 });
 `],
-  ["addons/admin/apps/web/src/components/sign-out-dialog.tsx", `import { useLocation, useNavigate } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/components/sign-out-dialog.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useCallback } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -4827,6 +5912,7 @@ interface SignOutDialogProps {
 export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const handleSignOut = useCallback(async () => {
     await authClient.signOut();
     const currentPath = location.href;
@@ -4840,29 +5926,33 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
   return (
     <ConfirmDialog
       className="sm:max-w-sm"
-      confirmText="Sign out"
-      desc="Are you sure you want to sign out? You will need to sign in again to access your account."
+      confirmText={t("sign_out.confirm")}
+      desc={t("sign_out.desc")}
       destructive
       handleConfirm={handleSignOut}
       onOpenChange={onOpenChange}
       open={open}
-      title="Sign out"
+      title={t("sign_out.title")}
     />
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/skip-to-main.tsx", `export function SkipToMain() {
+  ["addons/admin/apps/web/src/components/skip-to-main.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+
+export function SkipToMain() {
+  const { t } = useTranslation();
   return (
     <a
       className={\`fixed inset-s-44 z-999 -translate-y-52 bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground opacity-95 shadow-sm transition hover:bg-primary/90 focus:translate-y-3 focus:transform focus-visible:ring-1 focus-visible:ring-ring\`}
       href="#content"
     >
-      Skip to Main
+      {t("common.skip_to_main")}
     </a>
   );
 }
 `],
-  ["addons/admin/apps/web/src/components/theme-switch.tsx", `import { Check, Moon, Sun } from "lucide-react";
+  ["addons/admin/apps/web/src/components/theme-switch.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Check, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -4877,6 +5967,7 @@ import { cn } from "@/lib/utils";
 
 export function ThemeSwitch() {
   const { theme, setTheme } = useTheme();
+  const { t } = useTranslation();
   const selectLight = useCallback(() => setTheme("light"), [setTheme]);
   const selectDark = useCallback(() => setTheme("dark"), [setTheme]);
   const selectSystem = useCallback(() => setTheme("system"), [setTheme]);
@@ -4897,19 +5988,19 @@ export function ThemeSwitch() {
         <Button className="scale-95 rounded-full" size="icon" variant="ghost">
           <Sun className="size-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute size-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          <span className="sr-only">Toggle theme</span>
+          <span className="sr-only">{t("theme.toggle_theme")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={selectLight}>
-          Light <Check className={cn("ms-auto", theme !== "light" && "hidden")} size={14} />
+          {t("theme.light")} <Check className={cn("ms-auto", theme !== "light" && "hidden")} size={14} />
         </DropdownMenuItem>
         <DropdownMenuItem onClick={selectDark}>
-          Dark
+          {t("theme.dark")}
           <Check className={cn("ms-auto", theme !== "dark" && "hidden")} size={14} />
         </DropdownMenuItem>
         <DropdownMenuItem onClick={selectSystem}>
-          System
+          {t("theme.system")}
           <Check className={cn("ms-auto", theme !== "system" && "hidden")} size={14} />
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -5709,27 +6800,36 @@ export {
   CommandSeparator,
 };
 `],
-  ["addons/admin/apps/web/src/components/ui/dialog.tsx", `"use client";
+  ["addons/admin/apps/web/src/components/ui/dialog.tsx.hbs", `"use client";
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { useTranslation } from "@{{projectName}}/i18n/react";
 import { XIcon } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+function Dialog({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
 }
 
-function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
+function DialogTrigger({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
 }
 
-function DialogPortal({ ...props }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
+function DialogPortal({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Portal>) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
 }
 
-function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.Close>) {
+function DialogClose({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Close>) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
@@ -5739,11 +6839,11 @@ function DialogOverlay({
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
   return (
     <DialogPrimitive.Overlay
-      data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
-        className,
+        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=open]:animate-in",
+        className
       )}
+      data-slot="dialog-overlay"
       {...props}
     />
   );
@@ -5757,25 +6857,26 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
-        data-slot="dialog-content"
         className={cn(
-          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
-          className,
+          "data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=open]:animate-in sm:max-w-lg",
+          className
         )}
+        data-slot="dialog-content"
         {...props}
       >
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
+            className="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0"
             data-slot="dialog-close"
-            className="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{t("common.close")}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>
@@ -5786,8 +6887,8 @@ function DialogContent({
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="dialog-header"
       className={cn("flex flex-col gap-2 text-center sm:text-start", className)}
+      data-slot="dialog-header"
       {...props}
     />
   );
@@ -5796,18 +6897,24 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
+      className={cn(
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        className
+      )}
       data-slot="dialog-footer"
-      className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
       {...props}
     />
   );
 }
 
-function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
+function DialogTitle({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
     <DialogPrimitive.Title
+      className={cn("font-semibold text-lg leading-none", className)}
       data-slot="dialog-title"
-      className={cn("text-lg leading-none font-semibold", className)}
       {...props}
     />
   );
@@ -5819,8 +6926,8 @@ function DialogDescription({
 }: React.ComponentProps<typeof DialogPrimitive.Description>) {
   return (
     <DialogPrimitive.Description
+      className={cn("text-muted-foreground text-sm", className)}
       data-slot="dialog-description"
-      className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
   );
@@ -6669,9 +7776,10 @@ function Separator({
 
 export { Separator };
 `],
-  ["addons/admin/apps/web/src/components/ui/sheet.tsx", `import * as SheetPrimitive from "@radix-ui/react-dialog";
+  ["addons/admin/apps/web/src/components/ui/sheet.tsx.hbs", `import * as SheetPrimitive from "@radix-ui/react-dialog";
+import { useTranslation } from "@{{projectName}}/i18n/react";
 import { XIcon } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -6679,15 +7787,21 @@ function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />;
 }
 
-function SheetTrigger({ ...props }: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
+function SheetTrigger({
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
   return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />;
 }
 
-function SheetClose({ ...props }: React.ComponentProps<typeof SheetPrimitive.Close>) {
+function SheetClose({
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Close>) {
   return <SheetPrimitive.Close data-slot="sheet-close" {...props} />;
 }
 
-function SheetPortal({ ...props }: React.ComponentProps<typeof SheetPrimitive.Portal>) {
+function SheetPortal({
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Portal>) {
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
 }
 
@@ -6697,11 +7811,11 @@ function SheetOverlay({
 }: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
   return (
     <SheetPrimitive.Overlay
-      data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
-        className,
+        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=open]:animate-in",
+        className
       )}
+      data-slot="sheet-overlay"
       {...props}
     />
   );
@@ -6715,29 +7829,30 @@ function SheetContent({
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
 }) {
+  const { t } = useTranslation();
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
-        data-slot="sheet-content"
         className={cn(
-          "fixed z-50 flex flex-col gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
+          "fixed z-50 flex flex-col gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:duration-300 data-[state=open]:duration-500",
           side === "right" &&
-            "inset-y-0 inset-e-0 h-full w-3/4 border-s data-[state=closed]:slide-out-to-end data-[state=open]:slide-in-from-end sm:max-w-sm",
+            "data-[state=closed]:slide-out-to-end data-[state=open]:slide-in-from-end inset-e-0 inset-y-0 h-full w-3/4 border-s sm:max-w-sm",
           side === "left" &&
-            "inset-y-0 inset-s-0 h-full w-3/4 border-e data-[state=closed]:slide-out-to-start data-[state=open]:slide-in-from-start sm:max-w-sm",
+            "data-[state=closed]:slide-out-to-start data-[state=open]:slide-in-from-start inset-s-0 inset-y-0 h-full w-3/4 border-e sm:max-w-sm",
           side === "top" &&
-            "inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+            "data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top inset-x-0 top-0 h-auto border-b",
           side === "bottom" &&
-            "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-          className,
+            "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom inset-x-0 bottom-0 h-auto border-t",
+          className
         )}
+        data-slot="sheet-content"
         {...props}
       >
         {children}
-        <SheetPrimitive.Close className="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+        <SheetPrimitive.Close className="absolute inset-e-4 top-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
           <XIcon className="size-4" />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{t("common.close")}</span>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPortal>
@@ -6747,8 +7862,8 @@ function SheetContent({
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="sheet-header"
       className={cn("flex flex-col gap-1.5 p-4", className)}
+      data-slot="sheet-header"
       {...props}
     />
   );
@@ -6757,18 +7872,21 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
 function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="sheet-footer"
       className={cn("mt-auto flex flex-col gap-2 p-4", className)}
+      data-slot="sheet-footer"
       {...props}
     />
   );
 }
 
-function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Title>) {
+function SheetTitle({
+  className,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Title>) {
   return (
     <SheetPrimitive.Title
-      data-slot="sheet-title"
       className={cn("font-semibold text-foreground", className)}
+      data-slot="sheet-title"
       {...props}
     />
   );
@@ -6780,8 +7898,8 @@ function SheetDescription({
 }: React.ComponentProps<typeof SheetPrimitive.Description>) {
   return (
     <SheetPrimitive.Description
+      className={cn("text-muted-foreground text-sm", className)}
       data-slot="sheet-description"
-      className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
   );
@@ -6789,17 +7907,18 @@ function SheetDescription({
 
 export {
   Sheet,
-  SheetTrigger,
   SheetClose,
   SheetContent,
-  SheetHeader,
-  SheetFooter,
-  SheetTitle,
   SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
 };
 `],
-  ["addons/admin/apps/web/src/components/ui/sidebar.tsx", `import { Slot } from "@radix-ui/react-slot";
-import { VariantProps, cva } from "class-variance-authority";
+  ["addons/admin/apps/web/src/components/ui/sidebar.tsx.hbs", `import { Slot } from "@radix-ui/react-slot";
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { cva, type VariantProps } from "class-variance-authority";
 import { PanelLeftIcon } from "lucide-react";
 import * as React from "react";
 
@@ -6814,7 +7933,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -6878,18 +8002,23 @@ function SidebarProvider({
       // This sets the cookie to keep the sidebar state.
       document.cookie = \`\${SIDEBAR_COOKIE_NAME}=\${openState}; path=/; max-age=\${SIDEBAR_COOKIE_MAX_AGE}\`;
     },
-    [setOpenProp, open],
+    [setOpenProp, open]
   );
 
   // Helper to toggle the sidebar.
-  const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
-  }, [isMobile, setOpen, setOpenMobile]);
+  const toggleSidebar = React.useCallback(
+    () =>
+      isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open),
+    [isMobile, setOpen, setOpenMobile]
+  );
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
+      if (
+        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
+        (event.metaKey || event.ctrlKey)
+      ) {
         event.preventDefault();
         toggleSidebar();
       }
@@ -6905,21 +8034,25 @@ function SidebarProvider({
 
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
-      state,
-      open,
-      setOpen,
       isMobile,
+      open,
       openMobile,
+      setOpen,
       setOpenMobile,
+      state,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
   );
 
   return (
     <SidebarContext.Provider value={contextValue}>
       <TooltipProvider delayDuration={0}>
         <div
+          className={cn(
+            "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+            className
+          )}
           data-slot="sidebar-wrapper"
           style={
             {
@@ -6928,10 +8061,6 @@ function SidebarProvider({
               ...style,
             } as React.CSSProperties
           }
-          className={cn(
-            "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
-            className,
-          )}
           {...props}
         >
           {children}
@@ -6954,15 +8083,16 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none";
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const { t } = useTranslation();
 
   if (collapsible === "none") {
     return (
       <div
-        data-slot="sidebar"
         className={cn(
           "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
-          className,
+          className
         )}
+        data-slot="sidebar"
         {...props}
       >
         {children}
@@ -6972,22 +8102,24 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+      <Sheet onOpenChange={setOpenMobile} open={openMobile} {...props}>
         <SheetContent
+          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          data-mobile="true"
           data-sidebar="sidebar"
           data-slot="sidebar"
-          data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          side={side}
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
           }
-          side={side}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+            <SheetTitle>{t("navigation.sidebar")}</SheetTitle>
+            <SheetDescription>
+              {t("navigation.mobile_sidebar_desc")}
+            </SheetDescription>
           </SheetHeader>
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
@@ -6998,26 +8130,25 @@ function Sidebar({
   return (
     <div
       className="group peer hidden text-sidebar-foreground md:block"
-      data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
-      data-variant={variant}
       data-side={side}
       data-slot="sidebar"
+      data-state={state}
+      data-variant={variant}
     >
       {/* This is what handles the sidebar gap on desktop */}
       <div
-        data-slot="sidebar-gap"
         className={cn(
           "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
             ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
         )}
+        data-slot="sidebar-gap"
       />
       <div
-        data-slot="sidebar-container"
         className={cn(
           "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[inset-inline,width] duration-200 ease-linear md:flex",
           side === "left"
@@ -7026,15 +8157,16 @@ function Sidebar({
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-e group-data-[side=right]:border-s",
-          className,
+            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=right]:border-s group-data-[side=left]:border-e",
+          className
         )}
+        data-slot="sidebar-container"
         {...props}
       >
         <div
+          className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
         >
           {children}
         </div>
@@ -7043,44 +8175,45 @@ function Sidebar({
   );
 }
 
-function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
+function SidebarTrigger({
+  className,
+  onClick,
+  ...props
+}: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar();
+  const { t } = useTranslation();
 
   return (
     <Button
+      className={cn("size-7", className)}
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
-      variant="ghost"
-      size="icon"
-      className={cn("size-7", className)}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();
       }}
+      size="icon"
+      variant="ghost"
       {...props}
     >
       <PanelLeftIcon />
-      <span className="sr-only">Toggle Sidebar</span>
+      <span className="sr-only">{t("navigation.toggle_sidebar")}</span>
     </Button>
   );
 }
 
 function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   const { toggleSidebar } = useSidebar();
+  const { t } = useTranslation();
 
   return (
     <button
-      data-sidebar="rail"
-      data-slot="sidebar-rail"
-      aria-label="Toggle Sidebar"
-      tabIndex={-1}
-      onClick={toggleSidebar}
-      title="Toggle Sidebar"
+      aria-label={t("navigation.toggle_sidebar")}
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear group-data-[side=left]:-inset-e-4 group-data-[side=right]:inset-s-0 after:absolute after:inset-y-0 after:inset-s-1/2 after:w-0.5 hover:after:bg-sidebar-border sm:flex",
+        "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear after:absolute after:inset-s-1/2 after:inset-y-0 after:w-0.5 hover:after:bg-sidebar-border group-data-[side=left]:-inset-e-4 group-data-[side=right]:inset-s-0 sm:flex",
         "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
         "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
-        "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:start-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",
+        "group-data-[collapsible=offcanvas]:translate-x-0 hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:after:start-full",
         "[[data-side=left][data-collapsible=offcanvas]_&]:-inset-e-2",
         "[[data-side=right][data-collapsible=offcanvas]_&]:-inset-s-2",
 
@@ -7088,8 +8221,13 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
         "rtl:translate-x-1/2",
         "rtl:in-data-[side=left]:cursor-e-resize rtl:in-data-[side=right]:cursor-w-resize",
         "rtl:[[data-side=left][data-state=collapsed]_&]:cursor-w-resize rtl:[[data-side=right][data-state=collapsed]_&]:cursor-e-resize",
-        className,
+        className
       )}
+      data-sidebar="rail"
+      data-slot="sidebar-rail"
+      onClick={toggleSidebar}
+      tabIndex={-1}
+      title={t("navigation.toggle_sidebar")}
       {...props}
     />
   );
@@ -7098,23 +8236,26 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
 function SidebarInset({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="sidebar-inset"
       className={cn(
         "relative flex w-full flex-1 flex-col bg-background",
-        "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ms-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ms-2",
-        className,
+        "md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ms-2 md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ms-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm",
+        className
       )}
+      data-slot="sidebar-inset"
       {...props}
     />
   );
 }
 
-function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input>) {
+function SidebarInput({
+  className,
+  ...props
+}: React.ComponentProps<typeof Input>) {
   return (
     <Input
-      data-slot="sidebar-input"
-      data-sidebar="input"
       className={cn("h-8 w-full bg-background shadow-none", className)}
+      data-sidebar="input"
+      data-slot="sidebar-input"
       {...props}
     />
   );
@@ -7123,9 +8264,9 @@ function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input
 function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="sidebar-header"
-      data-sidebar="header"
       className={cn("flex flex-col gap-2 p-2", className)}
+      data-sidebar="header"
+      data-slot="sidebar-header"
       {...props}
     />
   );
@@ -7134,20 +8275,23 @@ function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
 function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="sidebar-footer"
-      data-sidebar="footer"
       className={cn("flex flex-col gap-2 p-2", className)}
+      data-sidebar="footer"
+      data-slot="sidebar-footer"
       {...props}
     />
   );
 }
 
-function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof Separator>) {
+function SidebarSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof Separator>) {
   return (
     <Separator
-      data-slot="sidebar-separator"
-      data-sidebar="separator"
       className={cn("mx-2 w-auto bg-sidebar-border", className)}
+      data-sidebar="separator"
+      data-slot="sidebar-separator"
       {...props}
     />
   );
@@ -7156,12 +8300,12 @@ function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof S
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="sidebar-content"
-      data-sidebar="content"
       className={cn(
         "flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
-        className,
+        className
       )}
+      data-sidebar="content"
+      data-slot="sidebar-content"
       {...props}
     />
   );
@@ -7170,9 +8314,9 @@ function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
 function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="sidebar-group"
-      data-sidebar="group"
       className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
+      data-sidebar="group"
+      data-slot="sidebar-group"
       {...props}
     />
   );
@@ -7187,13 +8331,13 @@ function SidebarGroupLabel({
 
   return (
     <Comp
-      data-slot="sidebar-group-label"
-      data-sidebar="group-label"
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+        "flex h-8 shrink-0 items-center rounded-md px-2 font-medium text-sidebar-foreground/70 text-xs outline-hidden ring-sidebar-ring transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
         "group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0",
-        className,
+        className
       )}
+      data-sidebar="group-label"
+      data-slot="sidebar-group-label"
       {...props}
     />
   );
@@ -7208,26 +8352,29 @@ function SidebarGroupAction({
 
   return (
     <Comp
-      data-slot="sidebar-group-action"
-      data-sidebar="group-action"
       className={cn(
-        "absolute inset-e-3 top-3.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+        "absolute inset-e-3 top-3.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
         // Increases the hit area of the button on mobile.
         "after:absolute after:-inset-2 md:after:hidden",
         "group-data-[collapsible=icon]:hidden",
-        className,
+        className
       )}
+      data-sidebar="group-action"
+      data-slot="sidebar-group-action"
       {...props}
     />
   );
 }
 
-function SidebarGroupContent({ className, ...props }: React.ComponentProps<"div">) {
+function SidebarGroupContent({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="sidebar-group-content"
-      data-sidebar="group-content"
       className={cn("w-full text-sm", className)}
+      data-sidebar="group-content"
+      data-slot="sidebar-group-content"
       {...props}
     />
   );
@@ -7236,9 +8383,9 @@ function SidebarGroupContent({ className, ...props }: React.ComponentProps<"div"
 function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
-      data-slot="sidebar-menu"
-      data-sidebar="menu"
       className={cn("flex w-full min-w-0 flex-col gap-1", className)}
+      data-sidebar="menu"
+      data-slot="sidebar-menu"
       {...props}
     />
   );
@@ -7247,9 +8394,9 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
 function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
   return (
     <li
-      data-slot="sidebar-menu-item"
-      data-sidebar="menu-item"
       className={cn("group/menu-item relative", className)}
+      data-sidebar="menu-item"
+      data-slot="sidebar-menu-item"
       {...props}
     />
   );
@@ -7258,23 +8405,23 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 const sidebarMenuButtonVariants = cva(
   "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
   {
+    defaultVariants: {
+      size: "default",
+      variant: "default",
+    },
     variants: {
+      size: {
+        default: "h-8 text-sm",
+        lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
+        sm: "h-7 text-xs",
+      },
       variant: {
         default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         outline:
           "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
       },
-      size: {
-        default: "h-8 text-sm",
-        sm: "h-7 text-xs",
-        lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
-      },
     },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  },
+  }
 );
 
 function SidebarMenuButton({
@@ -7295,11 +8442,11 @@ function SidebarMenuButton({
 
   const button = (
     <Comp
-      data-slot="sidebar-menu-button"
+      className={cn(sidebarMenuButtonVariants({ size, variant }), className)}
+      data-active={isActive}
       data-sidebar="menu-button"
       data-size={size}
-      data-active={isActive}
-      className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+      data-slot="sidebar-menu-button"
       {...props}
     />
   );
@@ -7318,9 +8465,9 @@ function SidebarMenuButton({
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent
-        side="right"
         align="center"
         hidden={state !== "collapsed" || isMobile}
+        side="right"
         {...tooltip}
       />
     </Tooltip>
@@ -7340,10 +8487,8 @@ function SidebarMenuAction({
 
   return (
     <Comp
-      data-slot="sidebar-menu-action"
-      data-sidebar="menu-action"
       className={cn(
-        "absolute inset-e-1 top-1.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform peer-hover/menu-button:text-sidebar-accent-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+        "absolute inset-e-1 top-1.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 peer-hover/menu-button:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
         // Increases the hit area of the button on mobile.
         "after:absolute after:-inset-2 md:after:hidden",
         "peer-data-[size=sm]/menu-button:top-1",
@@ -7351,28 +8496,33 @@ function SidebarMenuAction({
         "peer-data-[size=lg]/menu-button:top-2.5",
         "group-data-[collapsible=icon]:hidden",
         showOnHover &&
-          "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground data-[state=open]:opacity-100 md:opacity-0",
-        className,
+          "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground md:opacity-0",
+        className
       )}
+      data-sidebar="menu-action"
+      data-slot="sidebar-menu-action"
       {...props}
     />
   );
 }
 
-function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"div">) {
+function SidebarMenuBadge({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
     <div
-      data-slot="sidebar-menu-badge"
-      data-sidebar="menu-badge"
       className={cn(
-        "pointer-events-none absolute inset-e-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-xs font-medium text-sidebar-foreground tabular-nums select-none",
+        "pointer-events-none absolute inset-e-1 flex h-5 min-w-5 select-none items-center justify-center rounded-md px-1 font-medium text-sidebar-foreground text-xs tabular-nums",
         "peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[active=true]/menu-button:text-sidebar-accent-foreground",
         "peer-data-[size=sm]/menu-button:top-1",
         "peer-data-[size=default]/menu-button:top-1.5",
         "peer-data-[size=lg]/menu-button:top-2.5",
         "group-data-[collapsible=icon]:hidden",
-        className,
+        className
       )}
+      data-sidebar="menu-badge"
+      data-slot="sidebar-menu-badge"
       {...props}
     />
   );
@@ -7386,18 +8536,24 @@ function SidebarMenuSkeleton({
   showIcon?: boolean;
 }) {
   // Random width between 50 to 90%.
-  const width = React.useMemo(() => {
-    return \`\${Math.floor(Math.random() * 40) + 50}%\`;
-  }, []);
+  const width = React.useMemo(
+    () => \`\${Math.floor(Math.random() * 40) + 50}%\`,
+    []
+  );
 
   return (
     <div
-      data-slot="sidebar-menu-skeleton"
-      data-sidebar="menu-skeleton"
       className={cn("flex h-8 items-center gap-2 rounded-md px-2", className)}
+      data-sidebar="menu-skeleton"
+      data-slot="sidebar-menu-skeleton"
       {...props}
     >
-      {showIcon && <Skeleton className="size-4 rounded-md" data-sidebar="menu-skeleton-icon" />}
+      {showIcon && (
+        <Skeleton
+          className="size-4 rounded-md"
+          data-sidebar="menu-skeleton-icon"
+        />
+      )}
       <Skeleton
         className="h-4 max-w-(--skeleton-width) flex-1"
         data-sidebar="menu-skeleton-text"
@@ -7414,24 +8570,27 @@ function SidebarMenuSkeleton({
 function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
-      data-slot="sidebar-menu-sub"
-      data-sidebar="menu-sub"
       className={cn(
-        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-s border-sidebar-border px-2.5 py-0.5",
+        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-sidebar-border border-s px-2.5 py-0.5",
         "group-data-[collapsible=icon]:hidden",
-        className,
+        className
       )}
+      data-sidebar="menu-sub"
+      data-slot="sidebar-menu-sub"
       {...props}
     />
   );
 }
 
-function SidebarMenuSubItem({ className, ...props }: React.ComponentProps<"li">) {
+function SidebarMenuSubItem({
+  className,
+  ...props
+}: React.ComponentProps<"li">) {
   return (
     <li
-      data-slot="sidebar-menu-sub-item"
-      data-sidebar="menu-sub-item"
       className={cn("group/menu-sub-item relative", className)}
+      data-sidebar="menu-sub-item"
+      data-slot="sidebar-menu-sub-item"
       {...props}
     />
   );
@@ -7452,18 +8611,18 @@ function SidebarMenuSubButton({
 
   return (
     <Comp
-      data-slot="sidebar-menu-sub-button"
-      data-sidebar="menu-sub-button"
-      data-size={size}
-      data-active={isActive}
       className={cn(
-        "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground ring-sidebar-ring outline-hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-inherit",
+        "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-hidden ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-inherit",
         "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground",
         size === "sm" && "text-xs",
         size === "md" && "text-sm",
         "group-data-[collapsible=icon]:hidden",
-        className,
+        className
       )}
+      data-active={isActive}
+      data-sidebar="menu-sub-button"
+      data-size={size}
+      data-slot="sidebar-menu-sub-button"
       {...props}
     />
   );
@@ -7801,6 +8960,72 @@ export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
  */
 export const fonts = ["inter", "manrope", "system"] as const;
 `],
+  ["addons/admin/apps/web/src/context/access-context.tsx.hbs", `import type { PermissionKey } from "@{{projectName}}/api/permissions";
+import { useQuery } from "@tanstack/react-query";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
+
+import { useTRPC } from "@/lib/trpc";
+
+export interface UserAccess {
+  isSuperAdmin: boolean;
+  permissions: readonly PermissionKey[];
+  roles: ReadonlyArray<{ id: string; name: string; slug: string }>;
+}
+
+interface AccessContextValue {
+  access: UserAccess;
+  can: (permission: PermissionKey) => boolean;
+}
+
+const AccessContext = createContext<AccessContextValue | null>(null);
+
+export function AccessProvider({
+  access,
+  children,
+}: {
+  access: UserAccess;
+  children: ReactNode;
+}) {
+  const value = useMemo<AccessContextValue>(
+    () => ({
+      access,
+      can: (permission) =>
+        access.isSuperAdmin || access.permissions.includes(permission),
+    }),
+    [access],
+  );
+
+  return (
+    <AccessContext.Provider value={value}>{children}</AccessContext.Provider>
+  );
+}
+
+export function AuthenticatedAccessProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const trpc = useTRPC();
+  const accessQuery = useQuery(trpc.admin.access.queryOptions());
+
+  if (accessQuery.error) {
+    throw accessQuery.error;
+  }
+  if (!accessQuery.data) {
+    return null;
+  }
+
+  return <AccessProvider access={accessQuery.data}>{children}</AccessProvider>;
+}
+
+export function useAccess() {
+  const value = useContext(AccessContext);
+  if (!value) {
+    throw new Error("useAccess 必须在 AccessProvider 内使用");
+  }
+  return value;
+}
+`],
   ["addons/admin/apps/web/src/context/direction-provider.tsx", `import { DirectionProvider as RdxDirProvider } from "@radix-ui/react-direction";
 import { createContext, useContext, useEffect, useState } from "react";
 
@@ -8005,10 +9230,13 @@ export function useLayout() {
   return context;
 }
 `],
-  ["addons/admin/apps/web/src/context/search-provider.test.tsx", `import { beforeEach, describe, expect, it, vi } from "vitest";
+  ["addons/admin/apps/web/src/context/search-provider.test.tsx.hbs", `import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, type RenderResult } from "vitest-browser-react";
 import { userEvent } from "vitest/browser";
 
+{{#if (includes addons "rbac")}}
+import { AccessProvider } from "@/context/access-context";
+{{/if}}
 import { SearchProvider } from "@/context/search-provider";
 
 const COMMAND_MENU_PLACEHOLDER = "Type a command or search...";
@@ -8033,24 +9261,38 @@ vi.mock("@/context/theme-provider", () => ({
 type ShortcutModifier = "Control" | "Meta";
 
 async function renderWithSearchProvider() {
-  return await render(<SearchProvider>{null}</SearchProvider>);
+  return await render(
+    {{#if (includes addons "rbac")}}
+    <AccessProvider access=\\{{ isSuperAdmin: false, permissions: [], roles: [] }}>
+      <SearchProvider>{null}</SearchProvider>
+    </AccessProvider>,
+    {{else}}
+    <SearchProvider>{null}</SearchProvider>,
+    {{/if}}
+  );
 }
 
 /**
- * Open the palette by shortcut, retrying while the keydown listener may not be mounted yet.
- * Waits between attempts so a successful toggle is not immediately undone by a second chord.
+ * 通过快捷键打开面板；keydown listener 尚未挂载时重试。
+ * 每次尝试之间等待，避免成功打开后被下一次按键立即关闭。
  */
-async function openCommandPalette(screen: RenderResult, modifier: ShortcutModifier = "Control") {
+async function openCommandPalette(
+  screen: RenderResult,
+  modifier: ShortcutModifier = "Control",
+) {
   await vi.waitFor(
     async () => {
       const isCommandPaletteOpen =
-        document.querySelector(\`[placeholder="\${COMMAND_MENU_PLACEHOLDER}"]\`) !== null;
+        document.querySelector(\`[placeholder="\${COMMAND_MENU_PLACEHOLDER}"]\`) !==
+        null;
 
       if (!isCommandPaletteOpen) {
         await userEvent.keyboard(\`{\${modifier}>}k{/\${modifier}}\`);
       }
 
-      await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).toBeInTheDocument();
+      await expect
+        .element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
+        .toBeInTheDocument();
     },
     { interval: 50, timeout: 5000 },
   );
@@ -8067,7 +9309,9 @@ describe("SearchProvider and CommandMenu", () => {
 
     await openCommandPalette(screen);
 
-    await expect.element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).toBeInTheDocument();
+    await expect
+      .element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
+      .toBeInTheDocument();
     await expect.element(getByText("Theme")).toBeInTheDocument();
     await expect.element(getByText("Light")).toBeInTheDocument();
     await expect.element(getByText("Dark")).toBeInTheDocument();
@@ -8078,22 +9322,30 @@ describe("SearchProvider and CommandMenu", () => {
   it("does not show the dialog content when search is closed", async () => {
     const { getByPlaceholder } = await renderWithSearchProvider();
 
-    await expect.element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
+    await expect
+      .element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
+      .not.toBeInTheDocument();
   });
 
   it.each([
     ["Ctrl", "Control"],
     ["Cmd", "Meta"],
-  ] as const)("opens the command menu when %s + K is pressed", async (_label, modifier) => {
-    const screen = await renderWithSearchProvider();
+  ] as const)(
+    "opens the command menu when %s + K is pressed",
+    async (_label, modifier) => {
+      const screen = await renderWithSearchProvider();
 
-    await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
+      await expect
+        .element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
+        .not.toBeInTheDocument();
 
-    await openCommandPalette(screen, modifier);
+      await openCommandPalette(screen, modifier);
 
-    await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).toBeInTheDocument();
-  });
-
+      await expect
+        .element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
+        .toBeInTheDocument();
+    },
+  );
 
   it("navigates for nested sidebar items (group with sub-items)", async () => {
     const screen = await renderWithSearchProvider();
@@ -8104,7 +9356,9 @@ describe("SearchProvider and CommandMenu", () => {
     await userEvent.click(getByRole("option", { name: "Settings Account" }));
 
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/settings/account" });
-    await expect.element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
+    await expect
+      .element(getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
+      .not.toBeInTheDocument();
   });
 
   it("applies theme and closes the palette when a theme command is chosen", async () => {
@@ -8115,7 +9369,9 @@ describe("SearchProvider and CommandMenu", () => {
     await userEvent.click(screen.getByText("Dark"));
 
     expect(mocks.setTheme).toHaveBeenCalledWith("dark");
-    await expect.element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER)).not.toBeInTheDocument();
+    await expect
+      .element(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER))
+      .not.toBeInTheDocument();
   });
 
   it("shows empty state when the filter matches nothing", async () => {
@@ -8123,7 +9379,10 @@ describe("SearchProvider and CommandMenu", () => {
 
     await openCommandPalette(screen);
 
-    await userEvent.fill(screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER), "zzzz-no-match-xxxx");
+    await userEvent.fill(
+      screen.getByPlaceholder(COMMAND_MENU_PLACEHOLDER),
+      "zzzz-no-match-xxxx",
+    );
 
     await expect.element(screen.getByText("No results found.")).toBeInTheDocument();
   });
@@ -8398,7 +9657,8 @@ export const apps = [
   },
 ];
 `],
-  ["addons/admin/apps/web/src/features/audit/index.tsx", `import { useQuery } from "@tanstack/react-query";
+  ["addons/admin/apps/web/src/features/audit/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { type BusinessColumn, BusinessDataTable } from "@/components/business-data-table";
@@ -8431,35 +9691,36 @@ const filterAudit = (item: AuditItem, query: string) =>
 const getAuditId = (item: AuditItem) => item.id;
 
 export function Audit() {
+  const { i18n, t } = useTranslation();
   const trpc = useTRPC();
   const logsQuery = useQuery(trpc.admin.auditLogs.queryOptions());
   const logs = (logsQuery.data ?? []) as AuditItem[];
   const columns = useMemo<BusinessColumn<AuditItem>[]>(
     () => [
       {
-        header: "Actor",
+        header: t("audit.actor"),
         render: (item) => (
           <div>
-            <div className="font-medium">{item.actorName ?? "System"}</div>
+            <div className="font-medium">{item.actorName ?? t("audit.system")}</div>
             <div className="text-muted-foreground text-xs">
-              {item.actorEmail ?? "Automated action"}
+              {item.actorEmail ?? t("audit.automated_action")}
             </div>
           </div>
         ),
       },
       {
-        header: "Action",
+        header: t("audit.action"),
         render: (item) => <Badge variant="outline">{item.action}</Badge>,
       },
       {
-        header: "Resource",
+        header: t("audit.resource"),
         render: (item) => <span className="capitalize">{item.targetType}</span>,
       },
       {
-        header: "Origin",
+        header: t("audit.origin"),
         render: (item) => (
           <div>
-            <div className="font-mono text-xs">{item.ipAddress ?? "Unknown"}</div>
+            <div className="font-mono text-xs">{item.ipAddress ?? t("audit.unknown")}</div>
             <div className="max-w-52 truncate text-muted-foreground text-xs">
               {item.userAgent ?? "—"}
             </div>
@@ -8468,11 +9729,11 @@ export function Audit() {
       },
       {
         className: "whitespace-nowrap text-right",
-        header: "Timestamp",
-        render: (item) => new Date(item.createdAt).toLocaleString(),
+        header: t("audit.timestamp"),
+        render: (item) => new Date(item.createdAt).toLocaleString(i18n.resolvedLanguage),
       },
     ],
-    [],
+    [i18n.resolvedLanguage, t],
   );
 
   return (
@@ -8485,40 +9746,44 @@ export function Audit() {
       </Header>
       <Main className="flex flex-1 flex-col gap-4 sm:gap-6">
         <div>
-          <h2 className="font-bold text-2xl tracking-tight">Audit log</h2>
-          <p className="text-muted-foreground">Review sensitive administrative activity.</p>
+          <h2 className="font-bold text-2xl tracking-tight">{t("audit.title")}</h2>
+          <p className="text-muted-foreground">{t("audit.desc")}</p>
         </div>
         <BusinessDataTable
           columns={columns}
           data={logs}
-          empty="No audit events found."
+          empty={t("audit.empty")}
           filter={filterAudit}
           getRowId={getAuditId}
-          placeholder="Filter audit events..."
+          placeholder={t("audit.filter_placeholder")}
         />
       </Main>
     </>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/auth/auth-layout.tsx.hbs", `import { Logo } from '@/assets/logo'
+  ["addons/admin/apps/web/src/features/auth/auth-layout.tsx.hbs", `import { Logo } from "@/assets/logo";
+import { LanguageSwitch } from "@/components/language-switch";
 
 type AuthLayoutProps = {
-  children: React.ReactNode
-}
+  children: React.ReactNode;
+};
 
 export function AuthLayout({ children }: AuthLayoutProps) {
   return (
-    <div className='container grid h-svh max-w-none items-center justify-center'>
-      <div className='mx-auto flex w-[calc(100vw-2rem)] max-w-sm flex-col justify-center space-y-2 py-8'>
-        <div className='mb-4 flex items-center justify-center'>
-          <Logo className='me-2' />
-          <h1 className='text-xl font-medium'>{{projectName}}</h1>
+    <div className="container grid h-svh max-w-none items-center justify-center">
+      <div className="absolute top-4 end-4">
+        <LanguageSwitch />
+      </div>
+      <div className="mx-auto flex w-[calc(100vw-2rem)] max-w-sm flex-col justify-center space-y-2 py-8">
+        <div className="mb-4 flex items-center justify-center">
+          <Logo className="me-2" />
+          <h1 className="text-xl font-medium">{{projectName}}</h1>
         </div>
         {children}
       </div>
     </div>
-  )
+  );
 }
 `],
   ["addons/admin/apps/web/src/features/auth/forgot-password/components/forgot-password-form.test.tsx", `import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8903,27 +10168,23 @@ import { UserAuthForm } from "./user-auth-form";
 const FORM_MESSAGES = {
   emailEmpty: "Please enter your email.",
   passwordEmpty: "Please enter your password.",
-  passwordShort: "Password must be at least 7 characters long.",
+  passwordShort: "Password must be at least 8 characters long.",
 } as const;
 
-const navigate = vi.fn();
-const setUserMock = vi.fn();
-const setAccessTokenMock = vi.fn();
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  signIn: vi.fn(async () => ({ error: null })),
+}));
 
-vi.mock("@/stores/auth-store", () => ({
-  useAuthStore: () => ({
-    auth: {
-      setUser: setUserMock,
-      setAccessToken: setAccessTokenMock,
-    },
-  }),
+vi.mock("@/lib/auth-client", () => ({
+  authClient: { signIn: { email: mocks.signIn } },
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-router")>();
   return {
     ...actual,
-    useNavigate: () => navigate,
+    useNavigate: () => mocks.navigate,
     Link: ({
       children,
       to,
@@ -8941,10 +10202,6 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/utils", async (orig) => ({
-  ...(await orig()),
-  sleep: vi.fn(() => Promise.resolve()),
-}));
 
 describe("UserAuthForm", () => {
   describe("Rendering without redirectTo", () => {
@@ -8952,7 +10209,6 @@ describe("UserAuthForm", () => {
     let emailInput: Locator;
     let passwordInput: Locator;
     let signInButton: Locator;
-    let forgotPasswordLink: Locator;
 
     beforeEach(async () => {
       vi.clearAllMocks();
@@ -8960,14 +10216,12 @@ describe("UserAuthForm", () => {
       emailInput = screen.getByRole("textbox", { name: /^Email$/i });
       passwordInput = screen.getByLabelText(/^Password$/i);
       signInButton = screen.getByRole("button", { name: /^Sign in$/i });
-      forgotPasswordLink = screen.getByText(/^Forgot password\\?$/i);
     });
 
-    it("renders fields, submit button, and forgot password link", async () => {
+    it("渲染登录字段与提交按钮", async () => {
       await expect.element(emailInput).toBeInTheDocument();
       await expect.element(passwordInput).toBeInTheDocument();
       await expect.element(signInButton).toBeInTheDocument();
-      await expect.element(forgotPasswordLink).toBeInTheDocument();
     });
 
     it("shows validation messages when submitting empty form", async () => {
@@ -8977,43 +10231,37 @@ describe("UserAuthForm", () => {
       await expect.element(screen.getByText(FORM_MESSAGES.passwordEmpty)).toBeInTheDocument();
     });
 
-    it("authenticates and navigates to default route on success", async () => {
+    it("认证成功后跳转到默认路由", async () => {
       await userEvent.fill(emailInput, "a@b.com");
-      await userEvent.fill(passwordInput, "1234567");
+      await userEvent.fill(passwordInput, "12345678");
 
       await userEvent.click(signInButton);
 
-      await vi.waitFor(() => expect(setUserMock).toHaveBeenCalledOnce());
-      expect(setUserMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          email: "a@b.com",
-          accountNo: expect.any(String),
-          role: expect.any(Array),
-          exp: expect.any(Number),
-        }),
+      await vi.waitFor(() => expect(mocks.signIn).toHaveBeenCalledOnce());
+      expect(mocks.signIn).toHaveBeenCalledWith({
+        email: "a@b.com",
+        password: "12345678",
+      });
+      await vi.waitFor(() =>
+        expect(mocks.navigate).toHaveBeenCalledWith({ to: "/", replace: true }),
       );
-      expect(setAccessTokenMock).toHaveBeenCalledOnce();
-      expect(setAccessTokenMock).toHaveBeenCalledWith("mock-access-token");
-
-      await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/", replace: true }));
     });
   });
 
-  it("navigates to redirectTo when provided", async () => {
+  it("提供 redirectTo 时跳转到指定路由", async () => {
     vi.clearAllMocks();
 
-    const { getByRole, getByLabelText } = await render(<UserAuthForm redirectTo="/settings" />);
+    const { getByRole, getByLabelText } = await render(
+      <UserAuthForm redirectTo="/settings" />,
+    );
 
     await userEvent.fill(getByRole("textbox", { name: /Email/i }), "a@b.com");
-    await userEvent.fill(getByLabelText("Password"), "1234567");
-
+    await userEvent.fill(getByLabelText("Password"), "12345678");
     await userEvent.click(getByRole("button", { name: /Sign in/i }));
 
-    await vi.waitFor(() => expect(setUserMock).toHaveBeenCalledOnce());
-    expect(setAccessTokenMock).toHaveBeenCalledOnce();
-
+    await vi.waitFor(() => expect(mocks.signIn).toHaveBeenCalledOnce());
     await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith({
+      expect(mocks.navigate).toHaveBeenCalledWith({
         to: "/settings",
         replace: true,
       }),
@@ -9021,11 +10269,12 @@ describe("UserAuthForm", () => {
   });
 });
 `],
-  ["addons/admin/apps/web/src/features/auth/sign-in/components/user-auth-form.tsx", `// biome-ignore-all lint/performance/noJsxPropsBind: react-hook-form requires render callbacks.
+  ["addons/admin/apps/web/src/features/auth/sign-in/components/user-auth-form.tsx.hbs", `// biome-ignore-all lint/performance/noJsxPropsBind: react-hook-form 需要 render callback。
+import { useTranslation } from "@{{projectName}}/i18n/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, LogIn } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -9044,15 +10293,10 @@ import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
-const formSchema = z.object({
-  email: z.email({
-    error: (iss) => (iss.input === "" ? "Please enter your email." : undefined),
-  }),
-  password: z
-    .string()
-    .min(1, "Please enter your password.")
-    .min(8, "Password must be at least 8 characters long."),
-});
+interface UserAuthValues {
+  email: string;
+  password: string;
+}
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
   redirectTo?: string;
@@ -9061,8 +10305,25 @@ interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
 export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const formSchema = useMemo(
+    () =>
+      z.object({
+        email: z.email({
+          error: (issue) =>
+            issue.input === ""
+              ? t("validation.email_required")
+              : t("validation.email_invalid"),
+        }),
+        password: z
+          .string()
+          .min(1, t("validation.password_required"))
+          .min(8, t("validation.password_min_8")),
+      }),
+    [t],
+  );
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<UserAuthValues>({
     defaultValues: {
       email: "",
       password: "",
@@ -9070,7 +10331,7 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
     resolver: zodResolver(formSchema),
   });
 
-  async function onSubmit(data: z.infer<typeof formSchema>) {
+  async function onSubmit(data: UserAuthValues) {
     setIsLoading(true);
     const { error } = await authClient.signIn.email({
       email: data.email,
@@ -9078,10 +10339,10 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
     });
     setIsLoading(false);
     if (error) {
-      toast.error(error.message ?? "Could not sign in");
+      toast.error(t("auth.sign_in_error"));
       return;
     }
-    toast.success(\`Welcome back, \${data.email}!\`);
+    toast.success(t("auth.welcome_back", { email: data.email }));
     await navigate({ replace: true, to: redirectTo || "/" });
   }
 
@@ -9097,7 +10358,7 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
           name="email"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>{t("auth.email")}</FormLabel>
               <FormControl>
                 <Input placeholder="name@example.com" {...field} />
               </FormControl>
@@ -9110,7 +10371,7 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
           name="password"
           render={({ field }) => (
             <FormItem className="relative">
-              <FormLabel>Password</FormLabel>
+              <FormLabel>{t("auth.password")}</FormLabel>
               <FormControl>
                 <PasswordInput placeholder="********" {...field} />
               </FormControl>
@@ -9120,14 +10381,15 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
         />
         <Button className="mt-2" disabled={isLoading}>
           {isLoading ? <Loader2 className="animate-spin" /> : <LogIn />}
-          Sign in
+          {t("auth.sign_in_btn")}
         </Button>
       </form>
     </Form>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/auth/sign-in/index.tsx", `import { Link, useSearch } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/features/auth/sign-in/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Link, useSearch } from "@tanstack/react-router";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -9136,20 +10398,20 @@ import { UserAuthForm } from "./components/user-auth-form";
 
 export function SignIn() {
   const { redirect } = useSearch({ from: "/(auth)/sign-in" });
+  const { t } = useTranslation();
 
   return (
     <AuthLayout>
       <Card className="w-full gap-4">
         <CardHeader>
-          <CardTitle className="text-lg tracking-tight">Sign in</CardTitle>
+          <CardTitle className="text-lg tracking-tight">{t("auth.sign_in_title")}</CardTitle>
           <CardDescription>
-            Enter your email and password below to log into <br className="max-sm:hidden" /> your
-            account. Don't have an account?{" "}
+            {t("auth.sign_in_desc")} {t("auth.no_account")} {" "}
             <Link
               to="/sign-up"
               className="text-nowrap underline underline-offset-4 hover:text-primary"
             >
-              Sign Up
+              {t("sidebar.sign_up")}
             </Link>
           </CardDescription>
         </CardHeader>
@@ -9239,7 +10501,7 @@ export function SignIn2() {
   )
 }
 `],
-  ["addons/admin/apps/web/src/features/auth/sign-up/components/sign-up-form.test.tsx", `import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+  ["addons/admin/apps/web/src/features/auth/sign-up/components/sign-up-form.test.tsx", `import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, type RenderResult } from "vitest-browser-react";
 import { type Locator, userEvent } from "vitest/browser";
 
@@ -9252,13 +10514,21 @@ const FORM_MESSAGES = {
   passwordMismatch: "Passwords don't match.",
 } as const;
 
-const toastPromise = vi.hoisted(() =>
-  vi.fn((p: Promise<unknown>, opts: { success?: () => unknown }) => {
-    p.then(() => opts.success?.());
-  }),
-);
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  signUp: vi.fn(async () => ({ error: null })),
+}));
 
-vi.mock("sonner", () => ({ toast: { promise: toastPromise } }));
+vi.mock("@/lib/auth-client", () => ({
+  authClient: { signUp: { email: mocks.signUp } },
+}));
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return { ...actual, useNavigate: () => mocks.navigate };
+});
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
 
 describe("SignUpForm", () => {
   let screen: RenderResult;
@@ -9269,6 +10539,7 @@ describe("SignUpForm", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mocks.signUp.mockResolvedValue({ error: null });
 
     screen = await render(<SignUpForm />);
     emailInput = screen.getByRole("textbox", { name: /^Email$/i });
@@ -9277,18 +10548,14 @@ describe("SignUpForm", () => {
     submitButton = screen.getByRole("button", { name: /^Create Account$/i });
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("renders fields and submit button", async () => {
+  it("渲染注册字段与提交按钮", async () => {
     await expect.element(emailInput).toBeInTheDocument();
     await expect.element(passwordInput).toBeInTheDocument();
     await expect.element(confirmPasswordInput).toBeInTheDocument();
     await expect.element(submitButton).toBeInTheDocument();
   });
 
-  it("shows validation messages when submitting empty form", async () => {
+  it("提交空表单时显示校验信息", async () => {
     await userEvent.click(submitButton);
 
     await expect.element(screen.getByText(FORM_MESSAGES.emailEmpty)).toBeInTheDocument();
@@ -9296,7 +10563,7 @@ describe("SignUpForm", () => {
     await expect.element(screen.getByText(FORM_MESSAGES.confirmPasswordEmpty)).toBeInTheDocument();
   });
 
-  it("shows a mismatch error when passwords do not match", async () => {
+  it("两次密码不一致时显示校验信息", async () => {
     await userEvent.fill(emailInput, "a@b.com");
     await userEvent.fill(passwordInput, "1234567");
     await userEvent.fill(confirmPasswordInput, "7654321");
@@ -9305,26 +10572,31 @@ describe("SignUpForm", () => {
     await expect.element(screen.getByText(FORM_MESSAGES.passwordMismatch)).toBeInTheDocument();
   });
 
-  it("disables submit while submitting and re-enables after timeout", async () => {
-    vi.useFakeTimers();
-
+  it("提交期间禁用按钮并在请求完成后恢复", async () => {
+    let signUpComplete = false;
+    mocks.signUp.mockImplementationOnce(async () => {
+      await vi.waitFor(() => expect(signUpComplete).toBe(true));
+      return { error: null };
+    });
+    await userEvent.fill(screen.getByRole("textbox", { name: /^Name$/i }), "Alice");
     await userEvent.fill(emailInput, "a@b.com");
-    await userEvent.fill(passwordInput, "1234567");
-    await userEvent.fill(confirmPasswordInput, "1234567");
+    await userEvent.fill(passwordInput, "12345678");
+    await userEvent.fill(confirmPasswordInput, "12345678");
 
     await userEvent.click(submitButton);
     await expect.element(submitButton).toBeDisabled();
-
-    await vi.advanceTimersByTimeAsync(2000);
+    signUpComplete = true;
     await expect.element(submitButton).toBeEnabled();
-    expect(toastPromise).toHaveBeenCalledOnce();
+    expect(mocks.signUp).toHaveBeenCalledOnce();
+    expect(mocks.navigate).toHaveBeenCalledWith({ replace: true, to: "/" });
   });
 });
 `],
-  ["addons/admin/apps/web/src/features/auth/sign-up/components/sign-up-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+  ["addons/admin/apps/web/src/features/auth/sign-up/components/sign-up-form.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -9343,27 +10615,41 @@ import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
-const formSchema = z
-  .object({
-    name: z.string().trim().min(2, "Name must be at least 2 characters."),
-    email: z.email({
-      error: (iss) => (iss.input === "" ? "Please enter your email." : undefined),
-    }),
-    password: z
-      .string()
-      .min(1, "Please enter your password.")
-      .min(8, "Password must be at least 8 characters long."),
-    confirmPassword: z.string().min(1, "Please confirm your password."),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match.",
-    path: ["confirmPassword"],
-  });
+interface SignUpValues {
+  confirmPassword: string;
+  email: string;
+  name: string;
+  password: string;
+}
 
 export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFormElement>) {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const form = useForm<z.infer<typeof formSchema>>({
+  const { t } = useTranslation();
+  const formSchema = useMemo(
+    () =>
+      z
+        .object({
+          name: z.string().trim().min(2, t("validation.name_min")),
+          email: z.email({
+            error: (issue) =>
+              issue.input === ""
+                ? t("validation.email_required")
+                : t("validation.email_invalid"),
+          }),
+          password: z
+            .string()
+            .min(1, t("validation.password_required"))
+            .min(8, t("validation.password_min_8")),
+          confirmPassword: z.string().min(1, t("validation.confirm_password_required")),
+        })
+        .refine((data) => data.password === data.confirmPassword, {
+          message: t("validation.passwords_not_match"),
+          path: ["confirmPassword"],
+        }),
+    [t],
+  );
+  const form = useForm<SignUpValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
@@ -9373,7 +10659,7 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
     },
   });
 
-  async function onSubmit(data: z.infer<typeof formSchema>) {
+  async function onSubmit(data: SignUpValues) {
     setIsLoading(true);
     const { error } = await authClient.signUp.email({
       email: data.email.trim(),
@@ -9382,10 +10668,10 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
     });
     setIsLoading(false);
     if (error) {
-      toast.error(error.message ?? "Could not create account");
+      toast.error(t("auth.sign_up_error"));
       return;
     }
-    toast.success("Account created");
+    toast.success(t("auth.account_created", { email: data.email }));
     await navigate({ replace: true, to: "/" });
   }
 
@@ -9401,9 +10687,9 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Name</FormLabel>
+              <FormLabel>{t("auth.name")}</FormLabel>
               <FormControl>
-                <Input autoComplete="name" placeholder="Your name" {...field} />
+                <Input autoComplete="name" placeholder={t("settings_form.your_name")} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -9414,9 +10700,14 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
           name="email"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>{t("auth.email")}</FormLabel>
               <FormControl>
-                <Input autoComplete="email" placeholder="name@example.com" type="email" {...field} />
+                <Input
+                  autoComplete="email"
+                  placeholder="name@example.com"
+                  type="email"
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -9427,7 +10718,7 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Password</FormLabel>
+              <FormLabel>{t("auth.password")}</FormLabel>
               <FormControl>
                 <PasswordInput autoComplete="new-password" placeholder="********" {...field} />
               </FormControl>
@@ -9440,7 +10731,7 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
           name="confirmPassword"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Confirm Password</FormLabel>
+              <FormLabel>{t("auth.confirm_password")}</FormLabel>
               <FormControl>
                 <PasswordInput autoComplete="new-password" placeholder="********" {...field} />
               </FormControl>
@@ -9450,38 +10741,32 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
         />
         <Button className="mt-2" disabled={isLoading}>
           {isLoading ? <Loader2 className="animate-spin" /> : <UserPlus />}
-          Create Account
+          {t("auth.create_account_btn")}
         </Button>
-
       </form>
     </Form>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/auth/sign-up/index.tsx", `import { Link } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/features/auth/sign-up/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Link } from "@tanstack/react-router";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { AuthLayout } from "../auth-layout";
 import { SignUpForm } from "./components/sign-up-form";
 
 export function SignUp() {
+  const { t } = useTranslation();
   return (
     <AuthLayout>
       <Card className="w-full gap-4">
         <CardHeader>
-          <CardTitle className="text-lg tracking-tight">Create an account</CardTitle>
+          <CardTitle className="text-lg tracking-tight">{t("auth.sign_up_title")}</CardTitle>
           <CardDescription>
-            Enter your email and password to create an account. <br />
-            Already have an account?{" "}
+            {t("auth.sign_up_desc")} {t("auth.have_account")} {" "}
             <Link to="/sign-in" className="underline underline-offset-4 hover:text-primary">
-              Sign In
+              {t("sidebar.sign_in")}
             </Link>
           </CardDescription>
         </CardHeader>
@@ -10634,7 +11919,8 @@ export function RecentSales() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/dashboard/index.tsx", `import { useQuery } from "@tanstack/react-query";
+  ["addons/admin/apps/web/src/features/dashboard/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Database, Server, ShieldCheck } from "lucide-react";
 
 import { ConfigDrawer } from "@/components/config-drawer";
@@ -10646,6 +11932,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useTRPC } from "@/lib/trpc";
 
 export function Dashboard() {
+  const { t } = useTranslation();
   const trpc = useTRPC();
   const healthQuery = useQuery(trpc.healthCheck.queryOptions());
   const apiHealthy = healthQuery.data === "OK";
@@ -10654,7 +11941,7 @@ export function Dashboard() {
     <>
       <Header>
         <div className="me-auto">
-          <p className="text-sm font-medium">Admin workspace</p>
+          <p className="text-sm font-medium">{t("dashboard.workspace")}</p>
         </div>
         <ThemeSwitch />
         <ConfigDrawer />
@@ -10662,10 +11949,8 @@ export function Dashboard() {
       </Header>
       <Main>
         <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">System status</h1>
-          <p className="mt-1 text-muted-foreground">
-            Live status from this generated application. No sample analytics or sales data.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.system_status")}</h1>
+          <p className="mt-1 text-muted-foreground">{t("dashboard.system_status_desc")}</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Card>
@@ -10675,30 +11960,48 @@ export function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2 text-lg font-semibold">
-                <span className={\`h-2.5 w-2.5 rounded-full \${apiHealthy ? "bg-emerald-500" : "bg-amber-500"}\`} />
-                {healthQuery.isPending ? "Checking" : apiHealthy ? "Healthy" : "Unavailable"}
+                <span
+                  className={\`h-2.5 w-2.5 rounded-full \${apiHealthy ? "bg-emerald-500" : "bg-amber-500"}\`}
+                />
+                {healthQuery.isPending
+                  ? t("dashboard.checking")
+                  : apiHealthy
+                    ? t("dashboard.healthy")
+                    : t("dashboard.unavailable")}
               </div>
-              <CardDescription className="mt-2">tRPC healthCheck is queried in real time.</CardDescription>
+              <CardDescription className="mt-2">
+                {t("dashboard.api_health_desc")}
+              </CardDescription>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Database</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("dashboard.database")}</CardTitle>
               <Database className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-2 text-lg font-semibold"><CheckCircle2 className="h-5 w-5 text-emerald-600" />PostgreSQL</div>
-              <CardDescription className="mt-2">Drizzle schema is the source of truth.</CardDescription>
+              <div className="flex items-center gap-2 text-lg font-semibold">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                PostgreSQL
+              </div>
+              <CardDescription className="mt-2">
+                {t("dashboard.database_desc")}
+              </CardDescription>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Authentication</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("dashboard.authentication")}</CardTitle>
               <ShieldCheck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-2 text-lg font-semibold"><CheckCircle2 className="h-5 w-5 text-emerald-600" />Better Auth</div>
-              <CardDescription className="mt-2">The current page requires a valid server session.</CardDescription>
+              <div className="flex items-center gap-2 text-lg font-semibold">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                Better Auth
+              </div>
+              <CardDescription className="mt-2">
+                {t("dashboard.authentication_desc")}
+              </CardDescription>
             </CardContent>
           </Card>
         </div>
@@ -10707,34 +12010,38 @@ export function Dashboard() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/errors/forbidden.tsx", `import { useNavigate, useRouter } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/features/errors/forbidden.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 
 import { Button } from "@/components/ui/button";
 
 export function ForbiddenError() {
   const navigate = useNavigate();
   const { history } = useRouter();
+  const { t } = useTranslation();
   return (
     <div className="h-svh">
       <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
-        <h1 className="text-[7rem] leading-tight font-bold">403</h1>
-        <span className="font-medium">Access Forbidden</span>
+        <h1 className="font-bold text-[7rem] leading-tight">403</h1>
+        <span className="font-medium">{t("errors.forbidden_title")}</span>
         <p className="text-center text-muted-foreground">
-          You don't have necessary permission <br />
-          to view this resource.
+          {t("errors.forbidden_desc")}
         </p>
         <div className="mt-6 flex gap-4">
-          <Button variant="outline" onClick={() => history.go(-1)}>
-            Go Back
+          <Button onClick={() => history.go(-1)} variant="outline">
+            {t("errors.go_back")}
           </Button>
-          <Button onClick={() => navigate({ to: "/" })}>Back to Home</Button>
+          <Button onClick={() => navigate({ to: "/" })}>
+            {t("errors.back_to_home")}
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/errors/general-error.tsx", `import { useNavigate, useRouter } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/features/errors/general-error.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -10743,23 +12050,31 @@ type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
   minimal?: boolean;
 };
 
-export function GeneralError({ className, minimal = false }: GeneralErrorProps) {
+export function GeneralError({
+  className,
+  minimal = false,
+}: GeneralErrorProps) {
   const navigate = useNavigate();
   const { history } = useRouter();
+  const { t } = useTranslation();
   return (
     <div className={cn("h-svh w-full", className)}>
       <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
-        {!minimal && <h1 className="text-[7rem] leading-tight font-bold">500</h1>}
-        <span className="font-medium">Oops! Something went wrong {\`:')\`}</span>
+        {!minimal && (
+          <h1 className="font-bold text-[7rem] leading-tight">500</h1>
+        )}
+        <span className="font-medium">{t("errors.server_error_title")}</span>
         <p className="text-center text-muted-foreground">
-          We apologize for the inconvenience. <br /> Please try again later.
+          {t("errors.server_error_desc")}
         </p>
         {!minimal && (
           <div className="mt-6 flex gap-4">
-            <Button variant="outline" onClick={() => history.go(-1)}>
-              Go Back
+            <Button onClick={() => history.go(-1)} variant="outline">
+              {t("errors.go_back")}
             </Button>
-            <Button onClick={() => navigate({ to: "/" })}>Back to Home</Button>
+            <Button onClick={() => navigate({ to: "/" })}>
+              {t("errors.back_to_home")}
+            </Button>
           </div>
         )}
       </div>
@@ -10767,102 +12082,124 @@ export function GeneralError({ className, minimal = false }: GeneralErrorProps) 
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/errors/maintenance-error.tsx", `import { Button } from "@/components/ui/button";
+  ["addons/admin/apps/web/src/features/errors/maintenance-error.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Button } from "@/components/ui/button";
 
 export function MaintenanceError() {
+  const { t } = useTranslation();
   return (
     <div className="h-svh">
       <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
-        <h1 className="text-[7rem] leading-tight font-bold">503</h1>
-        <span className="font-medium">Website is under maintenance!</span>
+        <h1 className="font-bold text-[7rem] leading-tight">503</h1>
+        <span className="font-medium">{t("errors.maintenance_title")}</span>
         <p className="text-center text-muted-foreground">
-          The site is not available at the moment. <br />
-          We'll be back online shortly.
+          {t("errors.maintenance_desc")}
         </p>
         <div className="mt-6 flex gap-4">
-          <Button variant="outline">Learn more</Button>
+          <Button variant="outline">{t("errors.learn_more")}</Button>
         </div>
       </div>
     </div>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/errors/not-found-error.tsx", `import { useNavigate, useRouter } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/features/errors/not-found-error.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 
 import { Button } from "@/components/ui/button";
 
 export function NotFoundError() {
   const navigate = useNavigate();
   const { history } = useRouter();
+  const { t } = useTranslation();
   return (
     <div className="h-svh">
       <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
-        <h1 className="text-[7rem] leading-tight font-bold">404</h1>
-        <span className="font-medium">Oops! Page Not Found!</span>
+        <h1 className="font-bold text-[7rem] leading-tight">404</h1>
+        <span className="font-medium">{t("errors.not_found_title")}</span>
         <p className="text-center text-muted-foreground">
-          It seems like the page you're looking for <br />
-          does not exist or might have been removed.
+          {t("errors.not_found_desc")}
         </p>
         <div className="mt-6 flex gap-4">
-          <Button variant="outline" onClick={() => history.go(-1)}>
-            Go Back
+          <Button onClick={() => history.go(-1)} variant="outline">
+            {t("errors.go_back")}
           </Button>
-          <Button onClick={() => navigate({ to: "/" })}>Back to Home</Button>
+          <Button onClick={() => navigate({ to: "/" })}>
+            {t("errors.back_to_home")}
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/errors/unauthorized-error.tsx", `import { useNavigate, useRouter } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/features/errors/unauthorized-error.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 
 import { Button } from "@/components/ui/button";
 
 export function UnauthorisedError() {
   const navigate = useNavigate();
   const { history } = useRouter();
+  const { t } = useTranslation();
   return (
     <div className="h-svh">
       <div className="m-auto flex h-full w-full flex-col items-center justify-center gap-2">
-        <h1 className="text-[7rem] leading-tight font-bold">401</h1>
-        <span className="font-medium">Unauthorized Access</span>
+        <h1 className="font-bold text-[7rem] leading-tight">401</h1>
+        <span className="font-medium">{t("errors.unauthorized_title")}</span>
         <p className="text-center text-muted-foreground">
-          Please log in with the appropriate credentials <br /> to access this resource.
+          {t("errors.unauthorized_desc")}
         </p>
         <div className="mt-6 flex gap-4">
-          <Button variant="outline" onClick={() => history.go(-1)}>
-            Go Back
+          <Button onClick={() => history.go(-1)} variant="outline">
+            {t("errors.go_back")}
           </Button>
-          <Button onClick={() => navigate({ to: "/" })}>Back to Home</Button>
+          <Button onClick={() => navigate({ to: "/" })}>
+            {t("errors.back_to_home")}
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/organizations/accept-invitation.tsx", `import { useNavigate, useParams } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/features/organizations/accept-invitation.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { Building2, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { authClient } from "@/lib/auth-client";
 
 export function AcceptInvitation() {
-  const { invitationId } = useParams({ from: "/_authenticated/accept-invitation/$invitationId" });
+  const { t } = useTranslation();
+  const { invitationId } = useParams({
+    from: "/_authenticated/accept-invitation/$invitationId",
+  });
   const navigate = useNavigate();
   const [isAccepting, setIsAccepting] = useState(false);
 
   const accept = async () => {
     setIsAccepting(true);
-    const result = await authClient.organization.acceptInvitation({ invitationId });
+    const result = await authClient.organization.acceptInvitation({
+      invitationId,
+    });
     setIsAccepting(false);
     if (result.error) {
-      toast.error(result.error.message ?? "Could not accept invitation");
+      toast.error(
+        result.error.message ?? t("organization.invitation_accept_failed"),
+      );
       return;
     }
-    toast.success("Invitation accepted");
+    toast.success(t("organization.invitation_accepted"));
     await navigate({ replace: true, to: "/organizations" });
   };
 
@@ -10871,15 +12208,19 @@ export function AcceptInvitation() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <Building2 className="mb-2 size-8 text-primary" />
-          <CardTitle>Organization invitation</CardTitle>
+          <CardTitle>{t("organization.invitation_title")}</CardTitle>
           <CardDescription>
-            Join the organization using the invitation issued for your signed-in email address.
+            {t("organization.invitation_accept_description")}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button className="w-full" disabled={isAccepting} onClick={accept}>
+          <Button
+            className="w-full"
+            disabled={isAccepting}
+            onClick={accept}
+          >
             {isAccepting ? <Loader2 className="animate-spin" /> : null}
-            Accept invitation
+            {t("organization.accept_invitation")}
           </Button>
         </CardContent>
       </Card>
@@ -10887,8 +12228,17 @@ export function AcceptInvitation() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/organizations/index.tsx", `import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Check, ChevronsUpDown, Copy, MailPlus, Plus, Users } from "lucide-react";
+  ["addons/admin/apps/web/src/features/organizations/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Building2,
+  Check,
+  ChevronsUpDown,
+  Copy,
+  MailPlus,
+  Plus,
+  Users,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -10898,15 +12248,36 @@ import { ProfileDropdown } from "@/components/profile-dropdown";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { authClient } from "@/lib/auth-client";
 import { useTRPC } from "@/lib/trpc";
 
+
 export function Organizations() {
+  const { t } = useTranslation();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const organizations = authClient.useListOrganizations();
@@ -10919,76 +12290,124 @@ export function Organizations() {
   const [inviteRole, setInviteRole] = useState("member");
   const [memberId, setMemberId] = useState<string | null>(null);
   const [role, setRole] = useState("member");
+
+  const activeTenant = useQuery({
+    ...trpc.organization.active.queryOptions(),
+    enabled: Boolean(activeOrganization.data?.id),
+  });
   const members = useQuery({
     ...trpc.organization.members.queryOptions(),
-    enabled: Boolean(activeOrganization.data?.id),
+    enabled: Boolean(activeTenant.data),
   });
   const invitations = useQuery({
     ...trpc.organization.invitations.queryOptions(),
-    enabled: Boolean(activeOrganization.data?.id),
+    enabled: activeTenant.data?.capabilities.canManageInvitations === true,
   });
   const roles = useQuery({
     ...trpc.organization.roles.queryOptions(),
-    enabled: Boolean(activeOrganization.data?.id),
+    enabled: activeTenant.data?.capabilities.canReadRoles === true,
   });
   const updateRole = useMutation(
     trpc.organization.updateMemberRole.mutationOptions({
       onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: trpc.organization.members.queryKey() });
+        await queryClient.invalidateQueries({
+          queryKey: trpc.organization.members.queryKey(),
+        });
         setMemberId(null);
-        toast.success("Member role updated");
+        toast.success(t("organization.member_role_updated"));
       },
     }),
   );
+  const canManageOwners = activeTenant.data?.memberRole
+    .split(",")
+    .some((memberRole) => memberRole.trim() === "owner");
   const availableRoles = useMemo(
-    () => ["owner", "admin", "member", ...(roles.data ?? []).map((item) => item.role)],
-    [roles.data],
+    () => [
+      ...(canManageOwners ? ["owner"] : []),
+      "admin",
+      "member",
+      ...(roles.data ?? []).map((item) => item.role),
+    ],
+    [canManageOwners, roles.data],
   );
 
+  const roleLabel = (value: string) => {
+    if (value === "owner") return t("organization.role_owner");
+    if (value === "admin") return t("organization.role_admin");
+    if (value === "member") return t("organization.role_member");
+    return value;
+  };
+
   const createOrganization = async () => {
-    const result = await authClient.organization.create({ name: name.trim(), slug: slug.trim() });
+    const result = await authClient.organization.create({
+      name: name.trim(),
+      slug: slug.trim(),
+    });
     if (result.error) {
-      toast.error(result.error.message ?? "Could not create organization");
+      toast.error(
+        result.error.message ?? t("organization.create_failed"),
+      );
       return;
     }
     await authClient.organization.setActive({ organizationId: result.data.id });
     await organizations.refetch();
+    await activeOrganization.refetch();
+    await queryClient.invalidateQueries({
+      queryKey: trpc.organization.active.queryKey(),
+    });
     setCreateOpen(false);
     setName("");
     setSlug("");
   };
+
   const createInvitation = async () => {
     const result = await authClient.organization.inviteMember({
       email: inviteEmail.trim(),
       role: inviteRole,
     });
     if (result.error) {
-      toast.error(result.error.message ?? "Could not create invitation");
+      toast.error(
+        result.error.message ?? t("organization.invitation_create_failed"),
+      );
       return;
     }
-    await queryClient.invalidateQueries({ queryKey: trpc.organization.invitations.queryKey() });
+    await queryClient.invalidateQueries({
+      queryKey: trpc.organization.invitations.queryKey(),
+    });
     setInviteOpen(false);
     setInviteEmail("");
     setInviteRole("member");
-    toast.success("Invitation created. Copy its link from the pending invitations list.");
+    toast.success(t("organization.invitation_created"));
   };
 
   const copyInvitationLink = async (invitationId: string) => {
     const link = \`\${window.location.origin}/accept-invitation/\${invitationId}\`;
     await navigator.clipboard.writeText(link);
-    toast.success("Invitation link copied");
+    toast.success(t("organization.invitation_link_copied"));
   };
 
   const setActiveOrganization = async (organizationId: string) => {
     const result = await authClient.organization.setActive({ organizationId });
     if (result.error) {
-      toast.error(result.error.message ?? "Could not switch organization");
+      toast.error(
+        result.error.message ?? t("organization.switch_failed"),
+      );
       return;
     }
+    await activeOrganization.refetch();
     await Promise.all([
-      activeOrganization.refetch(),
-      queryClient.invalidateQueries({ queryKey: trpc.organization.members.queryKey() }),
-      queryClient.invalidateQueries({ queryKey: trpc.organization.invitations.queryKey() }),
+      queryClient.invalidateQueries({
+        queryKey: trpc.organization.active.queryKey(),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: trpc.organization.members.queryKey(),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: trpc.organization.invitations.queryKey(),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: trpc.organization.roles.queryKey(),
+      }),
     ]);
   };
 
@@ -10997,7 +12416,9 @@ export function Organizations() {
       <Header fixed>
         <div className="flex flex-1 items-center gap-2">
           <Building2 className="size-4 text-muted-foreground" />
-          <span className="font-medium text-sm">Organization administration</span>
+          <span className="font-medium text-sm">
+            {t("organization.administration")}
+          </span>
         </div>
         <ThemeSwitch />
         <ProfileDropdown />
@@ -11005,17 +12426,26 @@ export function Organizations() {
       <Main>
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="font-bold text-2xl tracking-tight">Organizations</h1>
-            <p className="text-muted-foreground">Manage real workspaces, members, invitations, and tenant roles.</p>
+            <h1 className="font-bold text-2xl tracking-tight">
+              {t("organization.title")}
+            </h1>
+            <p className="text-muted-foreground">
+              {t("organization.description")}
+            </p>
           </div>
-          <Button onClick={() => setCreateOpen(true)}><Plus />Create organization</Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus />
+            {t("organization.create")}
+          </Button>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
           <Card>
             <CardHeader>
-              <CardTitle>Your organizations</CardTitle>
-              <CardDescription>Select the active tenant for all scoped API requests.</CardDescription>
+              <CardTitle>{t("organization.your_organizations")}</CardTitle>
+              <CardDescription>
+                {t("organization.select_active_description")}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               {(organizations.data ?? []).map((item) => (
@@ -11025,77 +12455,452 @@ export function Organizations() {
                   onClick={() => setActiveOrganization(item.id)}
                   type="button"
                 >
-                  <span><strong className="block text-sm">{item.name}</strong><small className="text-muted-foreground">{item.slug}</small></span>
-                  {activeOrganization.data?.id === item.id ? <Check className="size-4" /> : <ChevronsUpDown className="size-4 text-muted-foreground" />}
+                  <span>
+                    <strong className="block text-sm">{item.name}</strong>
+                    <small className="text-muted-foreground">
+                      {item.slug}
+                    </small>
+                  </span>
+                  {activeOrganization.data?.id === item.id ? (
+                    <Check className="size-4" />
+                  ) : (
+                    <ChevronsUpDown className="size-4 text-muted-foreground" />
+                  )}
                 </button>
               ))}
-              {organizations.data?.length === 0 ? <p className="py-8 text-center text-muted-foreground text-sm">No organizations yet.</p> : null}
+              {organizations.data?.length === 0 ? (
+                <p className="py-8 text-center text-muted-foreground text-sm">
+                  {t("organization.none")}
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 
-          <div className="space-y-4">
+          {activeTenant.data ? (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="flex-row items-center justify-between gap-3">
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="size-4" />
+                    {t("organization.members")}
+                  </CardTitle>
+                  <Button
+                    disabled={!activeTenant.data.capabilities.canManageInvitations}
+                    onClick={() => setInviteOpen(true)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <MailPlus />
+                    {t("organization.invite_member")}
+                  </Button>
+                </CardHeader>
+                <CardContent className="divide-y">
+                  {(members.data ?? []).map((item) => (
+                    <div
+                      className="flex min-h-16 items-center justify-between gap-3"
+                      key={item.id}
+                    >
+                      <div>
+                        <strong className="block text-sm">{item.name}</strong>
+                        <small className="text-muted-foreground">
+                          {item.email}
+                        </small>
+                      </div>
+                      <Button
+                        disabled={!activeTenant.data?.capabilities.canManageMembers}
+                        onClick={() => {
+                          setMemberId(item.id);
+                          setRole(item.role);
+                        }}
+                        variant="outline"
+                      >
+                        {item.role.split(",").map(roleLabel).join(", ")}
+                      </Button>
+                    </div>
+                  ))}
+                  {activeOrganization.data && members.data?.length === 0 ? (
+                    <p className="py-8 text-center text-muted-foreground text-sm">
+                      {t("organization.no_members")}
+                    </p>
+                  ) : null}
+                </CardContent>
+              </Card>
+              {activeTenant.data.capabilities.canManageInvitations ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>
+                    {t("organization.pending_invitations")}
+                  </CardTitle>
+                  <CardDescription>
+                    {t("organization.pending_invitations_description")}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="divide-y">
+                  {(invitations.data ?? []).map((item) => (
+                    <div
+                      className="flex min-h-14 items-center justify-between gap-3"
+                      key={item.id}
+                    >
+                      <span className="min-w-0 truncate text-sm">
+                        {item.email}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">{item.status}</Badge>
+                        <Button
+                          aria-label={t("organization.copy_invitation_aria", {
+                            email: item.email,
+                          })}
+                          onClick={() => copyInvitationLink(item.id)}
+                          size="icon"
+                          variant="ghost"
+                        >
+                          <Copy />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {activeOrganization.data &&
+                  invitations.data?.length === 0 ? (
+                    <p className="py-8 text-center text-muted-foreground text-sm">
+                      {t("organization.no_pending_invitations")}
+                    </p>
+                  ) : null}
+                </CardContent>
+              </Card>
+              ) : null}
+            </div>
+          ) : (
             <Card>
-              <CardHeader className="flex-row items-center justify-between gap-3">
-                <CardTitle className="flex items-center gap-2"><Users className="size-4" />Members</CardTitle>
-                <Button disabled={!activeOrganization.data} onClick={() => setInviteOpen(true)} size="sm" variant="outline"><MailPlus />Invite member</Button>
+              <CardHeader>
+                <CardTitle>{t("organization.select_workspace")}</CardTitle>
+                <CardDescription>
+                  {t("organization.select_workspace_description")}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="divide-y">
-                {(members.data ?? []).map((item) => (
-                  <div className="flex min-h-16 items-center justify-between gap-3" key={item.id}>
-                    <div><strong className="block text-sm">{item.name}</strong><small className="text-muted-foreground">{item.email}</small></div>
-                    <Button variant="outline" onClick={() => { setMemberId(item.id); setRole(item.role); }}>{item.role}</Button>
-                  </div>
-                ))}
-                {activeOrganization.data && members.data?.length === 0 ? <p className="py-8 text-center text-muted-foreground text-sm">No members found.</p> : null}
-              </CardContent>
             </Card>
-            <Card>
-              <CardHeader><CardTitle>Pending invitations</CardTitle><CardDescription>Email delivery is not configured by default. Copy the real acceptance link and send it securely.</CardDescription></CardHeader>
-              <CardContent className="divide-y">
-                {(invitations.data ?? []).map((item) => (
-                  <div className="flex min-h-14 items-center justify-between gap-3" key={item.id}>
-                    <span className="min-w-0 truncate text-sm">{item.email}</span>
-                    <div className="flex items-center gap-2"><Badge variant="secondary">{item.status}</Badge><Button aria-label={\`Copy invitation link for \${item.email}\`} onClick={() => copyInvitationLink(item.id)} size="icon" variant="ghost"><Copy /></Button></div>
-                  </div>
-                ))}
-                {activeOrganization.data && invitations.data?.length === 0 ? <p className="py-8 text-center text-muted-foreground text-sm">No pending invitations.</p> : null}
-              </CardContent>
-            </Card>
-          </div>
+          )}
         </div>
       </Main>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent><DialogHeader><DialogTitle>Create organization</DialogTitle><DialogDescription>Create a real Better Auth organization and become its owner.</DialogDescription></DialogHeader>
-          <div className="grid gap-4"><div className="grid gap-2"><Label htmlFor="organization-name">Name</Label><Input id="organization-name" value={name} onChange={(event) => { setName(event.target.value); setSlug(event.target.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-")); }} /></div><div className="grid gap-2"><Label htmlFor="organization-slug">Slug</Label><Input id="organization-slug" value={slug} onChange={(event) => setSlug(event.target.value)} /></div></div>
-          <DialogFooter><Button disabled={!name.trim() || !slug.trim()} onClick={createOrganization}>Create</Button></DialogFooter>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("organization.create")}</DialogTitle>
+            <DialogDescription>
+              {t("organization.create_description")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="organization-name">
+                {t("organization.name")}
+              </Label>
+              <Input
+                id="organization-name"
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setSlug(
+                    event.target.value
+                      .toLowerCase()
+                      .trim()
+                      .replace(/[^a-z0-9]+/g, "-"),
+                  );
+                }}
+                value={name}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="organization-slug">
+                {t("organization.slug")}
+              </Label>
+              <Input
+                id="organization-slug"
+                onChange={(event) => setSlug(event.target.value)}
+                value={slug}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={!name.trim() || !slug.trim()}
+              onClick={createOrganization}
+            >
+              {t("common.create")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent><DialogHeader><DialogTitle>Invite member</DialogTitle><DialogDescription>Create a real Better Auth invitation. This template exposes a copyable link because email delivery is not configured.</DialogDescription></DialogHeader>
-          <div className="grid gap-4"><div className="grid gap-2"><Label htmlFor="invitation-email">Email</Label><Input id="invitation-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} /></div><div className="grid gap-2"><Label htmlFor="invitation-role">Role</Label><Select value={inviteRole} onValueChange={setInviteRole}><SelectTrigger id="invitation-role"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="member">member</SelectItem><SelectItem value="admin">admin</SelectItem></SelectContent></Select></div></div>
-          <DialogFooter><Button disabled={!inviteEmail.trim()} onClick={createInvitation}>Create invitation</Button></DialogFooter>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("organization.invite_member")}</DialogTitle>
+            <DialogDescription>
+              {t("organization.invite_description")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="invitation-email">
+                {t("auth.email")}
+              </Label>
+              <Input
+                id="invitation-email"
+                onChange={(event) => setInviteEmail(event.target.value)}
+                type="email"
+                value={inviteEmail}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="invitation-role">
+                {t("organization.role")}
+              </Label>
+              <Select onValueChange={setInviteRole} value={inviteRole}>
+                <SelectTrigger id="invitation-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">
+                    {t("organization.role_member")}
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    {t("organization.role_admin")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={!inviteEmail.trim()}
+              onClick={createInvitation}
+            >
+              {t("organization.create_invitation")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={memberId !== null} onOpenChange={(open) => { if (!open) setMemberId(null); }}>
-        <DialogContent><DialogHeader><DialogTitle>Update member role</DialogTitle><DialogDescription>Roles are scoped to the active organization.</DialogDescription></DialogHeader>
-          <Select value={role} onValueChange={setRole}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{availableRoles.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
-          <DialogFooter><Button disabled={!memberId || updateRole.isPending} onClick={() => { if (memberId) updateRole.mutate({ memberId, role }); }}>Save role</Button></DialogFooter>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) setMemberId(null);
+        }}
+        open={memberId !== null}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("organization.update_member_role")}</DialogTitle>
+            <DialogDescription>
+              {t("organization.update_member_role_description")}
+            </DialogDescription>
+          </DialogHeader>
+          <Select onValueChange={setRole} value={role}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {availableRoles.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {roleLabel(item)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button
+              disabled={!memberId || updateRole.isPending}
+              onClick={() => {
+                if (memberId) updateRole.mutate({ memberId, role });
+              }}
+            >
+              {t("common.save")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/roles/index.tsx", `// biome-ignore-all lint/performance/noJsxPropsBind: role table actions intentionally close over row identifiers.
+  ["addons/admin/apps/web/src/features/roles/index.test.tsx.hbs", `import { i18n } from "@{{projectName}}/i18n/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { userEvent } from "vitest/browser";
+import { render } from "vitest-browser-react";
+
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AccessProvider, type UserAccess } from "@/context/access-context";
+import { DirectionProvider } from "@/context/direction-provider";
+import { LayoutProvider } from "@/context/layout-provider";
+import { SearchProvider } from "@/context/search-provider";
+import { ThemeProvider } from "@/context/theme-provider";
+
+import { Roles } from ".";
+
+const mutation = vi.fn(async () => ({ success: true }));
+const permission = {
+	action: "read",
+	description: "View dashboard",
+	key: "dashboard:read",
+	resource: "Dashboard",
+};
+const protectedRole = {
+	description: "Protected role",
+	id: "viewer",
+	isSystem: true,
+	name: "Viewer",
+	permissionKeys: ["dashboard:read"],
+	slug: "viewer",
+	userCount: 1,
+};
+const customRole = {
+	description: "Custom role",
+	id: "custom",
+	isSystem: false,
+	name: "Custom",
+	permissionKeys: ["dashboard:read"],
+	slug: "custom",
+	userCount: 0,
+};
+
+vi.mock("@/components/config-drawer", () => ({ ConfigDrawer: () => null }));
+vi.mock("@/components/profile-dropdown", () => ({
+	ProfileDropdown: () => null,
+}));
+vi.mock("@/components/search", () => ({ Search: () => null }));
+vi.mock("@/components/theme-switch", () => ({ ThemeSwitch: () => null }));
+vi.mock("@/lib/trpc", () => ({
+	useTRPC: () => ({
+		admin: {
+			createRole: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			deleteRole: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			permissions: {
+				queryOptions: () => ({
+					queryFn: async () => [permission],
+					queryKey: ["permissions"],
+				}),
+			},
+			roles: {
+				queryKey: () => ["roles"],
+				queryOptions: () => ({
+					queryFn: async () => [protectedRole, customRole],
+					queryKey: ["roles"],
+				}),
+			},
+			updateRole: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+		},
+	}),
+}));
+
+async function renderRoles(permissions: UserAccess["permissions"]) {
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	return render(
+		<QueryClientProvider client={queryClient}>
+			<AccessProvider access=\\{{ isSuperAdmin: false, permissions, roles: [] }}>
+				<DirectionProvider>
+					<ThemeProvider>
+						<LayoutProvider>
+							<SidebarProvider>
+								<SearchProvider>
+									<Roles />
+								</SearchProvider>
+							</SidebarProvider>
+						</LayoutProvider>
+					</ThemeProvider>
+				</DirectionProvider>
+			</AccessProvider>
+		</QueryClientProvider>,
+	);
+}
+
+describe("Roles 操作权限", () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		await i18n.changeLanguage("en");
+	});
+
+	it("只读用户只能查看自定义角色", async () => {
+		const screen = await renderRoles(["role:read"]);
+
+		await expect
+			.element(screen.getByRole("button", { name: "Add role" }))
+			.not.toBeInTheDocument();
+		await userEvent.click(
+			screen.getByRole("button", { name: "Manage Custom" }),
+		);
+		await expect.element(screen.getByLabelText("Name")).toBeDisabled();
+		await expect
+			.element(screen.getByRole("button", { name: "Save" }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Delete role" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("受保护角色对拥有全部角色权限的用户仍保持只读", async () => {
+		const screen = await renderRoles([
+			"role:read",
+			"role:create",
+			"role:update",
+			"role:delete",
+		]);
+
+		await userEvent.click(
+			screen.getByRole("button", { name: "Manage Viewer" }),
+		);
+		await expect.element(screen.getByLabelText("Name")).toBeDisabled();
+		await expect
+			.element(screen.getByRole("button", { name: "Save" }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Delete role" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("自定义角色只展示获准的 mutation", async () => {
+		const screen = await renderRoles(["role:read", "role:update"]);
+
+		await userEvent.click(
+			screen.getByRole("button", { name: "Manage Custom" }),
+		);
+		await expect.element(screen.getByLabelText("Name")).toBeEnabled();
+		await expect
+			.element(screen.getByRole("button", { name: "Save" }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Delete role" }))
+			.not.toBeInTheDocument();
+	});
+});
+`],
+  ["addons/admin/apps/web/src/features/roles/index.tsx.hbs", `// biome-ignore-all lint/performance/noJsxPropsBind: role table actions intentionally close over row identifiers.
+import { useTranslation } from "@{{projectName}}/i18n/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { type BusinessColumn, BusinessDataTable } from "@/components/business-data-table";
+import {
+	type BusinessColumn,
+	BusinessDataTable,
+} from "@/components/business-data-table";
 import { ConfigDrawer } from "@/components/config-drawer";
 import { Header } from "@/components/layout/header";
 import { Main } from "@/components/layout/main";
@@ -11106,333 +12911,379 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useAccess } from "@/context/access-context";
 import { useTRPC } from "@/lib/trpc";
 
 interface PermissionItem {
-  action: string;
-  description: string;
-  key: string;
-  resource: string;
+	action: string;
+	description: string;
+	key: string;
+	resource: string;
 }
 interface RoleItem {
-  description: string | null;
-  id: string;
-  isSystem: boolean;
-  name: string;
-  permissionKeys: string[];
-  slug: string;
-  userCount: number;
+	description: string | null;
+	id: string;
+	isSystem: boolean;
+	name: string;
+	permissionKeys: string[];
+	slug: string;
+	userCount: number;
 }
 interface RoleDraft {
-  description: string;
-  id?: string;
-  isSystem: boolean;
-  name: string;
-  permissionKeys: string[];
-  slug: string;
+	description: string;
+	id?: string;
+	isSystem: boolean;
+	name: string;
+	permissionKeys: string[];
+	slug: string;
 }
 
 const EMPTY_ROLE: RoleDraft = {
-  description: "",
-  isSystem: false,
-  name: "",
-  permissionKeys: [],
-  slug: "",
+	description: "",
+	isSystem: false,
+	name: "",
+	permissionKeys: [],
+	slug: "",
 };
 const filterRole = (role: RoleItem, query: string) =>
-  !query ||
-  role.name.toLowerCase().includes(query) ||
-  role.description?.toLowerCase().includes(query) === true;
+	!query ||
+	role.name.toLowerCase().includes(query) ||
+	role.description?.toLowerCase().includes(query) === true;
 const getRoleId = (role: RoleItem) => role.id;
 const toSlug = (name: string) =>
-  name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+	name
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-|-$/g, "");
 
 export function Roles() {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  const rolesQuery = useQuery(trpc.admin.roles.queryOptions());
-  const permissionsQuery = useQuery(trpc.admin.permissions.queryOptions());
-  const roles = (rolesQuery.data ?? []) as RoleItem[];
-  const permissions = (permissionsQuery.data ?? []) as PermissionItem[];
-  const [draft, setDraft] = useState<RoleDraft | null>(null);
-  const refresh = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: trpc.admin.roles.queryKey() }),
-    [queryClient, trpc.admin.roles],
-  );
-  const createRole = useMutation(
-    trpc.admin.createRole.mutationOptions({
-      onSuccess: async () => {
-        await refresh();
-        setDraft(null);
-        toast.success("Role created");
-      },
-    }),
-  );
-  const updateRole = useMutation(
-    trpc.admin.updateRole.mutationOptions({
-      onSuccess: async () => {
-        await refresh();
-        setDraft(null);
-        toast.success("Role updated");
-      },
-    }),
-  );
-  const deleteRole = useMutation(
-    trpc.admin.deleteRole.mutationOptions({
-      onSuccess: async () => {
-        await refresh();
-        setDraft(null);
-        toast.success("Role deleted");
-      },
-    }),
-  );
-  const openNew = useCallback(() => setDraft(EMPTY_ROLE), []);
-  const close = useCallback(() => setDraft(null), []);
-  const handleOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      setDraft(null);
-    }
-  }, []);
-  const changeName = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const name = event.target.value;
-    setDraft((current) =>
-      current ? { ...current, name, slug: current.id ? current.slug : toSlug(name) } : current,
-    );
-  }, []);
-  const changeDescription = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setDraft((current) => (current ? { ...current, description: event.target.value } : current));
-  }, []);
-  const togglePermission = useCallback((key: string, checked: boolean) => {
-    setDraft((current) => {
-      if (!current) {
-        return current;
-      }
-      return {
-        ...current,
-        permissionKeys: checked
-          ? [...current.permissionKeys, key]
-          : current.permissionKeys.filter((value) => value !== key),
-      };
-    });
-  }, []);
-  const save = useCallback(() => {
-    if (!draft) {
-      return;
-    }
-    if (draft.id) {
-      updateRole.mutate({
-        description: draft.description,
-        id: draft.id,
-        name: draft.name,
-        permissionKeys: draft.permissionKeys,
-      });
-      return;
-    }
-    createRole.mutate({
-      description: draft.description,
-      name: draft.name,
-      permissionKeys: draft.permissionKeys,
-      slug: draft.slug,
-    });
-  }, [createRole, draft, updateRole]);
-  const remove = useCallback(() => {
-    if (draft?.id && !draft.isSystem) {
-      deleteRole.mutate({ id: draft.id });
-    }
-  }, [deleteRole, draft]);
-  const columns = useMemo<BusinessColumn<RoleItem>[]>(
-    () => [
-      {
-        header: "Role",
-        render: (role) => (
-          <div>
-            <div className="flex items-center gap-2 font-medium">
-              {role.name}
-              {role.isSystem ? <Badge variant="outline">Protected</Badge> : null}
-            </div>
-            <div className="text-muted-foreground text-xs">{role.description}</div>
-          </div>
-        ),
-      },
-      {
-        header: "Permissions",
-        render: (role) => (
-          <div className="flex flex-wrap gap-1">
-            {role.permissionKeys.slice(0, 3).map((key) => (
-              <Badge key={key} variant="secondary">
-                {key}
-              </Badge>
-            ))}
-            {role.permissionKeys.length > 3 ? (
-              <Badge variant="outline">+{role.permissionKeys.length - 3}</Badge>
-            ) : null}
-          </div>
-        ),
-      },
-      { header: "Members", render: (role) => role.userCount },
-      {
-        className: "w-16 text-right",
-        header: "Actions",
-        render: (role) => (
-          <Button
-            aria-label={\`Manage \${role.name}\`}
-            onClick={() =>
-              setDraft({
-                description: role.description ?? "",
-                id: role.id,
-                isSystem: role.isSystem,
-                name: role.name,
-                permissionKeys: role.permissionKeys,
-                slug: role.slug,
-              })
-            }
-            size="icon"
-            variant="ghost"
-          >
-            <MoreHorizontal />
-          </Button>
-        ),
-      },
-    ],
-    [],
-  );
+	const trpc = useTRPC();
+	const { t } = useTranslation();
+	const { can } = useAccess();
+	const canCreateRole = can("role:create");
+	const canDeleteRole = can("role:delete");
+	const canUpdateRole = can("role:update");
+	const queryClient = useQueryClient();
+	const rolesQuery = useQuery(trpc.admin.roles.queryOptions());
+	const permissionsQuery = useQuery(trpc.admin.permissions.queryOptions());
+	const roles = (rolesQuery.data ?? []) as RoleItem[];
+	const permissions = (permissionsQuery.data ?? []) as PermissionItem[];
+	const [draft, setDraft] = useState<RoleDraft | null>(null);
+	const canSaveRole =
+		draft !== null &&
+		!draft.isSystem &&
+		(draft.id ? canUpdateRole : canCreateRole);
+	const refresh = useCallback(
+		() =>
+			queryClient.invalidateQueries({ queryKey: trpc.admin.roles.queryKey() }),
+		[queryClient, trpc.admin.roles],
+	);
+	const createRole = useMutation(
+		trpc.admin.createRole.mutationOptions({
+			onSuccess: async () => {
+				await refresh();
+				setDraft(null);
+				toast.success(t("roles.created"));
+			},
+		}),
+	);
+	const updateRole = useMutation(
+		trpc.admin.updateRole.mutationOptions({
+			onSuccess: async () => {
+				await refresh();
+				setDraft(null);
+				toast.success(t("roles.updated"));
+			},
+		}),
+	);
+	const deleteRole = useMutation(
+		trpc.admin.deleteRole.mutationOptions({
+			onSuccess: async () => {
+				await refresh();
+				setDraft(null);
+				toast.success(t("roles.deleted"));
+			},
+		}),
+	);
+	const openNew = useCallback(() => setDraft(EMPTY_ROLE), []);
+	const close = useCallback(() => setDraft(null), []);
+	const handleOpenChange = useCallback((open: boolean) => {
+		if (!open) {
+			setDraft(null);
+		}
+	}, []);
+	const changeName = useCallback(
+		(event: React.ChangeEvent<HTMLInputElement>) => {
+			const name = event.target.value;
+			setDraft((current) =>
+				current
+					? { ...current, name, slug: current.id ? current.slug : toSlug(name) }
+					: current,
+			);
+		},
+		[],
+	);
+	const changeDescription = useCallback(
+		(event: React.ChangeEvent<HTMLTextAreaElement>) => {
+			setDraft((current) =>
+				current ? { ...current, description: event.target.value } : current,
+			);
+		},
+		[],
+	);
+	const togglePermission = useCallback((key: string, checked: boolean) => {
+		setDraft((current) => {
+			if (!current) {
+				return current;
+			}
+			return {
+				...current,
+				permissionKeys: checked
+					? [...current.permissionKeys, key]
+					: current.permissionKeys.filter((value) => value !== key),
+			};
+		});
+	}, []);
+	const save = useCallback(() => {
+		if (!draft || !canSaveRole) {
+			return;
+		}
+		if (draft.id) {
+			updateRole.mutate({
+				description: draft.description,
+				id: draft.id,
+				name: draft.name,
+				permissionKeys: draft.permissionKeys,
+			});
+			return;
+		}
+		createRole.mutate({
+			description: draft.description,
+			name: draft.name,
+			permissionKeys: draft.permissionKeys,
+			slug: draft.slug,
+		});
+	}, [canSaveRole, createRole, draft, updateRole]);
+	const remove = useCallback(() => {
+		if (draft?.id && !draft.isSystem && canDeleteRole) {
+			deleteRole.mutate({ id: draft.id });
+		}
+	}, [canDeleteRole, deleteRole, draft]);
+	const columns = useMemo<BusinessColumn<RoleItem>[]>(
+		() => [
+			{
+				header: t("roles.role"),
+				render: (role) => (
+					<div>
+						<div className="flex items-center gap-2 font-medium">
+							{role.name}
+							{role.isSystem ? (
+								<Badge variant="outline">{t("roles.protected")}</Badge>
+							) : null}
+						</div>
+						<div className="text-muted-foreground text-xs">
+							{role.description}
+						</div>
+					</div>
+				),
+			},
+			{
+				header: t("roles.permissions"),
+				render: (role) => (
+					<div className="flex flex-wrap gap-1">
+						{role.permissionKeys.slice(0, 3).map((key) => (
+							<Badge key={key} variant="secondary">
+								{key}
+							</Badge>
+						))}
+						{role.permissionKeys.length > 3 ? (
+							<Badge variant="outline">+{role.permissionKeys.length - 3}</Badge>
+						) : null}
+					</div>
+				),
+			},
+			{ header: t("roles.members"), render: (role) => role.userCount },
+			{
+				className: "w-16 text-right",
+				header: t("common.actions"),
+				render: (role) => (
+					<Button
+						aria-label={t("roles.manage_role", { name: role.name })}
+						onClick={() =>
+							setDraft({
+								description: role.description ?? "",
+								id: role.id,
+								isSystem: role.isSystem,
+								name: role.name,
+								permissionKeys: role.permissionKeys,
+								slug: role.slug,
+							})
+						}
+						size="icon"
+						variant="ghost"
+					>
+						<MoreHorizontal />
+					</Button>
+				),
+			},
+		],
+		[t],
+	);
 
-  return (
-    <>
-      <Header fixed>
-        <Search className="me-auto" />
-        <ThemeSwitch />
-        <ConfigDrawer />
-        <ProfileDropdown />
-      </Header>
-      <Main className="flex flex-1 flex-col gap-4 sm:gap-6">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="font-bold text-2xl tracking-tight">Roles & permissions</h2>
-            <p className="text-muted-foreground">
-              Define reusable access policies for your workspace.
-            </p>
-          </div>
-          <Button onClick={openNew}>
-            <Plus />
-            Add role
-          </Button>
-        </div>
-        <BusinessDataTable
-          columns={columns}
-          data={roles}
-          empty="No roles found."
-          filter={filterRole}
-          getRowId={getRoleId}
-          placeholder="Filter roles..."
-        />
-      </Main>
-      <Dialog onOpenChange={handleOpenChange} open={draft !== null}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{draft?.id ? \`Edit \${draft.name}\` : "Add role"}</DialogTitle>
-            <DialogDescription>Set role details and choose permissions.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="role-name">Role name</Label>
-              <Input
-                disabled={draft?.isSystem}
-                id="role-name"
-                onChange={changeName}
-                value={draft?.name ?? ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role-description">Description</Label>
-              <Textarea
-                disabled={draft?.isSystem}
-                id="role-description"
-                onChange={changeDescription}
-                value={draft?.description ?? ""}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Permissions</Label>
-            <div className="grid max-h-72 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
-              {permissions.map((permission) => (
-                <PermissionChoice
-                  checked={draft?.permissionKeys.includes(permission.key) ?? false}
-                  disabled={draft?.isSystem ?? false}
-                  key={permission.key}
-                  onToggle={togglePermission}
-                  permission={permission}
-                />
-              ))}
-            </div>
-          </div>
-          <DialogFooter>
-            {draft?.id && !draft.isSystem ? (
-              <Button onClick={remove} variant="destructive">
-                Delete role
-              </Button>
-            ) : null}
-            <Button onClick={close} variant="outline">
-              Cancel
-            </Button>
-            <Button disabled={draft?.isSystem || !draft?.name || !draft.slug} onClick={save}>
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
+	return (
+		<>
+			<Header fixed>
+				<Search className="me-auto" />
+				<ThemeSwitch />
+				<ConfigDrawer />
+				<ProfileDropdown />
+			</Header>
+			<Main className="flex flex-1 flex-col gap-4 sm:gap-6">
+				<div className="flex flex-wrap items-end justify-between gap-2">
+					<div>
+						<h2 className="font-bold text-2xl tracking-tight">
+							{t("roles.title")}
+						</h2>
+						<p className="text-muted-foreground">{t("roles.desc")}</p>
+					</div>
+					{canCreateRole ? (
+						<Button onClick={openNew}>
+							<Plus />
+							{t("roles.add")}
+						</Button>
+					) : null}
+				</div>
+				<BusinessDataTable
+					columns={columns}
+					data={roles}
+					empty={t("roles.empty")}
+					filter={filterRole}
+					getRowId={getRoleId}
+					placeholder={t("roles.filter_placeholder")}
+				/>
+			</Main>
+			<Dialog onOpenChange={handleOpenChange} open={draft !== null}>
+				<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+					<DialogHeader>
+						<DialogTitle>
+							{draft?.id
+								? t("roles.edit_title", { name: draft.name })
+								: t("roles.add")}
+						</DialogTitle>
+						<DialogDescription>
+							{canSaveRole ? t("roles.dialog_desc") : t("roles.view_desc")}
+						</DialogDescription>
+					</DialogHeader>
+					<div className="grid gap-4 sm:grid-cols-2">
+						<div className="space-y-2">
+							<Label htmlFor="role-name">{t("roles.name")}</Label>
+							<Input
+								disabled={draft?.isSystem || (!!draft?.id && !canUpdateRole)}
+								id="role-name"
+								onChange={changeName}
+								value={draft?.name ?? ""}
+							/>
+						</div>
+						<div className="space-y-2">
+							<Label htmlFor="role-description">{t("roles.description")}</Label>
+							<Textarea
+								disabled={draft?.isSystem || (!!draft?.id && !canUpdateRole)}
+								id="role-description"
+								onChange={changeDescription}
+								value={draft?.description ?? ""}
+							/>
+						</div>
+					</div>
+					<div className="space-y-2">
+						<Label>{t("roles.permissions")}</Label>
+						<div className="grid max-h-72 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
+							{permissions.map((permission) => (
+								<PermissionChoice
+									checked={
+										draft?.permissionKeys.includes(permission.key) ?? false
+									}
+									disabled={draft?.isSystem || (!!draft?.id && !canUpdateRole)}
+									key={permission.key}
+									onToggle={togglePermission}
+									permission={permission}
+								/>
+							))}
+						</div>
+					</div>
+					<DialogFooter>
+						{draft?.id && !draft.isSystem && canDeleteRole ? (
+							<Button onClick={remove} variant="destructive">
+								{t("roles.delete")}
+							</Button>
+						) : null}
+						<Button onClick={close} variant="outline">
+							{t("common.cancel")}
+						</Button>
+						{canSaveRole ? (
+							<Button disabled={!draft?.name || !draft.slug} onClick={save}>
+								{t("common.save")}
+							</Button>
+						) : null}
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</>
+	);
 }
 
 function PermissionChoice({
-  checked,
-  disabled,
-  onToggle,
-  permission,
+	checked,
+	disabled,
+	onToggle,
+	permission,
 }: {
-  checked: boolean;
-  disabled: boolean;
-  onToggle: (key: string, checked: boolean) => void;
-  permission: PermissionItem;
+	checked: boolean;
+	disabled: boolean;
+	onToggle: (key: string, checked: boolean) => void;
+	permission: PermissionItem;
 }) {
-  const id = \`permission-\${permission.key}\`;
-  const handleToggle = useCallback(
-    (value: boolean | "indeterminate") => onToggle(permission.key, value === true),
-    [onToggle, permission.key],
-  );
-  return (
-    <Label
-      className="flex min-h-14 cursor-pointer items-start gap-3 rounded-md p-3 hover:bg-muted has-disabled:cursor-not-allowed has-disabled:opacity-60"
-      htmlFor={id}
-    >
-      <Checkbox checked={checked} disabled={disabled} id={id} onCheckedChange={handleToggle} />
-      <span className="grid gap-0.5">
-        <span>
-          {permission.resource}: {permission.action}
-        </span>
-        <span className="font-normal text-muted-foreground text-xs">{permission.description}</span>
-      </span>
-    </Label>
-  );
+	const id = \`permission-\${permission.key}\`;
+	const handleToggle = useCallback(
+		(value: boolean | "indeterminate") =>
+			onToggle(permission.key, value === true),
+		[onToggle, permission.key],
+	);
+	return (
+		<Label
+			className="flex min-h-14 cursor-pointer items-start gap-3 rounded-md p-3 hover:bg-muted has-disabled:cursor-not-allowed has-disabled:opacity-60"
+			htmlFor={id}
+		>
+			<Checkbox
+				checked={checked}
+				disabled={disabled}
+				id={id}
+				onCheckedChange={handleToggle}
+			/>
+			<span className="grid gap-0.5">
+				<span>
+					{permission.resource}: {permission.action}
+				</span>
+				<span className="font-normal text-muted-foreground text-xs">
+					{permission.description}
+				</span>
+			</span>
+		</Label>
+	);
 }
 `],
-  ["addons/admin/apps/web/src/features/settings/account/account-form.tsx", `import { useCallback, useState } from "react";
+  ["addons/admin/apps/web/src/features/settings/account/account-form.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -11442,34 +13293,40 @@ import { authClient } from "@/lib/auth-client";
 
 export function AccountForm() {
   const [pending, setPending] = useState(false);
-  const submit = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const target = event.currentTarget;
-    const data = new FormData(target);
-    const newPassword = String(data.get("newPassword") ?? "");
-    if (newPassword !== String(data.get("confirmPassword") ?? "")) {
-      toast.error("New passwords do not match");
-      return;
-    }
-    setPending(true);
-    const { error } = await authClient.changePassword({
-      currentPassword: String(data.get("currentPassword") ?? ""),
-      newPassword,
-      revokeOtherSessions: true,
-    });
-    setPending(false);
-    if (error) {
-      toast.error(error.message ?? "Could not change password");
-      return;
-    }
-    target.reset();
-    toast.success("Password changed and other sessions revoked");
-  }, []);
+  const { t } = useTranslation();
+  const submit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const target = event.currentTarget;
+      const data = new FormData(target);
+      const newPassword = String(data.get("newPassword") ?? "");
+      if (newPassword !== String(data.get("confirmPassword") ?? "")) {
+        toast.error(t("validation.new_passwords_not_match"));
+        return;
+      }
+      setPending(true);
+      const { error } = await authClient.changePassword({
+        currentPassword: String(data.get("currentPassword") ?? ""),
+        newPassword,
+        revokeOtherSessions: true,
+      });
+      setPending(false);
+      if (error) {
+        toast.error(t("account_form.change_error"));
+        return;
+      }
+      target.reset();
+      toast.success(t("account_form.changed"));
+    },
+    [t]
+  );
 
   return (
     <form className="space-y-8" onSubmit={submit}>
       <div className="space-y-2">
-        <Label htmlFor="current-password">Current password</Label>
+        <Label htmlFor="current-password">
+          {t("account_form.current_password")}
+        </Label>
         <Input
           autoComplete="current-password"
           id="current-password"
@@ -11479,7 +13336,7 @@ export function AccountForm() {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="new-password">New password</Label>
+        <Label htmlFor="new-password">{t("account_form.new_password")}</Label>
         <Input
           autoComplete="new-password"
           id="new-password"
@@ -11490,7 +13347,9 @@ export function AccountForm() {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="confirm-password">Confirm new password</Label>
+        <Label htmlFor="confirm-password">
+          {t("account_form.confirm_password")}
+        </Label>
         <Input
           autoComplete="new-password"
           id="confirm-password"
@@ -11501,28 +13360,31 @@ export function AccountForm() {
         />
       </div>
       <Button disabled={pending} type="submit">
-        {pending ? "Updating…" : "Change password"}
+        {pending ? t("common.updating") : t("account_form.change_password")}
       </Button>
     </form>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/settings/account/index.tsx", `import { ContentSection } from "../components/content-section";
+  ["addons/admin/apps/web/src/features/settings/account/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { ContentSection } from "../components/content-section";
 import { AccountForm } from "./account-form";
 
 export function SettingsAccount() {
+  const { t } = useTranslation();
   return (
     <ContentSection
-      desc="Change your password and revoke every other active session."
-      title="Account security"
+      desc={t("settings.account_security_desc")}
+      title={t("navigation.account_security")}
     >
       <AccountForm />
     </ContentSection>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/settings/appearance/appearance-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
+  ["addons/admin/apps/web/src/features/settings/appearance/appearance-form.tsx.hbs", `import { zodResolver } from "@hookform/resolvers/zod";
 import { ChevronDownIcon } from "@radix-ui/react-icons";
+import { useTranslation } from "@{{projectName}}/i18n/react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -11543,8 +13405,8 @@ import { useTheme } from "@/context/theme-provider";
 import { cn } from "@/lib/utils";
 
 const appearanceFormSchema = z.object({
-  theme: z.enum(["light", "dark"]),
   font: z.enum(fonts),
+  theme: z.enum(["light", "dark"]),
 });
 
 type AppearanceFormValues = z.infer<typeof appearanceFormSchema>;
@@ -11552,40 +13414,44 @@ type AppearanceFormValues = z.infer<typeof appearanceFormSchema>;
 export function AppearanceForm() {
   const { font, setFont } = useFont();
   const { theme, setTheme } = useTheme();
+  const { t } = useTranslation();
 
   // This can come from your database or API.
   const defaultValues: Partial<AppearanceFormValues> = {
-    theme: theme as "light" | "dark",
     font,
+    theme: theme as "light" | "dark",
   };
 
   const form = useForm<AppearanceFormValues>({
-    resolver: zodResolver(appearanceFormSchema),
     defaultValues,
+    resolver: zodResolver(appearanceFormSchema),
   });
 
   function onSubmit(data: AppearanceFormValues) {
-    if (data.font != font) setFont(data.font);
-    if (data.theme != theme) setTheme(data.theme);
-
+    if (data.font !== font) {
+      setFont(data.font);
+    }
+    if (data.theme !== theme) {
+      setTheme(data.theme);
+    }
   }
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      <form className="space-y-8" onSubmit={form.handleSubmit(onSubmit)}>
         <FormField
           control={form.control}
           name="font"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Font</FormLabel>
+              <FormLabel>{t("settings_form.font")}</FormLabel>
               <div className="relative w-max">
                 <FormControl>
                   <select
                     className={cn(
                       buttonVariants({ variant: "outline" }),
                       "w-50 appearance-none font-normal capitalize",
-                      "dark:bg-background dark:hover:bg-background",
+                      "dark:bg-background dark:hover:bg-background"
                     )}
                     {...field}
                   >
@@ -11599,7 +13465,7 @@ export function AppearanceForm() {
                 <ChevronDownIcon className="absolute inset-e-3 top-2.5 h-4 w-4 opacity-50" />
               </div>
               <FormDescription className="font-manrope">
-                Set the font you want to use in the dashboard.
+                {t("settings_form.font_desc")}
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -11610,18 +13476,18 @@ export function AppearanceForm() {
           name="theme"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Theme</FormLabel>
-              <FormDescription>Select the theme for the dashboard.</FormDescription>
+              <FormLabel>{t("settings_form.theme")}</FormLabel>
+              <FormDescription>{t("settings_form.theme_desc")}</FormDescription>
               <FormMessage />
               <RadioGroup
-                onValueChange={field.onChange}
-                defaultValue={field.value}
                 className="grid max-w-md grid-cols-2 gap-8 pt-2"
+                defaultValue={field.value}
+                onValueChange={field.onChange}
               >
                 <FormItem>
                   <FormLabel className="[&:has([data-state=checked])>div]:border-primary">
                     <FormControl>
-                      <RadioGroupItem value="light" className="sr-only" />
+                      <RadioGroupItem className="sr-only" value="light" />
                     </FormControl>
                     <div className="items-center rounded-md border-2 border-muted p-1 hover:border-accent">
                       <div className="space-y-2 rounded-sm bg-[#ecedef] p-2">
@@ -11639,13 +13505,15 @@ export function AppearanceForm() {
                         </div>
                       </div>
                     </div>
-                    <span className="block w-full p-2 text-center font-normal">Light</span>
+                    <span className="block w-full p-2 text-center font-normal">
+                      {t("settings_form.light")}
+                    </span>
                   </FormLabel>
                 </FormItem>
                 <FormItem>
                   <FormLabel className="[&:has([data-state=checked])>div]:border-primary">
                     <FormControl>
-                      <RadioGroupItem value="dark" className="sr-only" />
+                      <RadioGroupItem className="sr-only" value="dark" />
                     </FormControl>
                     <div className="items-center rounded-md border-2 border-muted bg-popover p-1 hover:bg-accent hover:text-accent-foreground">
                       <div className="space-y-2 rounded-sm bg-slate-950 p-2">
@@ -11663,7 +13531,9 @@ export function AppearanceForm() {
                         </div>
                       </div>
                     </div>
-                    <span className="block w-full p-2 text-center font-normal">Dark</span>
+                    <span className="block w-full p-2 text-center font-normal">
+                      {t("settings_form.dark")}
+                    </span>
                   </FormLabel>
                 </FormItem>
               </RadioGroup>
@@ -11671,21 +13541,22 @@ export function AppearanceForm() {
           )}
         />
 
-        <Button type="submit">Update preferences</Button>
+        <Button type="submit">{t("settings_form.update_preferences")}</Button>
       </form>
     </Form>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/settings/appearance/index.tsx", `import { ContentSection } from "../components/content-section";
+  ["addons/admin/apps/web/src/features/settings/appearance/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { ContentSection } from "../components/content-section";
 import { AppearanceForm } from "./appearance-form";
 
 export function SettingsAppearance() {
+  const { t } = useTranslation();
   return (
     <ContentSection
-      title="Appearance"
-      desc="Customize the appearance of the app. Automatically switch between day
-          and night themes."
+      desc={t("settings.appearance_desc")}
+      title={t("settings.appearance")}
     >
       <AppearanceForm />
     </ContentSection>
@@ -11715,7 +13586,8 @@ export function ContentSection({ title, desc, children }: ContentSectionProps) {
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/settings/components/sidebar-nav.tsx", `import { useLocation, useNavigate, Link } from "@tanstack/react-router";
+  ["addons/admin/apps/web/src/features/settings/components/sidebar-nav.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useLocation, useNavigate, Link } from "@tanstack/react-router";
 import { useState, type JSX } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
@@ -11741,6 +13613,7 @@ export function SidebarNav({ className, items, ...props }: SidebarNavProps) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [val, setVal] = useState(pathname ?? "/settings");
+  const { t } = useTranslation();
 
   const handleSelect = (e: string) => {
     setVal(e);
@@ -11752,7 +13625,7 @@ export function SidebarNav({ className, items, ...props }: SidebarNavProps) {
       <div className="p-1 md:hidden">
         <Select value={val} onValueChange={handleSelect}>
           <SelectTrigger className="h-12 sm:w-48">
-            <SelectValue placeholder="Theme" />
+            <SelectValue placeholder={t("settings.title")} />
           </SelectTrigger>
           <SelectContent>
             {items.map((item) => (
@@ -11923,8 +13796,9 @@ export function SettingsDisplay() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/settings/index.tsx", `import { Outlet } from "@tanstack/react-router";
-import { Palette, Wrench, UserCog } from "lucide-react";
+  ["addons/admin/apps/web/src/features/settings/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { Outlet } from "@tanstack/react-router";
+import { Palette, UserCog, Wrench } from "lucide-react";
 
 import { ConfigDrawer } from "@/components/config-drawer";
 import { Header } from "@/components/layout/header";
@@ -11936,25 +13810,25 @@ import { Separator } from "@/components/ui/separator";
 
 import { SidebarNav } from "./components/sidebar-nav";
 
-const sidebarNavItems = [
-  {
-    title: "Profile",
-    href: "/settings",
-    icon: <UserCog size={18} />,
-  },
-  {
-    title: "Account",
-    href: "/settings/account",
-    icon: <Wrench size={18} />,
-  },
-  {
-    title: "Appearance",
-    href: "/settings/appearance",
-    icon: <Palette size={18} />,
-  },
-];
-
 export function Settings() {
+  const { t } = useTranslation();
+  const sidebarNavItems = [
+    {
+      href: "/settings",
+      icon: <UserCog size={18} />,
+      title: t("settings.profile"),
+    },
+    {
+      href: "/settings/account",
+      icon: <Wrench size={18} />,
+      title: t("navigation.account_security"),
+    },
+    {
+      href: "/settings/appearance",
+      icon: <Palette size={18} />,
+      title: t("settings.appearance"),
+    },
+  ];
   return (
     <>
       {/* ===== Top Heading ===== */}
@@ -11967,11 +13841,13 @@ export function Settings() {
 
       <Main fixed>
         <div className="space-y-0.5">
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Settings</h1>
-          <p className="text-muted-foreground">Manage your account and local appearance.</p>
+          <h1 className="font-bold text-2xl tracking-tight md:text-3xl">
+            {t("settings.title")}
+          </h1>
+          <p className="text-muted-foreground">{t("settings.local_desc")}</p>
         </div>
         <Separator className="my-4 lg:my-6" />
-        <div className="flex flex-1 flex-col space-y-2 overflow-hidden md:space-y-2 lg:flex-row lg:space-y-0 lg:space-x-12">
+        <div className="flex flex-1 flex-col space-y-2 overflow-hidden md:space-y-2 lg:flex-row lg:space-x-12 lg:space-y-0">
           <aside className="top-0 lg:sticky lg:w-1/5">
             <SidebarNav items={sidebarNavItems} />
           </aside>
@@ -12187,18 +14063,24 @@ export function NotificationsForm() {
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/settings/profile/index.tsx", `import { ContentSection } from "../components/content-section";
+  ["addons/admin/apps/web/src/features/settings/profile/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { ContentSection } from "../components/content-section";
 import { ProfileForm } from "./profile-form";
 
 export function SettingsProfile() {
+  const { t } = useTranslation();
   return (
-    <ContentSection title="Profile" desc="This is how others will see you on the site.">
+    <ContentSection
+      desc={t("settings.profile_desc")}
+      title={t("settings.profile")}
+    >
       <ProfileForm />
     </ContentSection>
   );
 }
 `],
-  ["addons/admin/apps/web/src/features/settings/profile/profile-form.tsx", `import { useCallback, useState } from "react";
+  ["addons/admin/apps/web/src/features/settings/profile/profile-form.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -12209,6 +14091,7 @@ import { authClient } from "@/lib/auth-client";
 export function ProfileForm() {
   const { data: session, refetch } = authClient.useSession();
   const [pending, setPending] = useState(false);
+  const { t } = useTranslation();
   const submit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -12219,31 +14102,38 @@ export function ProfileForm() {
       });
       setPending(false);
       if (error) {
-        toast.error(error.message ?? "Could not update profile");
+        toast.error(t("profile_form.update_error"));
         return;
       }
       await refetch();
-      toast.success("Profile updated");
+      toast.success(t("profile_form.updated"));
     },
-    [refetch],
+    [refetch, t]
   );
 
   return (
     <form className="space-y-8" onSubmit={submit}>
       <div className="space-y-2">
-        <Label htmlFor="profile-name">Display name</Label>
-        <Input defaultValue={session?.user.name ?? ""} id="profile-name" name="name" required />
+        <Label htmlFor="profile-name">{t("profile_form.display_name")}</Label>
+        <Input
+          defaultValue={session?.user.name ?? ""}
+          id="profile-name"
+          name="name"
+          required
+        />
         <p className="text-muted-foreground text-sm">
-          This is your public display name across the dashboard.
+          {t("profile_form.display_name_desc")}
         </p>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="profile-email">Email</Label>
+        <Label htmlFor="profile-email">{t("auth.email")}</Label>
         <Input disabled id="profile-email" value={session?.user.email ?? ""} />
-        <p className="text-muted-foreground text-sm">Your verified sign-in address.</p>
+        <p className="text-muted-foreground text-sm">
+          {t("profile_form.email_desc")}
+        </p>
       </div>
       <Button disabled={pending} type="submit">
-        {pending ? "Updating…" : "Update profile"}
+        {pending ? t("common.updating") : t("settings_form.update_profile")}
       </Button>
     </form>
   );
@@ -16013,13 +17903,157 @@ export const users = Array.from({ length: 500 }, () => {
   };
 });
 `],
-  ["addons/admin/apps/web/src/features/users/index.tsx", `// biome-ignore-all lint/performance/noJsxPropsBind: table and role controls intentionally close over row identifiers.
+  ["addons/admin/apps/web/src/features/users/index.test.tsx.hbs", `import { i18n } from "@{{projectName}}/i18n/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { userEvent } from "vitest/browser";
+import { render } from "vitest-browser-react";
+
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AccessProvider, type UserAccess } from "@/context/access-context";
+import { DirectionProvider } from "@/context/direction-provider";
+import { LayoutProvider } from "@/context/layout-provider";
+import { SearchProvider } from "@/context/search-provider";
+import { ThemeProvider } from "@/context/theme-provider";
+
+import { Users } from ".";
+
+const mutation = vi.fn(async () => ({ success: true }));
+const user = {
+	banned: false,
+	email: "alice@example.com",
+	id: "alice",
+	name: "Alice",
+	roles: [],
+};
+const role = { id: "viewer", name: "Viewer" };
+
+vi.mock("@/components/config-drawer", () => ({ ConfigDrawer: () => null }));
+vi.mock("@/components/profile-dropdown", () => ({
+	ProfileDropdown: () => null,
+}));
+vi.mock("@/components/search", () => ({ Search: () => null }));
+vi.mock("@/components/theme-switch", () => ({ ThemeSwitch: () => null }));
+vi.mock("@/lib/auth-client", () => ({
+	authClient: {
+		signOut: vi.fn(),
+		useSession: () => ({ data: { user } }),
+	},
+}));
+
+vi.mock("@/lib/trpc", () => ({
+	useTRPC: () => ({
+		admin: {
+			assignableRoles: {
+				queryOptions: () => ({
+					queryFn: async () => [role],
+					queryKey: ["assignable-roles"],
+				}),
+			},
+			revokeUserSessions: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			roles: {
+				queryOptions: () => ({
+					queryFn: async () => [role],
+					queryKey: ["roles"],
+				}),
+			},
+			setUserBanned: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			setUserRoles: {
+				mutationOptions: (options: object) => ({
+					mutationFn: mutation,
+					...options,
+				}),
+			},
+			users: {
+				queryKey: () => ["users"],
+				queryOptions: () => ({
+					queryFn: async () => [user],
+					queryKey: ["users"],
+				}),
+			},
+		},
+	}),
+}));
+
+async function renderUsers(permissions: UserAccess["permissions"]) {
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	return render(
+		<QueryClientProvider client={queryClient}>
+			<AccessProvider access=\\{{ isSuperAdmin: false, permissions, roles: [] }}>
+				<DirectionProvider>
+					<ThemeProvider>
+						<LayoutProvider>
+							<SidebarProvider>
+								<SearchProvider>
+									<Users />
+								</SearchProvider>
+							</SidebarProvider>
+						</LayoutProvider>
+					</ThemeProvider>
+				</DirectionProvider>
+			</AccessProvider>
+		</QueryClientProvider>,
+	);
+}
+
+describe("Users 操作权限", () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		await i18n.changeLanguage("en");
+	});
+
+	it("只读用户看不到任何用户 mutation 入口", async () => {
+		const screen = await renderUsers(["user:read"]);
+
+		await expect
+			.element(screen.getByText("Alice", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Manage Alice" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("只展示当前权限对应的用户操作", async () => {
+		const screen = await renderUsers(["user:read", "user:update"]);
+
+		await userEvent.click(screen.getByRole("button", { name: "Manage Alice" }));
+		await userEvent.click(screen.getByText("Manage access", { exact: true }));
+
+		await expect
+			.element(screen.getByRole("button", { name: "Suspend account" }))
+			.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("button", { name: "Revoke sessions" }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(screen.getByRole("checkbox", { name: "Viewer" }))
+			.not.toBeInTheDocument();
+	});
+});
+`],
+  ["addons/admin/apps/web/src/features/users/index.tsx.hbs", `// biome-ignore-all lint/performance/noJsxPropsBind: table and role controls intentionally close over row identifiers.
+import { useTranslation } from "@{{projectName}}/i18n/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { type BusinessColumn, BusinessDataTable } from "@/components/business-data-table";
+import {
+	type BusinessColumn,
+	BusinessDataTable,
+} from "@/components/business-data-table";
 import { ConfigDrawer } from "@/components/config-drawer";
 import { Header } from "@/components/layout/header";
 import { Main } from "@/components/layout/main";
@@ -16030,221 +18064,277 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAccess } from "@/context/access-context";
 import { useTRPC } from "@/lib/trpc";
 
 interface RoleOption {
-  id: string;
-  name: string;
+	id: string;
+	name: string;
 }
 interface UserItem {
-  banned: boolean | null;
-  email: string;
-  id: string;
-  name: string;
-  roles: { roleId: string; roleName: string }[];
+	banned: boolean | null;
+	email: string;
+	id: string;
+	name: string;
+	roles: { roleId: string; roleName: string }[];
 }
 
 const filterUser = (user: UserItem, query: string) =>
-  !query ||
-  user.name.toLowerCase().includes(query) ||
-  user.email.toLowerCase().includes(query) ||
-  user.roles.some((role) => role.roleName.toLowerCase().includes(query));
+	!query ||
+	user.name.toLowerCase().includes(query) ||
+	user.email.toLowerCase().includes(query) ||
+	user.roles.some((role) => role.roleName.toLowerCase().includes(query));
 
 export function Users() {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  const usersQuery = useQuery(trpc.admin.users.queryOptions({ search: "" }));
-  const rolesQuery = useQuery(trpc.admin.roles.queryOptions());
-  const users = (usersQuery.data ?? []) as UserItem[];
-  const roles = (rolesQuery.data ?? []) as RoleOption[];
-  const [selected, setSelected] = useState<UserItem | null>(null);
-  const refresh = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: trpc.admin.users.queryKey() }),
-    [queryClient, trpc.admin.users],
-  );
-  const setRoles = useMutation(
-    trpc.admin.setUserRoles.mutationOptions({
-      onSuccess: async () => {
-        await refresh();
-        toast.success("User roles updated");
-      },
-    }),
-  );
-  const setBanned = useMutation(
-    trpc.admin.setUserBanned.mutationOptions({
-      onSuccess: async () => {
-        await refresh();
-        toast.success("Account status updated");
-      },
-    }),
-  );
-  const revokeSessions = useMutation(
-    trpc.admin.revokeUserSessions.mutationOptions({
-      onSuccess: () => toast.success("User sessions revoked"),
-    }),
-  );
-  const closeDialog = useCallback(() => setSelected(null), []);
-  const handleOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      setSelected(null);
-    }
-  }, []);
-  const toggleRole = useCallback(
-    (roleId: string, checked: boolean) => {
-      if (!selected) {
-        return;
-      }
-      const current = selected.roles.map((role) => role.roleId);
-      const roleIds = checked ? [...current, roleId] : current.filter((id) => id !== roleId);
-      setRoles.mutate({ roleIds, userId: selected.id });
-      setSelected({
-        ...selected,
-        roles: roles
-          .filter((role) => roleIds.includes(role.id))
-          .map((role) => ({ roleId: role.id, roleName: role.name })),
-      });
-    },
-    [roles, selected, setRoles],
-  );
-  const toggleBan = useCallback(() => {
-    if (!selected) {
-      return;
-    }
-    setBanned.mutate({ banned: !selected.banned, userId: selected.id });
-    setSelected({ ...selected, banned: !selected.banned });
-  }, [selected, setBanned]);
-  const revoke = useCallback(() => {
-    if (selected) {
-      revokeSessions.mutate({ userId: selected.id });
-    }
-  }, [revokeSessions, selected]);
-  const columns = useMemo<BusinessColumn<UserItem>[]>(
-    () => [
-      {
-        header: "User",
-        render: (user) => (
-          <div>
-            <div className="font-medium">{user.name}</div>
-            <div className="text-muted-foreground text-xs">{user.email}</div>
-          </div>
-        ),
-      },
-      {
-        header: "Status",
-        render: (user) => (
-          <Badge variant={user.banned ? "destructive" : "outline"}>
-            {user.banned ? "Suspended" : "Active"}
-          </Badge>
-        ),
-      },
-      {
-        header: "Roles",
-        render: (user) => (
-          <div className="flex flex-wrap gap-1">
-            {user.roles.length
-              ? user.roles.map((role) => (
-                  <Badge key={role.roleId} variant="secondary">
-                    {role.roleName}
-                  </Badge>
-                ))
-              : "No role"}
-          </div>
-        ),
-      },
-      {
-        className: "w-16 text-right",
-        header: "Actions",
-        render: (user) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label={\`Manage \${user.name}\`} size="icon" variant="ghost">
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setSelected(user)}>Manage access</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => revokeSessions.mutate({ userId: user.id })}>
-                Revoke sessions
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ),
-      },
-    ],
-    [revokeSessions],
-  );
+	const trpc = useTRPC();
+	const { t } = useTranslation();
+	const { can } = useAccess();
+	const canAssignRoles = can("user:assign-role");
+	const canRevokeSessions = can("user:revoke-session");
+	const canUpdateUser = can("user:update");
+	const canManageAccess = canAssignRoles || canUpdateUser;
+	const canManageUser = canManageAccess || canRevokeSessions;
+	const queryClient = useQueryClient();
+	const usersQuery = useQuery(trpc.admin.users.queryOptions({ search: "" }));
+	const rolesQuery = useQuery({
+		...trpc.admin.assignableRoles.queryOptions(),
+		enabled: canAssignRoles,
+	});
+	const users = (usersQuery.data ?? []) as UserItem[];
+	const roles = (rolesQuery.data ?? []) as RoleOption[];
+	const [selected, setSelected] = useState<UserItem | null>(null);
+	const refresh = useCallback(
+		() =>
+			queryClient.invalidateQueries({ queryKey: trpc.admin.users.queryKey() }),
+		[queryClient, trpc.admin.users],
+	);
+	const setRoles = useMutation(
+		trpc.admin.setUserRoles.mutationOptions({
+			onSuccess: async () => {
+				await refresh();
+				toast.success(t("users.roles_updated"));
+			},
+		}),
+	);
+	const setBanned = useMutation(
+		trpc.admin.setUserBanned.mutationOptions({
+			onSuccess: async () => {
+				await refresh();
+				toast.success(t("users.status_updated"));
+			},
+		}),
+	);
+	const revokeSessions = useMutation(
+		trpc.admin.revokeUserSessions.mutationOptions({
+			onSuccess: () => toast.success(t("users.sessions_revoked")),
+		}),
+	);
+	const closeDialog = useCallback(() => setSelected(null), []);
+	const handleOpenChange = useCallback((open: boolean) => {
+		if (!open) {
+			setSelected(null);
+		}
+	}, []);
+	const toggleRole = useCallback(
+		(roleId: string, checked: boolean) => {
+			if (!selected) {
+				return;
+			}
+			const current = selected.roles.map((role) => role.roleId);
+			const roleIds = checked
+				? [...current, roleId]
+				: current.filter((id) => id !== roleId);
+			setRoles.mutate({ roleIds, userId: selected.id });
+			setSelected({
+				...selected,
+				roles: roles
+					.filter((role) => roleIds.includes(role.id))
+					.map((role) => ({ roleId: role.id, roleName: role.name })),
+			});
+		},
+		[roles, selected, setRoles],
+	);
+	const toggleBan = useCallback(() => {
+		if (!selected) {
+			return;
+		}
+		setBanned.mutate({ banned: !selected.banned, userId: selected.id });
+		setSelected({ ...selected, banned: !selected.banned });
+	}, [selected, setBanned]);
+	const revoke = useCallback(() => {
+		if (selected) {
+			revokeSessions.mutate({ userId: selected.id });
+		}
+	}, [revokeSessions, selected]);
+	const columns = useMemo<BusinessColumn<UserItem>[]>(() => {
+		const visibleColumns: BusinessColumn<UserItem>[] = [
+			{
+				header: t("users.user"),
+				render: (item) => (
+					<div>
+						<div className="font-medium">{item.name}</div>
+						<div className="text-muted-foreground text-xs">{item.email}</div>
+					</div>
+				),
+			},
+			{
+				header: t("users.status"),
+				render: (item) => (
+					<Badge variant={item.banned ? "destructive" : "outline"}>
+						{item.banned
+							? t("users.status_suspended")
+							: t("users.status_active")}
+					</Badge>
+				),
+			},
+			{
+				header: t("users.roles"),
+				render: (item) => (
+					<div className="flex flex-wrap gap-1">
+						{item.roles.length
+							? item.roles.map((assignedRole) => (
+									<Badge key={assignedRole.roleId} variant="secondary">
+										{assignedRole.roleName}
+									</Badge>
+								))
+							: t("users.no_role")}
+					</div>
+				),
+			},
+		];
 
-  return (
-    <>
-      <Header fixed>
-        <Search className="me-auto" />
-        <ThemeSwitch />
-        <ConfigDrawer />
-        <ProfileDropdown />
-      </Header>
-      <Main className="flex flex-1 flex-col gap-4 sm:gap-6">
-        <div>
-          <h2 className="font-bold text-2xl tracking-tight">User List</h2>
-          <p className="text-muted-foreground">
-            Manage users, roles, account status, and sessions.
-          </p>
-        </div>
-        <BusinessDataTable
-          columns={columns}
-          data={users}
-          empty="No users found."
-          filter={filterUser}
-          getRowId={(user) => user.id}
-          placeholder="Filter users..."
-        />
-      </Main>
-      <Dialog onOpenChange={handleOpenChange} open={selected !== null}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Manage {selected?.name}</DialogTitle>
-            <DialogDescription>Assign roles and control account access.</DialogDescription>
-          </DialogHeader>
-          <div className="divide-y rounded-md border">
-            {roles.map((role) => (
-              <div className="flex min-h-12 items-center gap-3 px-3" key={role.id}>
-                <Checkbox
-                  checked={selected?.roles.some((item) => item.roleId === role.id)}
-                  onCheckedChange={(checked) => toggleRole(role.id, checked === true)}
-                />
-                <span>{role.name}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={revoke} variant="outline">
-              Revoke sessions
-            </Button>
-            <Button onClick={toggleBan} variant={selected?.banned ? "secondary" : "destructive"}>
-              {selected?.banned ? "Enable account" : "Suspend account"}
-            </Button>
-          </div>
-          <DialogFooter>
-            <Button onClick={closeDialog}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
+		if (!canManageUser) {
+			return visibleColumns;
+		}
+
+		visibleColumns.push({
+			className: "w-16 text-right",
+			header: t("common.actions"),
+			render: (item) => (
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button
+							aria-label={t("users.manage_user", { name: item.name })}
+							size="icon"
+							variant="ghost"
+						>
+							<MoreHorizontal />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end">
+						{canManageAccess ? (
+							<DropdownMenuItem onClick={() => setSelected(item)}>
+								{t("users.manage_access")}
+							</DropdownMenuItem>
+						) : null}
+						{canManageAccess && canRevokeSessions ? (
+							<DropdownMenuSeparator />
+						) : null}
+						{canRevokeSessions ? (
+							<DropdownMenuItem
+								onClick={() => revokeSessions.mutate({ userId: item.id })}
+							>
+								{t("users.revoke_sessions")}
+							</DropdownMenuItem>
+						) : null}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			),
+		});
+		return visibleColumns;
+	}, [canManageAccess, canManageUser, canRevokeSessions, revokeSessions, t]);
+
+	return (
+		<>
+			<Header fixed>
+				<Search className="me-auto" />
+				<ThemeSwitch />
+				<ConfigDrawer />
+				<ProfileDropdown />
+			</Header>
+			<Main className="flex flex-1 flex-col gap-4 sm:gap-6">
+				<div>
+					<h2 className="font-bold text-2xl tracking-tight">
+						{t("users.title")}
+					</h2>
+					<p className="text-muted-foreground">{t("users.management_desc")}</p>
+				</div>
+				<BusinessDataTable
+					columns={columns}
+					data={users}
+					empty={t("users.empty")}
+					filter={filterUser}
+					getRowId={(user) => user.id}
+					placeholder={t("users.filter_placeholder")}
+				/>
+			</Main>
+			<Dialog onOpenChange={handleOpenChange} open={selected !== null}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>
+							{t("users.manage_title", { name: selected?.name ?? "" })}
+						</DialogTitle>
+						<DialogDescription>{t("users.manage_desc")}</DialogDescription>
+					</DialogHeader>
+					{canAssignRoles ? (
+						<div className="divide-y rounded-md border">
+							{roles.map((role) => (
+								<div
+									className="flex min-h-12 items-center gap-3 px-3"
+									key={role.id}
+								>
+									<Checkbox
+										aria-label={role.name}
+										checked={selected?.roles.some(
+											(item) => item.roleId === role.id,
+										)}
+										onCheckedChange={(checked) =>
+											toggleRole(role.id, checked === true)
+										}
+									/>
+									<span>{role.name}</span>
+								</div>
+							))}
+						</div>
+					) : null}
+					<div className="flex flex-wrap gap-2">
+						{canRevokeSessions ? (
+							<Button onClick={revoke} variant="outline">
+								{t("users.revoke_sessions")}
+							</Button>
+						) : null}
+						{canUpdateUser ? (
+							<Button
+								onClick={toggleBan}
+								variant={selected?.banned ? "secondary" : "destructive"}
+							>
+								{selected?.banned
+									? t("users.enable_account")
+									: t("users.suspend_account")}
+							</Button>
+						) : null}
+					</div>
+					<DialogFooter>
+						<Button onClick={closeDialog}>{t("common.done")}</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</>
+	);
 }
 `],
   ["addons/admin/apps/web/src/hooks/use-dialog-state.tsx", `import { useState } from "react";
@@ -17195,7 +19285,7 @@ export function getDisplayNameInitials(displayName: string): string {
   return (first + last).toUpperCase();
 }
 `],
-  ["addons/admin/apps/web/src/main.tsx.hbs", `import "@{{projectName}}/i18n";
+  ["addons/admin/apps/web/src/main.tsx.hbs", `import { i18n } from "@{{projectName}}/i18n";
 import {
   QueryCache,
   QueryClient,
@@ -17206,14 +19296,17 @@ import { AxiosError } from "axios";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { toast } from "sonner";
+
 import { handleServerError } from "@/lib/handle-server-error";
 import { TRPCProvider, trpcClient } from "@/lib/trpc";
 import { useAuthStore } from "@/stores/auth-store";
+
 import { DirectionProvider } from "./context/direction-provider";
 import { FontProvider } from "./context/font-provider";
 import { ThemeProvider } from "./context/theme-provider";
 // Generated Routes
 import { routeTree } from "./routeTree.gen";
+
 // Styles
 import "./styles/index.css";
 
@@ -17224,7 +19317,7 @@ const queryClient = new QueryClient({
         handleServerError(error);
 
         if (error instanceof AxiosError && error.response?.status === 304) {
-          toast.error("Content not modified!");
+          toast.error(i18n.t("errors.content_not_modified"));
         }
       },
     },
@@ -17255,13 +19348,13 @@ const queryClient = new QueryClient({
     onError: (error) => {
       if (error instanceof AxiosError) {
         if (error.response?.status === 401) {
-          toast.error("Session expired!");
+          toast.error(i18n.t("errors.session_expired"));
           useAuthStore.getState().auth.reset();
           const redirect = \`\${router.history.location.href}\`;
           router.navigate({ search: { redirect }, to: "/sign-in" });
         }
         if (error.response?.status === 500) {
-          toast.error("Internal Server Error!");
+          toast.error(i18n.t("errors.internal_server"));
           // Only navigate to error page in production to avoid disrupting HMR in development
           if (import.meta.env.PROD) {
             router.navigate({ to: "/500" });
@@ -17346,6 +19439,111 @@ export const Route = createRootRouteWithContext<{
   errorComponent: GeneralError,
 });
 `],
+  ["addons/admin/apps/web/src/routes/_authenticated/-access-routes.test.tsx.hbs", `import type { PermissionKey } from "@{{projectName}}/api/permissions";
+import type * as ReactRouter from "@tanstack/react-router";
+import type { ComponentType } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-react";
+
+import { AccessProvider } from "@/context/access-context";
+
+import { Route as AuditRoute } from "./audit";
+import { Route as DashboardRoute } from "./index";
+import { Route as RolesRoute } from "./roles";
+import { Route as SettingsRoute } from "./settings";
+import { Route as UsersRoute } from "./users";
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+	const actual = await importOriginal<typeof ReactRouter>();
+	return {
+		...actual,
+		useNavigate: () => vi.fn(),
+		useRouter: () => ({ history: { go: vi.fn() } }),
+	};
+});
+vi.mock("@/features/audit", () => ({
+	Audit: () => <div data-testid="audit-route" />,
+}));
+vi.mock("@/features/dashboard", () => ({
+	Dashboard: () => <div data-testid="dashboard-route" />,
+}));
+vi.mock("@/features/roles", () => ({
+	Roles: () => <div data-testid="roles-route" />,
+}));
+vi.mock("@/features/settings/profile", () => ({
+	SettingsProfile: () => <div data-testid="settings-route" />,
+}));
+vi.mock("@/features/users", () => ({
+	Users: () => <div data-testid="users-route" />,
+}));
+
+function getRouteComponent(route: {
+	options: { component?: ComponentType };
+}): ComponentType {
+	if (!route.options.component) {
+		throw new Error("路由必须声明 component");
+	}
+	return route.options.component;
+}
+
+async function renderRoute(
+	Component: ComponentType,
+	permissions: readonly PermissionKey[],
+) {
+	return render(
+		<AccessProvider access=\\{{ isSuperAdmin: false, permissions, roles: [] }}>
+			<Component />
+		</AccessProvider>,
+	);
+}
+
+const protectedRoutes = [
+	{
+		Component: getRouteComponent(UsersRoute),
+		permission: "user:read" as const,
+		testId: "users-route",
+	},
+	{
+		Component: getRouteComponent(RolesRoute),
+		permission: "role:read" as const,
+		testId: "roles-route",
+	},
+	{
+		Component: getRouteComponent(AuditRoute),
+		permission: "audit:read" as const,
+		testId: "audit-route",
+	},
+];
+
+describe("已认证真实路由权限边界", () => {
+	for (const { Component, permission, testId } of protectedRoutes) {
+		it(\`拒绝缺少 \${permission} 的真实路由访问\`, async () => {
+			const screen = await renderRoute(Component, []);
+			await expect
+				.element(screen.getByText("403", { exact: true }))
+				.toBeInTheDocument();
+			await expect.element(screen.getByTestId(testId)).not.toBeInTheDocument();
+		});
+
+		it(\`允许具有 \${permission} 的真实路由访问\`, async () => {
+			const screen = await renderRoute(Component, [permission]);
+			await expect.element(screen.getByTestId(testId)).toBeInTheDocument();
+		});
+	}
+
+	it("仪表盘和个人设置不要求管理权限", async () => {
+		const dashboard = await renderRoute(getRouteComponent(DashboardRoute), []);
+		await expect
+			.element(dashboard.getByTestId("dashboard-route"))
+			.toBeInTheDocument();
+
+		const settings = await renderRoute(getRouteComponent(SettingsRoute), []);
+		await expect
+			.element(settings.getByTestId("settings-route"))
+			.toBeInTheDocument();
+	});
+});
+`],
   ["addons/admin/apps/web/src/routes/_authenticated/accept-invitation/$invitationId.tsx.hbs", `import { createFileRoute } from "@tanstack/react-router";
 
 import { AcceptInvitation } from "@/features/organizations/accept-invitation";
@@ -17355,11 +19553,16 @@ export const Route = createFileRoute("/_authenticated/accept-invitation/$invitat
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/audit/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+import { PermissionGuard } from "@/components/permission-guard";
 
 import { Audit } from "@/features/audit";
 
 export const Route = createFileRoute("/_authenticated/audit/")({
-  component: Audit,
+	component: () => (
+		<PermissionGuard permission="audit:read">
+			<Audit />
+		</PermissionGuard>
+	),
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/chats/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
@@ -17420,7 +19623,7 @@ function RouteComponent() {
 import { Dashboard } from "@/features/dashboard";
 
 export const Route = createFileRoute("/_authenticated/")({
-  component: Dashboard,
+	component: Dashboard,
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/organizations/index.tsx.hbs", `import { createFileRoute } from "@tanstack/react-router";
@@ -17432,11 +19635,16 @@ export const Route = createFileRoute("/_authenticated/organizations/")({
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/roles/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+import { PermissionGuard } from "@/components/permission-guard";
 
 import { Roles } from "@/features/roles";
 
 export const Route = createFileRoute("/_authenticated/roles/")({
-  component: Roles,
+	component: () => (
+		<PermissionGuard permission="role:read">
+			<Roles />
+		</PermissionGuard>
+	),
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/route.tsx", `import { createFileRoute, redirect } from "@tanstack/react-router";
@@ -17445,16 +19653,19 @@ import { AuthenticatedLayout } from "@/components/layout/authenticated-layout";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/_authenticated")({
-  beforeLoad: async ({ location }) => {
-    const { data } = await authClient.getSession();
-    if (!data?.session) {
-      throw redirect({
-        search: { redirect: location.href },
-        to: "/sign-in",
-      });
-    }
-  },
-  component: AuthenticatedLayout,
+	beforeLoad: async ({ location }) => {
+		const { data } = await authClient.getSession();
+		if (!data?.session) {
+			throw redirect({
+				search: { redirect: location.href },
+				to: "/sign-in",
+			});
+		}
+		if (data.user.banned) {
+			throw redirect({ to: "/403" });
+		}
+	},
+	component: AuthenticatedLayout,
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/settings/account.tsx", `import { createFileRoute } from "@tanstack/react-router";
@@ -17506,11 +19717,16 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 `],
   ["addons/admin/apps/web/src/routes/_authenticated/users/index.tsx", `import { createFileRoute } from "@tanstack/react-router";
+import { PermissionGuard } from "@/components/permission-guard";
 
 import { Users } from "@/features/users";
 
 export const Route = createFileRoute("/_authenticated/users/")({
-  component: Users,
+	component: () => (
+		<PermissionGuard permission="user:read">
+			<Users />
+		</PermissionGuard>
+	),
 });
 `],
   ["addons/admin/apps/web/src/routes/(auth)/forgot-password.tsx", `import { createFileRoute } from "@tanstack/react-router";
@@ -19046,6 +21262,13 @@ declare module "@tanstack/react-table" {
   }
 }
 `],
+  ["addons/admin/apps/web/src/test-setup.ts.hbs", `import { i18n } from "@{{projectName}}/i18n/react";
+import { beforeEach } from "vitest";
+
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
+});
+`],
   ["addons/admin/apps/web/src/test-utils/cookies.ts", `import { removeCookie } from "@/lib/cookies";
 
 /**
@@ -19092,6 +21315,83 @@ export function createTableMock(rowCount = 2) {
   return { table, resetRowSelection };
 }
 `],
+  ["addons/admin/apps/web/src/utils/trpc.ts.hbs", `import type { AppRouter } from "@{{projectName}}/api/routers/index";
+import { env } from "@{{projectName}}/env/web";
+import { i18n } from "@{{projectName}}/i18n";
+import { QueryCache, QueryClient } from "@tanstack/react-query";
+import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { createTRPCOptionsProxy } from "@trpc/tanstack-react-query";
+import { toast } from "sonner";
+
+function getServerUrl(url: string) {
+  const processEnv = (
+    globalThis as {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env;
+  if (typeof window === "undefined" && processEnv?.SERVER_URL) {
+    return processEnv.SERVER_URL.endsWith("/")
+      ? processEnv.SERVER_URL.slice(0, -1)
+      : processEnv.SERVER_URL;
+  }
+
+  const normalized = url.endsWith("/") ? url.slice(0, -1) : url;
+
+  if (!normalized.startsWith("/")) {
+    return normalized;
+  }
+
+  if (typeof window !== "undefined") {
+    return \`\${window.location.origin}\${normalized}\`;
+  }
+
+  const vercelUrl =
+    processEnv?.VERCEL_ENV === "production"
+      ? (processEnv?.VERCEL_PROJECT_PRODUCTION_URL ?? processEnv?.VERCEL_URL)
+      : (processEnv?.VERCEL_URL ?? processEnv?.VERCEL_PROJECT_PRODUCTION_URL);
+  if (vercelUrl) {
+    const origin = vercelUrl.startsWith("http")
+      ? vercelUrl
+      : \`https://\${vercelUrl}\`;
+    return \`\${origin}\${normalized}\`;
+  }
+
+  return \`http://localhost:3000\${normalized}\`;
+}
+export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (_error, query) => {
+      toast.error(i18n.t("errors.request_failed"), {
+        action: {
+          label: i18n.t("common.retry"),
+          onClick: () => {
+            query.invalidate();
+          },
+        },
+      });
+    },
+  }),
+});
+
+export const trpcClient = createTRPCClient<AppRouter>({
+  links: [
+    httpBatchLink({
+      fetch(url, options) {
+        return fetch(url, {
+          ...options,
+          credentials: "include",
+        });
+      },
+      url: \`\${getServerUrl(env.VITE_SERVER_URL)}/trpc\`,
+    }),
+  ],
+});
+
+export const trpc = createTRPCOptionsProxy<AppRouter>({
+  client: trpcClient,
+  queryClient,
+});
+`],
   ["addons/admin/apps/web/src/vite-env.d.ts", `/// <reference types="vite/client" />
 `],
   ["addons/admin/apps/web/tsconfig.json.hbs", `{
@@ -19122,7 +21422,6 @@ export function createTableMock(rowCount = 2) {
   }
 }
 `],
-  ["addons/admin/apps/web/tsconfig.tsbuildinfo", `{"root":["./vite.config.ts","./src/routetree.gen.ts","./src/tanstack-table.d.ts","./src/vite-env.d.ts","./src/assets/brand-icons/index.ts","./src/components/data-table/index.ts","./src/components/layout/types.ts","./src/components/layout/data/sidebar-data.ts","./src/config/fonts.ts","./src/features/chats/data/chat-types.ts","./src/features/tasks/data/schema.ts","./src/features/tasks/data/tasks.ts","./src/features/users/data/data.ts","./src/features/users/data/schema.ts","./src/features/users/data/users.ts","./src/hooks/use-table-url-state.test.ts","./src/hooks/use-table-url-state.ts","./src/lib/auth-client.ts","./src/lib/cookies.test.ts","./src/lib/cookies.ts","./src/lib/handle-server-error.test.ts","./src/lib/handle-server-error.ts","./src/lib/trpc.ts","./src/lib/utils.test.ts","./src/lib/utils.ts","./src/stores/auth-store.test.ts","./src/stores/auth-store.ts","./src/test-utils/cookies.ts","./src/test-utils/tanstack-table.ts","./src/main.tsx","./src/assets/clerk-full-logo.tsx","./src/assets/clerk-logo.tsx","./src/assets/logo.tsx","./src/assets/brand-icons/icon-discord.tsx","./src/assets/brand-icons/icon-docker.tsx","./src/assets/brand-icons/icon-facebook.tsx","./src/assets/brand-icons/icon-figma.tsx","./src/assets/brand-icons/icon-github.tsx","./src/assets/brand-icons/icon-gitlab.tsx","./src/assets/brand-icons/icon-gmail.tsx","./src/assets/brand-icons/icon-medium.tsx","./src/assets/brand-icons/icon-notion.tsx","./src/assets/brand-icons/icon-skype.tsx","./src/assets/brand-icons/icon-slack.tsx","./src/assets/brand-icons/icon-stripe.tsx","./src/assets/brand-icons/icon-telegram.tsx","./src/assets/brand-icons/icon-trello.tsx","./src/assets/brand-icons/icon-whatsapp.tsx","./src/assets/brand-icons/icon-zoom.tsx","./src/assets/custom/icon-dir.tsx","./src/assets/custom/icon-layout-compact.tsx","./src/assets/custom/icon-layout-default.tsx","./src/assets/custom/icon-layout-full.tsx","./src/assets/custom/icon-sidebar-floating.tsx","./src/assets/custom/icon-sidebar-inset.tsx","./src/assets/custom/icon-sidebar-sidebar.tsx","./src/assets/custom/icon-theme-dark.tsx","./src/assets/custom/icon-theme-light.tsx","./src/assets/custom/icon-theme-system.tsx","./src/components/business-data-table.tsx","./src/components/coming-soon.tsx","./src/components/command-menu.tsx","./src/components/config-drawer.test.tsx","./src/components/config-drawer.tsx","./src/components/confirm-dialog.test.tsx","./src/components/confirm-dialog.tsx","./src/components/date-picker.tsx","./src/components/learn-more.tsx","./src/components/long-text.tsx","./src/components/navigation-progress.tsx","./src/components/password-input.test.tsx","./src/components/password-input.tsx","./src/components/profile-dropdown.tsx","./src/components/search.tsx","./src/components/select-dropdown.tsx","./src/components/sign-out-dialog.test.tsx","./src/components/sign-out-dialog.tsx","./src/components/skip-to-main.tsx","./src/components/theme-switch.tsx","./src/components/data-table/bulk-actions.tsx","./src/components/data-table/column-header.tsx","./src/components/data-table/faceted-filter.tsx","./src/components/data-table/pagination.tsx","./src/components/data-table/toolbar.tsx","./src/components/data-table/view-options.tsx","./src/components/layout/app-sidebar.tsx","./src/components/layout/app-title.tsx","./src/components/layout/authenticated-layout.tsx","./src/components/layout/header.tsx","./src/components/layout/main.tsx","./src/components/layout/nav-group.tsx","./src/components/layout/nav-user.tsx","./src/components/layout/team-switcher.tsx","./src/components/layout/top-nav.tsx","./src/components/ui/alert-dialog.tsx","./src/components/ui/alert.tsx","./src/components/ui/avatar.tsx","./src/components/ui/badge.tsx","./src/components/ui/button.tsx","./src/components/ui/calendar.tsx","./src/components/ui/card.tsx","./src/components/ui/checkbox.tsx","./src/components/ui/collapsible.tsx","./src/components/ui/command.tsx","./src/components/ui/dialog.tsx","./src/components/ui/dropdown-menu.tsx","./src/components/ui/form.tsx","./src/components/ui/input-otp.tsx","./src/components/ui/input.tsx","./src/components/ui/label.tsx","./src/components/ui/popover.tsx","./src/components/ui/radio-group.tsx","./src/components/ui/scroll-area.tsx","./src/components/ui/select.tsx","./src/components/ui/separator.tsx","./src/components/ui/sheet.tsx","./src/components/ui/sidebar.tsx","./src/components/ui/skeleton.tsx","./src/components/ui/sonner.tsx","./src/components/ui/switch.tsx","./src/components/ui/table.tsx","./src/components/ui/tabs.tsx","./src/components/ui/textarea.tsx","./src/components/ui/tooltip.tsx","./src/context/direction-provider.tsx","./src/context/font-provider.tsx","./src/context/layout-provider.tsx","./src/context/search-provider.test.tsx","./src/context/search-provider.tsx","./src/context/theme-provider.tsx","./src/features/apps/index.tsx","./src/features/apps/data/apps.tsx","./src/features/auth/auth-layout.tsx","./src/features/auth/forgot-password/index.tsx","./src/features/auth/forgot-password/components/forgot-password-form.test.tsx","./src/features/auth/forgot-password/components/forgot-password-form.tsx","./src/features/auth/otp/index.tsx","./src/features/auth/otp/components/otp-form.test.tsx","./src/features/auth/otp/components/otp-form.tsx","./src/features/auth/sign-in/index.tsx","./src/features/auth/sign-in/sign-in-2.tsx","./src/features/auth/sign-in/components/user-auth-form.test.tsx","./src/features/auth/sign-in/components/user-auth-form.tsx","./src/features/auth/sign-up/index.tsx","./src/features/auth/sign-up/components/sign-up-form.test.tsx","./src/features/auth/sign-up/components/sign-up-form.tsx","./src/features/chats/index.tsx","./src/features/chats/components/new-chat.tsx","./src/features/dashboard/index.tsx","./src/features/dashboard/components/analytics-chart.tsx","./src/features/dashboard/components/analytics.tsx","./src/features/dashboard/components/overview.tsx","./src/features/dashboard/components/recent-sales.tsx","./src/features/errors/forbidden.tsx","./src/features/errors/general-error.tsx","./src/features/errors/maintenance-error.tsx","./src/features/errors/not-found-error.tsx","./src/features/errors/unauthorized-error.tsx","./src/features/settings/index.tsx","./src/features/settings/account/account-form.tsx","./src/features/settings/account/index.tsx","./src/features/settings/appearance/appearance-form.tsx","./src/features/settings/appearance/index.tsx","./src/features/settings/components/content-section.tsx","./src/features/settings/components/sidebar-nav.tsx","./src/features/settings/display/display-form.tsx","./src/features/settings/display/index.tsx","./src/features/settings/notifications/index.tsx","./src/features/settings/notifications/notifications-form.tsx","./src/features/settings/profile/index.tsx","./src/features/settings/profile/profile-form.tsx","./src/features/tasks/index.tsx","./src/features/tasks/components/data-table-bulk-actions.tsx","./src/features/tasks/components/data-table-row-actions.tsx","./src/features/tasks/components/tasks-columns.tsx","./src/features/tasks/components/tasks-dialogs.tsx","./src/features/tasks/components/tasks-import-dialog.test.tsx","./src/features/tasks/components/tasks-import-dialog.tsx","./src/features/tasks/components/tasks-multi-delete-dialog.test.tsx","./src/features/tasks/components/tasks-multi-delete-dialog.tsx","./src/features/tasks/components/tasks-mutate-drawer.test.tsx","./src/features/tasks/components/tasks-mutate-drawer.tsx","./src/features/tasks/components/tasks-primary-buttons.tsx","./src/features/tasks/components/tasks-provider.tsx","./src/features/tasks/components/tasks-table.tsx","./src/features/tasks/data/data.tsx","./src/features/users/index.tsx","./src/features/users/components/data-table-bulk-actions.tsx","./src/features/users/components/data-table-row-actions.tsx","./src/features/users/components/users-action-dialog.test.tsx","./src/features/users/components/users-action-dialog.tsx","./src/features/users/components/users-columns.tsx","./src/features/users/components/users-delete-dialog.test.tsx","./src/features/users/components/users-delete-dialog.tsx","./src/features/users/components/users-dialogs.tsx","./src/features/users/components/users-invite-dialog.test.tsx","./src/features/users/components/users-invite-dialog.tsx","./src/features/users/components/users-multi-delete-dialog.test.tsx","./src/features/users/components/users-multi-delete-dialog.tsx","./src/features/users/components/users-primary-buttons.tsx","./src/features/users/components/users-provider.tsx","./src/features/users/components/users-table.tsx","./src/hooks/use-dialog-state.tsx","./src/hooks/use-mobile.tsx","./src/lib/show-submitted-data.tsx","./src/routes/__root.tsx","./src/routes/(auth)/forgot-password.tsx","./src/routes/(auth)/otp.tsx","./src/routes/(auth)/sign-in-2.tsx","./src/routes/(auth)/sign-in.tsx","./src/routes/(auth)/sign-up.tsx","./src/routes/(errors)/401.tsx","./src/routes/(errors)/403.tsx","./src/routes/(errors)/404.tsx","./src/routes/(errors)/500.tsx","./src/routes/(errors)/503.tsx","./src/routes/_authenticated/index.tsx","./src/routes/_authenticated/route.tsx","./src/routes/_authenticated/apps/index.tsx","./src/routes/_authenticated/chats/index.tsx","./src/routes/_authenticated/errors/$error.tsx","./src/routes/_authenticated/help-center/index.tsx","./src/routes/_authenticated/settings/account.tsx","./src/routes/_authenticated/settings/appearance.tsx","./src/routes/_authenticated/settings/display.tsx","./src/routes/_authenticated/settings/index.tsx","./src/routes/_authenticated/settings/notifications.tsx","./src/routes/_authenticated/settings/route.tsx","./src/routes/_authenticated/tasks/index.tsx","./src/routes/_authenticated/users/index.tsx","./src/routes/clerk/route.tsx","./src/routes/clerk/(auth)/route.tsx","./src/routes/clerk/(auth)/sign-in.tsx","./src/routes/clerk/(auth)/sign-up.tsx","./src/routes/clerk/_authenticated/route.tsx","./src/routes/clerk/_authenticated/user-management.tsx"],"version":"6.0.3"}`],
   ["addons/admin/apps/web/vite.config.ts", `import path from "node:path";
 
 import tailwindcss from "@tailwindcss/vite";
@@ -19141,6 +21440,30 @@ export default defineConfig({
     port: 3001,
   },
 });
+`],
+  ["addons/admin/apps/web/vitest.config.ts", `import { playwright } from "@vitest/browser-playwright";
+import { mergeConfig } from "vite";
+import { defineConfig } from "vitest/config";
+
+import viteConfig from "./vite.config.ts";
+
+export default mergeConfig(
+	viteConfig,
+	defineConfig({
+		test: {
+			browser: {
+				enabled: true,
+				headless: true,
+				instances: [
+					{ browser: "chromium", viewport: { height: 720, width: 1280 } },
+				],
+				provider: playwright(),
+			},
+			include: ["src/**/*.test.tsx"],
+			setupFiles: ["./src/test-setup.ts"],
+		},
+	}),
+);
 `],
   ["addons/admin/docker-compose.yml.hbs", `name: {{projectName}}
 
@@ -19224,6 +21547,11 @@ volumes:
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "check": "ultracite check",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "test": "turbo run test",
+{{#if (includes addons "rbac")}}
+    "test:permissions": "pnpm --filter web test:permissions && pnpm --filter server test:permissions",
+{{/if}}
     "fix": "ultracite fix",
     "prepare": "husky"
   },
@@ -19242,7 +21570,7 @@ volumes:
     "typescript": "^6.0.3",
     "ultracite": "7.9.4"
   },
-  "packageManager": "pnpm@11.18.0"
+  "packageManager": "pnpm@11.23.0"
 }
 `],
   ["addons/admin/packages/api/.gitignore", `# dependencies (bun install)
@@ -19279,6 +21607,64 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
+`],
+  ["addons/admin/packages/api/CONTEXT.md", `# 身份与访问
+
+定义系统识别哪些人、他们如何证明身份，以及系统如何管理其访问权。
+
+## 身份与会话
+
+**用户（User）**：
+系统识别的自然人，可以完成身份认证，并通过被分配的角色获得访问权。
+_避免使用_：账户、主体
+
+**账户（Account）**：
+与用户关联的一种登录方式，例如密码凭证或外部身份提供商。
+_避免使用_：用户、个人资料
+
+**暂停用户（Suspended User）**：
+访问权被管理员暂停，但身份资料和角色分配仍保留的用户。暂停立即阻止所有访问，但不会自动删除现有会话。
+_避免使用_：封禁用户、禁用账户
+
+**会话（Session）**：
+代表用户已完成身份认证的一段有期限访问关系。暂停用户持有的会话不能授予任何访问权。
+_避免使用_：登录状态、令牌
+
+**会话撤销（Session Revocation）**：
+使用户现有会话立即失效的独立管理操作，不改变用户身份、角色分配或暂停状态。
+_避免使用_：暂停用户、退出登录
+
+## 授权
+
+**权限（Permission）**：
+允许对某类资源执行某项操作的具名授权。
+_避免使用_：能力、特权
+
+**角色（Role）**：
+可分配给用户的一组具名权限。
+_避免使用_：用户组、用户类型
+
+**角色分配（Role Assignment）**：
+把一个角色授予一个用户的关联关系。一个用户可以拥有多个角色分配。
+_避免使用_：成员关系
+
+**有效权限（Effective Permissions）**：
+一个用户被分配的所有角色所授予权限的并集。
+_避免使用_：访问级别
+
+**受保护角色（Protected Role）**：
+由系统定义，且管理员不能修改名称、权限或删除的角色。
+_避免使用_：系统角色、角色模板
+
+**超级管理员（Super Administrator）**：
+授予全部权限的受保护角色。系统必须始终至少保留一个拥有该角色分配的用户。
+_避免使用_：根用户、所有者
+
+## 审计
+
+**审计事件（Audit Event）**：
+对身份与访问管理操作的历史记录，说明谁在何时从何处对哪个目标执行了什么操作。
+_避免使用_：技术日志、活动日志
 `],
   ["addons/admin/packages/api/package.json.hbs", `{
   "name": "@{{projectName}}/api",
@@ -19353,6 +21739,12 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
       message: "Authentication required",
     });
   }
+  if (ctx.session.user.banned) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "User access is suspended",
+    });
+  }
   return next({
     ctx: {
       ...ctx,
@@ -19364,7 +21756,11 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
 {{#if (includes addons "rbac")}}
 export const permissionProcedure = (permission: PermissionKey) =>
   protectedProcedure.use(async ({ ctx, next }) => {
-    const allowed = await hasPermission(ctx.session.user.id, ctx.session.user.email, permission);
+    const allowed = await hasPermission(
+      ctx.session.user.id,
+      ctx.session.user.email,
+      permission,
+    );
     if (!allowed) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Permission denied" });
     }
@@ -19440,590 +21836,628 @@ export type PermissionKey = (typeof PERMISSIONS)[number]["key"];
 export const ALL_PERMISSION_KEYS = PERMISSIONS.map(({ key }) => key);
 `],
   ["addons/admin/packages/api/src/rbac.ts.hbs", `import { db } from "@{{projectName}}/db";
-import { env } from "@{{projectName}}/env/server";
 import {
-  auditLog,
-  permission,
-  role,
-  rolePermission,
-  userRole,
+	permission,
+	role,
+	rolePermission,
+	userRole,
 } from "@{{projectName}}/db/schema/rbac";
-import { and, eq, inArray } from "drizzle-orm";
+import { env } from "@{{projectName}}/env/server";
+import { eq, inArray } from "drizzle-orm";
 
 import {
-  ALL_PERMISSION_KEYS,
-  PERMISSIONS,
-  type PermissionKey,
+	ALL_PERMISSION_KEYS,
+	PERMISSIONS,
+	type PermissionKey,
 } from "./permissions";
 
 export const SUPER_ADMIN_SLUG = "super-admin";
 
 const DEFAULT_ROLES: ReadonlyArray<{
-  description: string;
-  name: string;
-  permissionKeys: readonly PermissionKey[];
-  slug: string;
+	description: string;
+	name: string;
+	permissionKeys: readonly PermissionKey[];
+	slug: string;
 }> = [
-  {
-    description:
-      "Full administrative access without super-administrator status.",
-    name: "Administrator",
-    permissionKeys: ALL_PERMISSION_KEYS,
-    slug: "administrator",
-  },
-  {
-    description: "Manage users, their roles, account status, and sessions.",
-    name: "User Manager",
-    permissionKeys: [
-      "dashboard:read",
-      "user:read",
-      "user:update",
-      "user:assign-role",
-      "user:revoke-session",
-      "role:read",
-    ],
-    slug: "user-manager",
-  },
-  {
-    description: "Read-only access to users, roles, and audit history.",
-    name: "Auditor",
-    permissionKeys: ["dashboard:read", "user:read", "role:read", "audit:read"],
-    slug: "auditor",
-  },
-  {
-    description: "Read-only access to the dashboard.",
-    name: "Viewer",
-    permissionKeys: ["dashboard:read"],
-    slug: "viewer",
-  },
+	{
+		description:
+			"Full administrative access without super-administrator status.",
+		name: "Administrator",
+		permissionKeys: ALL_PERMISSION_KEYS,
+		slug: "administrator",
+	},
+	{
+		description: "Manage users, their roles, account status, and sessions.",
+		name: "User Manager",
+		permissionKeys: [
+			"dashboard:read",
+			"user:read",
+			"user:update",
+			"user:assign-role",
+			"user:revoke-session",
+			"role:read",
+		],
+		slug: "user-manager",
+	},
+	{
+		description: "Read-only access to users, roles, and audit history.",
+		name: "Auditor",
+		permissionKeys: ["dashboard:read", "user:read", "role:read", "audit:read"],
+		slug: "auditor",
+	},
+	{
+		description: "Read-only access to the dashboard.",
+		name: "Viewer",
+		permissionKeys: ["dashboard:read"],
+		slug: "viewer",
+	},
 ];
 
 export async function ensureRbacSeed(user?: { email: string; id: string }) {
-  await db
-    .insert(permission)
-    .values(
-      PERMISSIONS.map((item) => ({
-        id: item.key,
-        ...item,
-      }))
-    )
-    .onConflictDoNothing();
+	await db
+		.insert(permission)
+		.values(
+			PERMISSIONS.map((item) => ({
+				id: item.key,
+				...item,
+			})),
+		)
+		.onConflictDoNothing();
 
-  await db
-    .insert(role)
-    .values({
-      description: "Full system access. This protected role cannot be deleted.",
-      id: SUPER_ADMIN_SLUG,
-      isSystem: true,
-      name: "Super Administrator",
-      slug: SUPER_ADMIN_SLUG,
-    })
-    .onConflictDoNothing();
+	await db
+		.insert(role)
+		.values({
+			description: "Full system access. This protected role cannot be deleted.",
+			id: SUPER_ADMIN_SLUG,
+			isSystem: true,
+			name: "Super Administrator",
+			slug: SUPER_ADMIN_SLUG,
+		})
+		.onConflictDoNothing();
 
-  await db
-    .insert(role)
-    .values(
-      DEFAULT_ROLES.map(({ description, name, slug }) => ({
-        description,
-        id: slug,
-        isSystem: true,
-        name,
-        slug,
-      }))
-    )
-    .onConflictDoNothing();
+	await db
+		.insert(role)
+		.values(
+			DEFAULT_ROLES.map(({ description, name, slug }) => ({
+				description,
+				id: slug,
+				isSystem: true,
+				name,
+				slug,
+			})),
+		)
+		.onConflictDoNothing();
 
-  await db
-    .insert(rolePermission)
-    .values(
-      ALL_PERMISSION_KEYS.map((permissionId) => ({
-        permissionId,
-        roleId: SUPER_ADMIN_SLUG,
-      }))
-    )
-    .onConflictDoNothing();
+	await db
+		.insert(rolePermission)
+		.values(
+			ALL_PERMISSION_KEYS.map((permissionId) => ({
+				permissionId,
+				roleId: SUPER_ADMIN_SLUG,
+			})),
+		)
+		.onConflictDoNothing();
 
-  await db
-    .insert(rolePermission)
-    .values(
-      DEFAULT_ROLES.flatMap(({ permissionKeys, slug }) =>
-        permissionKeys.map((permissionId) => ({
-          permissionId,
-          roleId: slug,
-        }))
-      )
-    )
-    .onConflictDoNothing();
+	await db
+		.insert(rolePermission)
+		.values(
+			DEFAULT_ROLES.flatMap(({ permissionKeys, slug }) =>
+				permissionKeys.map((permissionId) => ({
+					permissionId,
+					roleId: slug,
+				})),
+			),
+		)
+		.onConflictDoNothing();
 
-  if (user && env.RBAC_BOOTSTRAP_ADMIN_EMAIL === user.email.toLowerCase()) {
-    const existingSuperAdmins = await db
-      .select({ userId: userRole.userId })
-      .from(userRole)
-      .where(eq(userRole.roleId, SUPER_ADMIN_SLUG))
-      .limit(1);
-    if (existingSuperAdmins.length === 0) {
-      await db
-        .insert(userRole)
-        .values({ roleId: SUPER_ADMIN_SLUG, userId: user.id })
-        .onConflictDoNothing();
-    }
-  }
+	if (user && env.RBAC_BOOTSTRAP_ADMIN_EMAIL === user.email.toLowerCase()) {
+		const existingSuperAdmins = await db
+			.select({ userId: userRole.userId })
+			.from(userRole)
+			.where(eq(userRole.roleId, SUPER_ADMIN_SLUG))
+			.limit(1);
+		if (existingSuperAdmins.length === 0) {
+			await db
+				.insert(userRole)
+				.values({ roleId: SUPER_ADMIN_SLUG, userId: user.id })
+				.onConflictDoNothing();
+		}
+	}
 }
 
 export async function getUserAccess(userId: string, userEmail: string) {
-  await ensureRbacSeed({ email: userEmail, id: userId });
+	await ensureRbacSeed({ email: userEmail, id: userId });
 
-  const rows = await db
-    .select({
-      permissionKey: permission.key,
-      roleId: role.id,
-      roleName: role.name,
-      roleSlug: role.slug,
-    })
-    .from(userRole)
-    .innerJoin(role, eq(userRole.roleId, role.id))
-    .leftJoin(rolePermission, eq(rolePermission.roleId, role.id))
-    .leftJoin(permission, eq(rolePermission.permissionId, permission.id))
-    .where(eq(userRole.userId, userId));
+	const rows = await db
+		.select({
+			permissionKey: permission.key,
+			roleId: role.id,
+			roleName: role.name,
+			roleSlug: role.slug,
+		})
+		.from(userRole)
+		.innerJoin(role, eq(userRole.roleId, role.id))
+		.leftJoin(rolePermission, eq(rolePermission.roleId, role.id))
+		.leftJoin(permission, eq(rolePermission.permissionId, permission.id))
+		.where(eq(userRole.userId, userId));
 
-  const roleMap = new Map<string, { id: string; name: string; slug: string }>();
-  const permissionSet = new Set<PermissionKey>();
+	const roleMap = new Map<string, { id: string; name: string; slug: string }>();
+	const permissionSet = new Set<PermissionKey>();
 
-  for (const row of rows) {
-    roleMap.set(row.roleId, {
-      id: row.roleId,
-      name: row.roleName,
-      slug: row.roleSlug,
-    });
-    if (
-      row.permissionKey &&
-      ALL_PERMISSION_KEYS.includes(row.permissionKey as PermissionKey)
-    ) {
-      permissionSet.add(row.permissionKey as PermissionKey);
-    }
-  }
+	for (const row of rows) {
+		roleMap.set(row.roleId, {
+			id: row.roleId,
+			name: row.roleName,
+			slug: row.roleSlug,
+		});
+		if (
+			row.permissionKey &&
+			ALL_PERMISSION_KEYS.includes(row.permissionKey as PermissionKey)
+		) {
+			permissionSet.add(row.permissionKey as PermissionKey);
+		}
+	}
 
-  return {
-    isSuperAdmin: [...roleMap.values()].some(
-      ({ slug }) => slug === SUPER_ADMIN_SLUG
-    ),
-    permissions: [...permissionSet],
-    roles: [...roleMap.values()],
-  };
+	return {
+		isSuperAdmin: [...roleMap.values()].some(
+			({ slug }) => slug === SUPER_ADMIN_SLUG,
+		),
+		permissions: [...permissionSet],
+		roles: [...roleMap.values()],
+	};
 }
 
-export async function hasPermission(userId: string, userEmail: string, required: PermissionKey) {
-  const access = await getUserAccess(userId, userEmail);
-  return access.isSuperAdmin || access.permissions.includes(required);
-}
-
-export async function replaceRolePermissions(
-  roleId: string,
-  permissionKeys: PermissionKey[]
+export async function hasPermission(
+	userId: string,
+	userEmail: string,
+	required: PermissionKey,
 ) {
-  await db.transaction(async (tx) => {
-    await tx.delete(rolePermission).where(eq(rolePermission.roleId, roleId));
-    if (permissionKeys.length > 0) {
-      await tx
-        .insert(rolePermission)
-        .values(
-          permissionKeys.map((permissionId) => ({ permissionId, roleId }))
-        );
-    }
-  });
-}
-
-export async function replaceUserRoles(userId: string, roleIds: string[]) {
-  await db.transaction(async (tx) => {
-    await tx.delete(userRole).where(eq(userRole.userId, userId));
-    if (roleIds.length > 0) {
-      await tx
-        .insert(userRole)
-        .values(roleIds.map((roleId) => ({ roleId, userId })));
-    }
-  });
-}
-
-export async function countSuperAdmins() {
-  const rows = await db
-    .select({ userId: userRole.userId })
-    .from(userRole)
-    .innerJoin(
-      role,
-      and(eq(userRole.roleId, role.id), eq(role.slug, SUPER_ADMIN_SLUG))
-    );
-  return new Set(rows.map(({ userId }) => userId)).size;
-}
-
-export async function isSuperAdmin(userId: string) {
-  const rows = await db
-    .select({ id: userRole.userId })
-    .from(userRole)
-    .innerJoin(
-      role,
-      and(eq(userRole.roleId, role.id), eq(role.slug, SUPER_ADMIN_SLUG))
-    )
-    .where(eq(userRole.userId, userId))
-    .limit(1);
-  return rows.length > 0;
-}
-
-export async function writeAudit(input: {
-  actorId: string;
-  action: string;
-  targetType: string;
-  targetId?: string;
-  metadata?: Record<string, unknown>;
-  ipAddress?: string;
-  userAgent?: string;
-}) {
-  await db.insert(auditLog).values({ id: crypto.randomUUID(), ...input });
+	const access = await getUserAccess(userId, userEmail);
+	return access.isSuperAdmin || access.permissions.includes(required);
 }
 
 export function assertPermissionKeys(keys: string[]): PermissionKey[] {
-  const allowed = new Set<string>(ALL_PERMISSION_KEYS);
-  if (keys.some((key) => !allowed.has(key))) {
-    throw new Error("Unknown permission key");
-  }
-  return keys as PermissionKey[];
+	const allowed = new Set<string>(ALL_PERMISSION_KEYS);
+	if (keys.some((key) => !allowed.has(key))) {
+		throw new Error("Unknown permission key");
+	}
+	return keys as PermissionKey[];
 }
 
 export async function existingRoleIds(ids: string[]) {
-  if (ids.length === 0) {
-    return [];
-  }
-  const rows = await db
-    .select({ id: role.id })
-    .from(role)
-    .where(inArray(role.id, ids));
-  return rows.map(({ id }) => id);
+	if (ids.length === 0) {
+		return [];
+	}
+	const rows = await db
+		.select({ id: role.id })
+		.from(role)
+		.where(inArray(role.id, ids));
+	return rows.map(({ id }) => id);
 }
 `],
   ["addons/admin/packages/api/src/routers/admin.ts.hbs", `import { db } from "@{{projectName}}/db";
 import { user } from "@{{projectName}}/db/schema/auth";
 import {
-  auditLog,
-  permission,
-  role,
-  rolePermission,
-  userRole,
+	auditLog,
+	permission,
+	role,
+	rolePermission,
+	userRole,
 } from "@{{projectName}}/db/schema/rbac";
 import { TRPCError } from "@trpc/server";
-import { asc, count, desc, eq, ilike, or, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	count,
+	desc,
+	eq,
+	ilike,
+	inArray,
+	ne,
+	or,
+	sql,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { permissionProcedure, protectedProcedure, router } from "../index";
-import { ALL_PERMISSION_KEYS } from "../permissions";
 import {
-  assertPermissionKeys,
-  countSuperAdmins,
-  ensureRbacSeed,
-  existingRoleIds,
-  getUserAccess,
-  isSuperAdmin,
-  replaceRolePermissions,
-  replaceUserRoles,
-  SUPER_ADMIN_SLUG,
-  writeAudit,
+	assertPermissionKeys,
+	ensureRbacSeed,
+	getUserAccess,
+	SUPER_ADMIN_SLUG,
 } from "../rbac";
 
 const auditContext = (ctx: {
-  session: { user: { id: string } };
-  request: { ipAddress?: string; userAgent?: string };
+	session: { user: { id: string } };
+	request: { ipAddress?: string; userAgent?: string };
 }) => ({
-  actorId: ctx.session.user.id,
-  ipAddress: ctx.request.ipAddress,
-  userAgent: ctx.request.userAgent,
+	actorId: ctx.session.user.id,
+	ipAddress: ctx.request.ipAddress,
+	userAgent: ctx.request.userAgent,
 });
 
 export const adminRouter = router({
-  access: protectedProcedure.query(async ({ ctx }) => {
-    const access = await getUserAccess(ctx.session.user.id, ctx.session.user.email);
-    const allowed =
-      access.isSuperAdmin ||
-      access.permissions.some(
-        (key) =>
-          key.startsWith("user:") ||
-          key.startsWith("role:") ||
-          key.startsWith("audit:")
-      );
-    return { ...access, allowed };
-  }),
+	access: protectedProcedure.query(async ({ ctx }) => {
+		const access = await getUserAccess(
+			ctx.session.user.id,
+			ctx.session.user.email,
+		);
+		const allowed =
+			access.isSuperAdmin ||
+			access.permissions.some(
+				(key) =>
+					key.startsWith("user:") ||
+					key.startsWith("role:") ||
+					key.startsWith("audit:"),
+			);
+		return { ...access, allowed };
+	}),
 
-  auditLogs: permissionProcedure("audit:read").query(async () =>
-    db
-      .select({
-        action: auditLog.action,
-        actorEmail: user.email,
-        actorName: user.name,
-        createdAt: auditLog.createdAt,
-        id: auditLog.id,
-        ipAddress: auditLog.ipAddress,
-        metadata: auditLog.metadata,
-        targetId: auditLog.targetId,
-        targetType: auditLog.targetType,
-        userAgent: auditLog.userAgent,
-      })
-      .from(auditLog)
-      .leftJoin(user, eq(auditLog.actorId, user.id))
-      .orderBy(desc(auditLog.createdAt))
-      .limit(200)
-  ),
+	assignableRoles: permissionProcedure("user:assign-role").query(async ({ ctx }) => {
+		await ensureRbacSeed();
+		const access = await getUserAccess(
+			ctx.session.user.id,
+			ctx.session.user.email,
+		);
+		return db
+			.select({ id: role.id, name: role.name })
+			.from(role)
+			.where(access.isSuperAdmin ? undefined : ne(role.id, SUPER_ADMIN_SLUG))
+			.orderBy(asc(role.name));
+	}),
 
-  createRole: permissionProcedure("role:create")
-    .input(
-      z.object({
-        description: z.string().trim().max(240),
-        name: z.string().trim().min(2).max(60),
-        permissionKeys: z.array(z.string()),
-        slug: z
-          .string()
-          .trim()
-          .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-          .max(60),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const permissionKeys = assertPermissionKeys(input.permissionKeys);
-      const id = crypto.randomUUID();
-      try {
-        await db.transaction(async (tx) => {
-          await tx.insert(role).values({
-            description: input.description,
-            id,
-            name: input.name,
-            slug: input.slug,
-          });
-          if (permissionKeys.length > 0) {
-            await tx.insert(rolePermission).values(
-              permissionKeys.map((permissionId) => ({
-                permissionId,
-                roleId: id,
-              }))
-            );
-          }
-          await tx.insert(auditLog).values({
-            ...auditContext(ctx),
-            action: "role.created",
-            id: crypto.randomUUID(),
-            metadata: { name: input.name, permissionKeys },
-            targetId: id,
-            targetType: "role",
-          });
-        });
-      } catch (error) {
-        throw new TRPCError({
-          cause: error,
-          code: "CONFLICT",
-          message: "Role slug already exists",
-        });
-      }
-      return { id };
-    }),
+	auditLogs: permissionProcedure("audit:read").query(async () =>
+		db
+			.select({
+				action: auditLog.action,
+				actorEmail: user.email,
+				actorName: user.name,
+				createdAt: auditLog.createdAt,
+				id: auditLog.id,
+				ipAddress: auditLog.ipAddress,
+				metadata: auditLog.metadata,
+				targetId: auditLog.targetId,
+				targetType: auditLog.targetType,
+				userAgent: auditLog.userAgent,
+			})
+			.from(auditLog)
+			.leftJoin(user, eq(auditLog.actorId, user.id))
+			.orderBy(desc(auditLog.createdAt))
+			.limit(200),
+	),
 
-  deleteRole: permissionProcedure("role:delete")
-    .input(z.object({ id: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const existing = await db
-        .select()
-        .from(role)
-        .where(eq(role.id, input.id))
-        .limit(1);
-      if (!existing[0]) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
-      }
-      if (existing[0].isSystem) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "System roles cannot be deleted",
-        });
-      }
-      await db.delete(role).where(eq(role.id, input.id));
-      await writeAudit({
-        ...auditContext(ctx),
-        action: "role.deleted",
-        metadata: { name: existing[0].name },
-        targetId: input.id,
-        targetType: "role",
-      });
-      return { success: true };
-    }),
+	createRole: permissionProcedure("role:create")
+		.input(
+			z.object({
+				description: z.string().trim().max(240),
+				name: z.string().trim().min(2).max(60),
+				permissionKeys: z.array(z.string()),
+				slug: z
+					.string()
+					.trim()
+					.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+					.max(60),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const permissionKeys = assertPermissionKeys(input.permissionKeys);
+			const id = crypto.randomUUID();
+			try {
+				await db.transaction(async (tx) => {
+					await tx.insert(role).values({
+						description: input.description,
+						id,
+						name: input.name,
+						slug: input.slug,
+					});
+					if (permissionKeys.length > 0) {
+						await tx.insert(rolePermission).values(
+							permissionKeys.map((permissionId) => ({
+								permissionId,
+								roleId: id,
+							})),
+						);
+					}
+					await tx.insert(auditLog).values({
+						...auditContext(ctx),
+						action: "role.created",
+						id: crypto.randomUUID(),
+						metadata: { name: input.name, permissionKeys },
+						targetId: id,
+						targetType: "role",
+					});
+				});
+			} catch (error) {
+				throw new TRPCError({
+					cause: error,
+					code: "CONFLICT",
+					message: "Role slug already exists",
+				});
+			}
+			return { id };
+		}),
 
-  permissions: permissionProcedure("role:read").query(async () => {
-    await ensureRbacSeed();
-    return db
-      .select()
-      .from(permission)
-      .orderBy(asc(permission.resource), asc(permission.action));
-  }),
+	deleteRole: permissionProcedure("role:delete")
+		.input(z.object({ id: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			await db.transaction(async (tx) => {
+				const [existing] = await tx
+					.select()
+					.from(role)
+					.where(eq(role.id, input.id))
+					.limit(1);
+				if (!existing) {
+					throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
+				}
+				if (existing.isSystem) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "System roles cannot be deleted",
+					});
+				}
+				await tx.delete(role).where(eq(role.id, input.id));
+				await tx.insert(auditLog).values({
+					...auditContext(ctx),
+					action: "role.deleted",
+					id: crypto.randomUUID(),
+					metadata: { name: existing.name },
+					targetId: input.id,
+					targetType: "role",
+				});
+			});
+			return { success: true };
+		}),
 
-  revokeUserSessions: permissionProcedure("user:revoke-session")
-    .input(z.object({ userId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      await db.execute(
-        sql\`delete from "session" where "user_id" = \${input.userId}\`
-      );
-      await writeAudit({
-        ...auditContext(ctx),
-        action: "user.sessions.revoked",
-        targetId: input.userId,
-        targetType: "user",
-      });
-      return { success: true };
-    }),
+	permissions: permissionProcedure("role:read").query(async () => {
+		await ensureRbacSeed();
+		return db
+			.select()
+			.from(permission)
+			.orderBy(asc(permission.resource), asc(permission.action));
+	}),
 
-  roles: permissionProcedure("role:read").query(async () => {
-    await ensureRbacSeed();
-    const roles = await db
-      .select({
-        createdAt: role.createdAt,
-        description: role.description,
-        id: role.id,
-        isSystem: role.isSystem,
-        name: role.name,
-        slug: role.slug,
-        userCount: count(userRole.userId),
-      })
-      .from(role)
-      .leftJoin(userRole, eq(userRole.roleId, role.id))
-      .groupBy(role.id)
-      .orderBy(asc(role.name));
-    const grants = await db.select().from(rolePermission);
-    return roles.map((item) => ({
-      ...item,
-      permissionKeys: grants
-        .filter(({ roleId }) => roleId === item.id)
-        .map(({ permissionId }) => permissionId),
-    }));
-  }),
+	revokeUserSessions: permissionProcedure("user:revoke-session")
+		.input(z.object({ userId: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			await db.transaction(async (tx) => {
+				await tx.execute(
+					sql\`delete from "session" where "user_id" = \${input.userId}\`,
+				);
+				await tx.insert(auditLog).values({
+					...auditContext(ctx),
+					action: "user.sessions.revoked",
+					id: crypto.randomUUID(),
+					targetId: input.userId,
+					targetType: "user",
+				});
+			});
+			return { success: true };
+		}),
 
-  setUserBanned: permissionProcedure("user:update")
-    .input(z.object({ banned: z.boolean(), userId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      if (input.userId === ctx.session.user.id && input.banned) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "You cannot ban yourself",
-        });
-      }
-      await db
-        .update(user)
-        .set({
-          banExpires: null,
-          banned: input.banned,
-          banReason: input.banned ? "Disabled by administrator" : null,
-        })
-        .where(eq(user.id, input.userId));
-      await writeAudit({
-        ...auditContext(ctx),
-        action: input.banned ? "user.banned" : "user.unbanned",
-        targetId: input.userId,
-        targetType: "user",
-      });
-      return { success: true };
-    }),
+	roles: permissionProcedure("role:read").query(async () => {
+		await ensureRbacSeed();
+		const roles = await db
+			.select({
+				createdAt: role.createdAt,
+				description: role.description,
+				id: role.id,
+				isSystem: role.isSystem,
+				name: role.name,
+				slug: role.slug,
+				userCount: count(userRole.userId),
+			})
+			.from(role)
+			.leftJoin(userRole, eq(userRole.roleId, role.id))
+			.groupBy(role.id)
+			.orderBy(asc(role.name));
+		const grants = await db.select().from(rolePermission);
+		return roles.map((item) => ({
+			...item,
+			permissionKeys: grants
+				.filter(({ roleId }) => roleId === item.id)
+				.map(({ permissionId }) => permissionId),
+		}));
+	}),
 
-  setUserRoles: permissionProcedure("user:assign-role")
-    .input(
-      z.object({
-        roleIds: z.array(z.string()).max(20),
-        userId: z.string().min(1),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const validRoleIds = await existingRoleIds(input.roleIds);
-      if (validRoleIds.length !== input.roleIds.length) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown role" });
-      }
-      const targetIsSuperAdmin = await isSuperAdmin(input.userId);
-      const keepsSuperAdmin = validRoleIds.includes(SUPER_ADMIN_SLUG);
-      if (
-        targetIsSuperAdmin &&
-        !keepsSuperAdmin &&
-        (await countSuperAdmins()) <= 1
-      ) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "The final super administrator cannot be removed",
-        });
-      }
-      await replaceUserRoles(input.userId, validRoleIds);
-      await writeAudit({
-        ...auditContext(ctx),
-        action: "user.roles.updated",
-        metadata: { roleIds: validRoleIds },
-        targetId: input.userId,
-        targetType: "user",
-      });
-      return { success: true };
-    }),
+	setUserBanned: permissionProcedure("user:update")
+		.input(z.object({ banned: z.boolean(), userId: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			if (input.userId === ctx.session.user.id && input.banned) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "You cannot ban yourself",
+				});
+			}
+			await db.transaction(async (tx) => {
+				await tx
+					.update(user)
+					.set({
+						banExpires: null,
+						banned: input.banned,
+						banReason: input.banned ? "Disabled by administrator" : null,
+					})
+					.where(eq(user.id, input.userId));
+				await tx.insert(auditLog).values({
+					...auditContext(ctx),
+					action: input.banned ? "user.banned" : "user.unbanned",
+					id: crypto.randomUUID(),
+					targetId: input.userId,
+					targetType: "user",
+				});
+			});
+			return { success: true };
+		}),
 
-  updateRole: permissionProcedure("role:update")
-    .input(
-      z.object({
-        description: z.string().trim().max(240),
-        id: z.string().min(1),
-        name: z.string().trim().min(2).max(60),
-        permissionKeys: z.array(z.string()),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const [current] = await db
-        .select()
-        .from(role)
-        .where(eq(role.id, input.id))
-        .limit(1);
-      if (!current) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
-      }
-      const permissionKeys = current.isSystem
-        ? [...ALL_PERMISSION_KEYS]
-        : assertPermissionKeys(input.permissionKeys);
-      await db
-        .update(role)
-        .set({ description: input.description, name: input.name })
-        .where(eq(role.id, input.id));
-      await replaceRolePermissions(input.id, permissionKeys);
-      await writeAudit({
-        ...auditContext(ctx),
-        action: "role.updated",
-        metadata: { name: input.name, permissionKeys },
-        targetId: input.id,
-        targetType: "role",
-      });
-      return { success: true };
-    }),
+	setUserRoles: permissionProcedure("user:assign-role")
+		.input(
+			z.object({
+				roleIds: z.array(z.string()).max(20),
+				userId: z.string().min(1),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			await ensureRbacSeed();
+			await db.transaction(async (tx) => {
+				await tx.execute(
+					sql\`select "id" from "role" where "id" = \${SUPER_ADMIN_SLUG} for update\`,
+				);
+				const [actorSuperAdmin] = await tx
+					.select({ userId: userRole.userId })
+					.from(userRole)
+					.where(
+						and(
+							eq(userRole.userId, ctx.session.user.id),
+							eq(userRole.roleId, SUPER_ADMIN_SLUG),
+						),
+					)
+					.limit(1);
+				const validRoles =
+					input.roleIds.length > 0
+						? await tx
+								.select({ id: role.id })
+								.from(role)
+								.where(inArray(role.id, input.roleIds))
+						: [];
+				const validRoleIds = validRoles.map(({ id }) => id);
+				if (validRoleIds.length !== input.roleIds.length) {
+					throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown role" });
+				}
 
-  users: permissionProcedure("user:read")
-    .input(z.object({ search: z.string().trim().max(100).default("") }))
-    .query(async ({ input }) => {
-      await ensureRbacSeed();
-      const condition = input.search
-        ? or(
-            ilike(user.name, \`%\${input.search}%\`),
-            ilike(user.email, \`%\${input.search}%\`)
-          )
-        : undefined;
-      const users = await db
-        .select()
-        .from(user)
-        .where(condition)
-        .orderBy(desc(user.createdAt))
-        .limit(100);
-      const assignments = await db
-        .select({
-          roleId: role.id,
-          roleName: role.name,
-          roleSlug: role.slug,
-          userId: userRole.userId,
-        })
-        .from(userRole)
-        .innerJoin(role, eq(userRole.roleId, role.id));
-      return users.map((item) => ({
-        ...item,
-        roles: assignments.filter(({ userId }) => userId === item.id),
-      }));
-    }),
+				const [targetSuperAdmin] = await tx
+					.select({ userId: userRole.userId })
+					.from(userRole)
+					.where(
+						and(
+							eq(userRole.userId, input.userId),
+							eq(userRole.roleId, SUPER_ADMIN_SLUG),
+						),
+					)
+					.limit(1);
+				if (
+					!actorSuperAdmin &&
+					(targetSuperAdmin || validRoleIds.includes(SUPER_ADMIN_SLUG))
+				) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "Only super administrators can manage this role",
+					});
+				}
+				if (targetSuperAdmin && !validRoleIds.includes(SUPER_ADMIN_SLUG)) {
+					const superAdmins = await tx
+						.select({ userId: userRole.userId })
+						.from(userRole)
+						.where(eq(userRole.roleId, SUPER_ADMIN_SLUG));
+					if (new Set(superAdmins.map(({ userId }) => userId)).size <= 1) {
+						throw new TRPCError({
+							code: "BAD_REQUEST",
+							message: "The final super administrator cannot be removed",
+						});
+					}
+				}
+
+				await tx.delete(userRole).where(eq(userRole.userId, input.userId));
+				if (validRoleIds.length > 0) {
+					await tx
+						.insert(userRole)
+						.values(
+							validRoleIds.map((roleId) => ({ roleId, userId: input.userId })),
+						);
+				}
+				await tx.insert(auditLog).values({
+					...auditContext(ctx),
+					action: "user.roles.updated",
+					id: crypto.randomUUID(),
+					metadata: { roleIds: validRoleIds },
+					targetId: input.userId,
+					targetType: "user",
+				});
+			});
+			return { success: true };
+		}),
+
+	updateRole: permissionProcedure("role:update")
+		.input(
+			z.object({
+				description: z.string().trim().max(240),
+				id: z.string().min(1),
+				name: z.string().trim().min(2).max(60),
+				permissionKeys: z.array(z.string()),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const permissionKeys = assertPermissionKeys(input.permissionKeys);
+			await db.transaction(async (tx) => {
+				const [current] = await tx
+					.select()
+					.from(role)
+					.where(eq(role.id, input.id))
+					.limit(1);
+				if (!current) {
+					throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
+				}
+				if (current.isSystem) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Protected roles cannot be updated",
+					});
+				}
+				await tx
+					.update(role)
+					.set({ description: input.description, name: input.name })
+					.where(eq(role.id, input.id));
+				await tx
+					.delete(rolePermission)
+					.where(eq(rolePermission.roleId, input.id));
+				if (permissionKeys.length > 0) {
+					await tx.insert(rolePermission).values(
+						permissionKeys.map((permissionId) => ({
+							permissionId,
+							roleId: input.id,
+						})),
+					);
+				}
+				await tx.insert(auditLog).values({
+					...auditContext(ctx),
+					action: "role.updated",
+					id: crypto.randomUUID(),
+					metadata: { name: input.name, permissionKeys },
+					targetId: input.id,
+					targetType: "role",
+				});
+			});
+			return { success: true };
+		}),
+
+	users: permissionProcedure("user:read")
+		.input(z.object({ search: z.string().trim().max(100).default("") }))
+		.query(async ({ input }) => {
+			await ensureRbacSeed();
+			const condition = input.search
+				? or(
+						ilike(user.name, \`%\${input.search}%\`),
+						ilike(user.email, \`%\${input.search}%\`),
+					)
+				: undefined;
+			const users = await db
+				.select()
+				.from(user)
+				.where(condition)
+				.orderBy(desc(user.createdAt))
+				.limit(100);
+			const assignments = await db
+				.select({
+					roleId: role.id,
+					roleName: role.name,
+					roleSlug: role.slug,
+					userId: userRole.userId,
+				})
+				.from(userRole)
+				.innerJoin(role, eq(userRole.roleId, role.id));
+			return users.map((item) => ({
+				...item,
+				roles: assignments.filter(({ userId }) => userId === item.id),
+			}));
+		}),
 });
 `],
   ["addons/admin/packages/api/src/routers/index.ts.hbs", `import { protectedProcedure, publicProcedure, router } from "../index";
@@ -20049,54 +22483,167 @@ export const appRouter = router({
 });
 export type AppRouter = typeof appRouter;
 `],
-  ["addons/admin/packages/api/src/routers/organization.ts.hbs", `import { invitation, member, organization, organizationRole } from "@{{projectName}}/db/schema/organization";
+  ["addons/admin/packages/api/src/routers/organization.ts.hbs", `import { db } from "@{{projectName}}/db";
 import { user } from "@{{projectName}}/db/schema/auth";
+import {
+  invitation,
+  member,
+  organization,
+  organizationRole,
+} from "@{{projectName}}/db/schema/organization";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { protectedProcedure, router } from "../index";
-import { db } from "@{{projectName}}/db";
+
+const BUILT_IN_ORGANIZATION_ROLES = new Set(["admin", "member", "owner"]);
+
+type OrganizationCapabilities = {
+  canManageInvitations: boolean;
+  canManageMembers: boolean;
+  canReadRoles: boolean;
+};
+
+function parseOrganizationRoles(value: string) {
+  return [...new Set(value.split(",").map((role) => role.trim()).filter(Boolean))];
+}
+
+function permissionIncludes(
+  permission: string,
+  resource: string,
+  action: string,
+) {
+  try {
+    const parsed = JSON.parse(permission) as Record<string, unknown>;
+    const actions = parsed[resource];
+    return Array.isArray(actions) && actions.includes(action);
+  } catch {
+    return false;
+  }
+}
+
+async function getOrganizationCapabilities(
+  organizationId: string,
+  roleValue: string,
+): Promise<OrganizationCapabilities> {
+  const roles = parseOrganizationRoles(roleValue);
+  if (roles.includes("owner") || roles.includes("admin")) {
+    return {
+      canManageInvitations: true,
+      canManageMembers: true,
+      canReadRoles: true,
+    };
+  }
+
+  const customRoles = roles.filter(
+    (role) => !BUILT_IN_ORGANIZATION_ROLES.has(role),
+  );
+  if (customRoles.length === 0) {
+    return {
+      canManageInvitations: false,
+      canManageMembers: false,
+      canReadRoles: false,
+    };
+  }
+  const permissions = await db
+    .select({ permission: organizationRole.permission })
+    .from(organizationRole)
+    .where(
+      and(
+        eq(organizationRole.organizationId, organizationId),
+        inArray(organizationRole.role, customRoles),
+      ),
+    );
+  return {
+    canManageInvitations: permissions.some(({ permission }) =>
+      permissionIncludes(permission, "invitation", "create"),
+    ),
+    canManageMembers: permissions.some(({ permission }) =>
+      permissionIncludes(permission, "member", "update"),
+    ),
+    canReadRoles: permissions.some(({ permission }) =>
+      permissionIncludes(permission, "ac", "read"),
+    ),
+  };
+}
 
 const activeOrganizationProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const organizationId = ctx.session.session.activeOrganizationId;
   if (!organizationId) {
-    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Select an organization first" });
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "Select an organization first",
+    });
   }
 
   const [currentMember] = await db
     .select({ id: member.id, role: member.role })
     .from(member)
-    .where(and(eq(member.organizationId, organizationId), eq(member.userId, ctx.session.user.id)))
+    .where(
+      and(
+        eq(member.organizationId, organizationId),
+        eq(member.userId, ctx.session.user.id),
+      ),
+    )
     .limit(1);
   if (!currentMember) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Organization membership required" });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Organization membership required",
+    });
   }
 
-  return next({ ctx: { ...ctx, organizationId, organizationMember: currentMember } });
+  return next({
+    ctx: { ...ctx, organizationId, organizationMember: currentMember },
+  });
 });
 
-const organizationAdminProcedure = activeOrganizationProcedure.use(({ ctx, next }) => {
-  const roles = ctx.organizationMember.role.split(",");
-  if (!roles.some((role) => role === "owner" || role === "admin")) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Organization administrator required" });
-  }
-  return next({ ctx });
-});
+const organizationPermissionProcedure = (
+  capability: keyof OrganizationCapabilities,
+) =>
+  activeOrganizationProcedure.use(async ({ ctx, next }) => {
+    const capabilities = await getOrganizationCapabilities(
+      ctx.organizationId,
+      ctx.organizationMember.role,
+    );
+    if (!capabilities[capability]) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Organization permission required",
+      });
+    }
+    return next({ ctx });
+  });
 
 export const organizationRouter = router({
   active: activeOrganizationProcedure.query(async ({ ctx }) => {
-    const [active] = await db
-      .select()
-      .from(organization)
-      .where(eq(organization.id, ctx.organizationId))
-      .limit(1);
-    return active ?? null;
+    const [active, capabilities] = await Promise.all([
+      db
+        .select()
+        .from(organization)
+        .where(eq(organization.id, ctx.organizationId))
+        .limit(1)
+        .then(([value]) => value),
+      getOrganizationCapabilities(
+        ctx.organizationId,
+        ctx.organizationMember.role,
+      ),
+    ]);
+    return active
+      ? { ...active, capabilities, memberRole: ctx.organizationMember.role }
+      : null;
   }),
-  invitations: organizationAdminProcedure.query(({ ctx }) =>
-    db.select().from(invitation).where(eq(invitation.organizationId, ctx.organizationId)).orderBy(desc(invitation.createdAt)),
+  invitations: organizationPermissionProcedure(
+    "canManageInvitations",
+  ).query(({ ctx }) =>
+    db
+      .select()
+      .from(invitation)
+      .where(eq(invitation.organizationId, ctx.organizationId))
+      .orderBy(desc(invitation.createdAt)),
   ),
-  members: organizationAdminProcedure.query(({ ctx }) =>
+  members: activeOrganizationProcedure.query(({ ctx }) =>
     db
       .select({
         createdAt: member.createdAt,
@@ -20111,35 +22658,102 @@ export const organizationRouter = router({
       .where(eq(member.organizationId, ctx.organizationId))
       .orderBy(desc(member.createdAt)),
   ),
-  roles: organizationAdminProcedure.query(({ ctx }) =>
-    db.select().from(organizationRole).where(eq(organizationRole.organizationId, ctx.organizationId)),
+  roles: organizationPermissionProcedure("canReadRoles").query(({ ctx }) =>
+    db
+      .select()
+      .from(organizationRole)
+      .where(eq(organizationRole.organizationId, ctx.organizationId)),
   ),
-  updateMemberRole: organizationAdminProcedure
-    .input(z.object({ memberId: z.string().min(1), role: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const [target] = await db
-        .select({ role: member.role })
-        .from(member)
-        .where(and(eq(member.id, input.memberId), eq(member.organizationId, ctx.organizationId)))
-        .limit(1);
-      if (!target) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
-      }
-      if (target.role.split(",").includes("owner") && !input.role.split(",").includes("owner")) {
-        const owners = await db
-          .select({ id: member.id })
+  updateMemberRole: organizationPermissionProcedure("canManageMembers")
+    .input(
+      z.object({
+        memberId: z.string().min(1),
+        role: z
+          .string()
+          .trim()
+          .min(1)
+          .max(240)
+          .refine(
+            (value) => parseOrganizationRoles(value).length > 0,
+            "At least one organization role is required",
+          ),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      db.transaction(async (tx) => {
+        const organizationMembers = await tx
+          .select({ id: member.id, role: member.role })
           .from(member)
-          .where(and(eq(member.organizationId, ctx.organizationId), eq(member.role, "owner")));
-        if (owners.length === 1) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The last organization owner cannot be removed" });
+          .where(eq(member.organizationId, ctx.organizationId))
+          .for("update");
+        const target = organizationMembers.find(
+          ({ id }) => id === input.memberId,
+        );
+        if (!target) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Member not found",
+          });
         }
-      }
-      await db
-        .update(member)
-        .set({ role: input.role })
-        .where(and(eq(member.id, input.memberId), eq(member.organizationId, ctx.organizationId)));
-      return { success: true };
-    }),
+
+        const nextRoles = parseOrganizationRoles(input.role);
+        const targetIsOwner = parseOrganizationRoles(target.role).includes("owner");
+        const nextIsOwner = nextRoles.includes("owner");
+        if (
+          targetIsOwner !== nextIsOwner &&
+          !parseOrganizationRoles(ctx.organizationMember.role).includes("owner")
+        ) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Only an organization owner can change owner membership",
+          });
+        }
+        const customRoles = nextRoles.filter(
+          (role) => !BUILT_IN_ORGANIZATION_ROLES.has(role),
+        );
+        if (customRoles.length > 0) {
+          const existingRoles = await tx
+            .select({ role: organizationRole.role })
+            .from(organizationRole)
+            .where(
+              and(
+                eq(organizationRole.organizationId, ctx.organizationId),
+                inArray(organizationRole.role, customRoles),
+              ),
+            );
+          if (existingRoles.length !== customRoles.length) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Unknown organization role",
+            });
+          }
+        }
+
+        if (
+          targetIsOwner &&
+          !nextIsOwner &&
+          organizationMembers.filter(({ role }) =>
+            parseOrganizationRoles(role).includes("owner"),
+          ).length === 1
+        ) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The last organization owner cannot be removed",
+          });
+        }
+
+        await tx
+          .update(member)
+          .set({ role: nextRoles.join(",") })
+          .where(
+            and(
+              eq(member.id, input.memberId),
+              eq(member.organizationId, ctx.organizationId),
+            ),
+          );
+        return { success: true };
+      }),
+    ),
 });
 `],
   ["addons/admin/packages/api/tsconfig.json.hbs", `{
@@ -20222,16 +22836,24 @@ import {
   verification,
 } from "@{{projectName}}/db/schema/auth";
 {{#if (includes addons "organization")}}
-import { invitation, member, organization as organizationTable, organizationRole } from "@{{projectName}}/db/schema/organization";
+import {
+  invitation,
+  member,
+  organization as organizationTable,
+  organizationRole,
+} from "@{{projectName}}/db/schema/organization";
 {{/if}}
 import { env } from "@{{projectName}}/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin{{#if (includes addons "organization")}}, organization{{/if}} } from "better-auth/plugins";
+import {
+  admin{{#if (includes addons "organization")}},
+  organization{{/if}}
+} from "better-auth/plugins";
 
-export function createAuth() {
-  const db = createDb();
+ type Database = ReturnType<typeof createDb>;
 
+export function createAuth(database: Database = createDb()) {
   const isProduction = env.NODE_ENV === "production";
 
   return betterAuth({
@@ -20243,15 +22865,30 @@ export function createAuth() {
       },
     },
     baseURL: env.BETTER_AUTH_URL,
-    database: drizzleAdapter(db, {
+    database: drizzleAdapter(database, {
       provider: "pg",
-
-      schema: { account, session, user, verification{{#if (includes addons "organization")}}, organization: organizationTable, member, invitation, organizationRole{{/if}} },
+      schema: {
+        account,
+        session,
+        user,
+        verification,
+        {{#if (includes addons "organization")}}
+        organization: organizationTable,
+        member,
+        invitation,
+        organizationRole,
+        {{/if}}
+      },
     }),
     emailAndPassword: {
       enabled: true,
     },
-    plugins: [admin(){{#if (includes addons "organization")}}, organization({ dynamicAccessControl: { enabled: true } }){{/if}}],
+    plugins: [
+      admin(),
+      {{#if (includes addons "organization")}}
+      organization({ dynamicAccessControl: { enabled: true } }),
+      {{/if}}
+    ],
     secret: env.BETTER_AUTH_SECRET,
     trustedOrigins: [env.CORS_ORIGIN],
   });
@@ -20335,6 +22972,30 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
+`],
+  ["addons/admin/packages/db/docker-compose.yml.hbs", `name: {{projectName}}
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: {{projectName}}-postgres
+    environment:
+      POSTGRES_DB: {{projectName}}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "55432:5432"
+    volumes:
+      - {{projectName}}_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  {{projectName}}_postgres_data:
 `],
   ["addons/admin/packages/db/drizzle.config.ts", `import dotenv from "dotenv";
 import { defineConfig } from "drizzle-kit";
@@ -20876,15 +23537,32 @@ import { initReactI18next } from "react-i18next";
 import en from "./locales/en.json";
 import zh from "./locales/zh.json";
 
+declare module "i18next" {
+  interface CustomTypeOptions {
+    defaultNS: "translation";
+    resources: {
+      translation: typeof en;
+    };
+  }
+}
+
 export const supportedLanguages = [
-  { label: "中文", value: "zh" },
+  { label: "简体中文", value: "zh" },
   { label: "English", value: "en" },
 ] as const;
+
+export type SupportedLanguage = (typeof supportedLanguages)[number]["value"];
 
 export const resources = {
   en: { translation: en },
   zh: { translation: zh },
 } as const;
+
+const syncDocumentLanguage = (language: string) => {
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = language;
+  }
+};
 
 if (!i18next.isInitialized) {
   await i18next
@@ -20899,1103 +23577,1432 @@ if (!i18next.isInitialized) {
       interpolation: {
         escapeValue: false,
       },
+      load: "languageOnly",
+      nonExplicitSupportedLngs: true,
       resources,
       supportedLngs: supportedLanguages.map(({ value }) => value),
     });
 }
 
+syncDocumentLanguage(i18next.resolvedLanguage ?? i18next.language);
+i18next.on("languageChanged", syncDocumentLanguage);
+
 export const i18n = i18next;
 `],
   ["addons/admin/packages/i18n/src/locales/en.json", `{
-  "sidebar": {
-    "general": "General",
-    "dashboard": "Dashboard",
-    "tasks": "Tasks",
-    "apps": "Apps",
-    "chats": "Chats",
-    "users": "Users",
-    "secured_by_clerk": "Secured by Clerk",
-    "sign_in": "Sign In",
-    "sign_up": "Sign Up",
-    "user_management": "User Management",
-    "pages": "Pages",
-    "auth": "Auth",
-    "sign_in_2col": "Sign In (2 Col)",
-    "forgot_password": "Forgot Password",
-    "otp": "OTP",
-    "errors": "Errors",
-    "unauthorized": "Unauthorized",
-    "forbidden": "Forbidden",
-    "not_found": "Not Found",
-    "internal_server_error": "Internal Server Error",
-    "maintenance_error": "Maintenance Error",
-    "other": "Other",
-    "settings": "Settings",
-    "profile": "Profile",
-    "account": "Account",
-    "appearance": "Appearance",
-    "notifications": "Notifications",
-    "display": "Display",
-    "help_center": "Help Center"
-  },
-  "dashboard": {
-    "title": "Dashboard",
-    "download": "Download",
-    "overview": "Overview",
-    "analytics": "Analytics",
-    "reports": "Reports",
-    "notifications": "Notifications",
-    "total_revenue": "Total Revenue",
-    "subscriptions": "Subscriptions",
-    "sales": "Sales",
-    "active_now": "Active Now",
-    "from_last_month": "{{value}} from last month",
-    "since_last_hour": "+{{value}} since last hour",
-    "recent_sales": "Recent Sales",
-    "recent_sales_desc": "You made {{count}} sales this month.",
-    "customers": "Customers",
-    "products": "Products",
-    "settings": "Settings",
-    "traffic_overview": "Traffic Overview",
-    "weekly_clicks_visitors": "Weekly clicks and unique visitors",
-    "total_clicks": "Total Clicks",
-    "unique_visitors": "Unique Visitors",
-    "bounce_rate": "Bounce Rate",
-    "avg_session": "Avg. Session",
-    "vs_last_week": "{{value}} vs last week",
-    "referrers": "Referrers",
-    "top_sources": "Top sources driving traffic",
-    "devices": "Devices",
-    "how_users_access": "How users access your app"
-  },
-  "nav_user": {
-    "account": "Account",
-    "billing": "Billing",
-    "notifications": "Notifications",
-    "log_out": "Log out",
-    "upgrade_to_pro": "Upgrade to Pro"
-  },
-  "search": {
-    "placeholder": "Search...",
-    "type_command": "Type a command or search..."
-  },
-  "auth": {
-    "sign_in_title": "Sign In",
-    "sign_in_desc": "Enter your email and password below to log into your account",
-    "sign_up_title": "Create an account",
-    "sign_up_desc": "Enter your email and password to create an account.",
-    "forgot_password_title": "Forgot Password",
-    "forgot_password_desc": "Enter your registered email and we will send you a link to reset your password.",
-    "otp_title": "Two-factor Authentication",
-    "otp_desc": "Please enter the authentication code. We have sent the authentication code to your email.",
-    "email": "Email",
-    "password": "Password",
-    "confirm_password": "Confirm Password",
-    "username": "Username",
-    "remember_me": "Remember me",
-    "forgot_password_link": "Forgot password?",
-    "no_account": "Don't have an account?",
-    "have_account": "Already have an account?",
-    "continue": "Continue",
-    "send_link": "Send Link",
-    "verify": "Verify",
-    "back_to_login": "Back to Sign In",
-    "sign_in_btn": "Sign in",
-    "create_account_btn": "Create Account",
-    "or_continue_with": "Or continue with",
-    "terms_prefix": "By clicking sign in, you agree to our",
-    "terms_of_service": "Terms of Service",
-    "and": "and",
-    "privacy_policy": "Privacy Policy",
-    "terms_signup_prefix": "By creating an account, you agree to our",
-    "signing_in": "Signing in...",
-    "creating_account": "Creating account...",
-    "sending_email": "Sending email...",
-    "havent_received": "Haven't received it?",
-    "resend_code": "Resend a new code.",
-    "welcome_back": "Welcome back, {{email}}!",
-    "account_created": "Account created for {{email}}.",
-    "email_sent_to": "Email sent to {{email}}",
-    "error": "Error"
-  },
-  "errors": {
-    "unauthorized_title": "Unauthorized Access",
-    "unauthorized_desc": "Please log in with the appropriate credentials to access this resource.",
-    "forbidden_title": "Access Forbidden",
-    "forbidden_desc": "You don't have necessary permission to view this resource.",
-    "not_found_title": "Page Not Found",
-    "not_found_desc": "Sorry, the page you are looking for doesn't exist or might have been removed.",
-    "server_error_title": "Internal Server Error",
-    "server_error_desc": "Sorry, something went wrong on our server.",
-    "maintenance_title": "Website is under maintenance!",
-    "maintenance_desc": "The site is not available at the moment. We'll be back online shortly.",
-    "go_back": "Go Back",
-    "back_to_home": "Back to Home",
-    "learn_more": "Learn more",
-    "something_went_wrong": "Something went wrong!",
-    "no_content": "No content.",
-    "session_expired": "Session expired!",
-    "internal_server": "Internal Server Error!",
-    "content_not_modified": "Content not modified!"
-  },
-  "settings": {
-    "title": "Settings",
-    "desc": "Manage your account settings and set e-mail preferences.",
-    "profile": "Profile",
-    "profile_desc": "This is how others will see you on the site.",
-    "account": "Account",
-    "account_desc": "Update your account settings. Set your preferred language and timezone.",
-    "appearance": "Appearance",
-    "appearance_desc": "Customize the appearance of the app. Automatically switch between day and night themes.",
-    "notifications": "Notifications",
-    "notifications_desc": "Configure how you receive notifications.",
-    "display": "Display",
-    "display_desc": "Turn items on or off to control what's displayed in the app."
-  },
-  "tasks": {
-    "title": "Tasks",
-    "desc": "Here's a list of your tasks for this month!",
-    "import": "Import",
-    "create": "Create",
-    "import_title": "Import Tasks",
-    "import_desc": "Import tasks quickly from a CSV file.",
-    "file": "File",
-    "update_task": "Update Task",
-    "create_task": "Create Task",
-    "update_task_desc": "Update the task by providing necessary info.",
-    "create_task_desc": "Add a new task by providing necessary info.",
-    "click_save": "Click save when you're done.",
-    "task_title": "Title",
-    "task_id": "Task",
-    "enter_title": "Enter a title",
-    "status": "Status",
-    "select_status": "Select dropdown",
-    "label": "Label",
-    "priority": "Priority",
-    "in_progress": "In Progress",
-    "backlog": "Backlog",
-    "todo": "Todo",
-    "canceled": "Canceled",
-    "done": "Done",
-    "documentation": "Documentation",
-    "feature": "Feature",
-    "bug": "Bug",
-    "high": "High",
-    "medium": "Medium",
-    "low": "Low",
-    "critical": "Critical",
-    "save_changes": "Save changes",
-    "filter_placeholder": "Filter by title or ID...",
-    "make_copy": "Make a copy",
-    "favorite": "Favorite",
-    "delete_task_title": "Delete this task: {{id}} ?",
-    "delete_task_desc": "You are about to delete a task with the ID {{id}}. This action cannot be undone.",
-    "delete_multi_title": "Delete {{count}} {{entity}}",
-    "delete_multi_confirm": "Are you sure you want to delete the selected tasks?",
-    "delete_multi_cannot_undo": "This action cannot be undone.",
-    "delete_multi_confirm_word": "Confirm by typing \\"{{word}}\\":",
-    "delete_multi_placeholder": "Type \\"{{word}}\\" to confirm.",
-    "delete_multi_success": "Deleted {{count}} {{entity}}",
-    "deleting_tasks": "Deleting tasks...",
-    "please_type_confirm": "Please type \\"{{word}}\\" to confirm.",
-    "update_status": "Update status",
-    "update_priority": "Update priority",
-    "export_tasks": "Export tasks",
-    "delete_selected": "Delete selected tasks",
-    "updating_status": "Updating status...",
-    "updating_priority": "Updating priority...",
-    "exporting_tasks": "Exporting tasks...",
-    "status_updated": "Status updated to \\"{{status}}\\" for {{count}} task(s).",
-    "priority_updated": "Priority updated to \\"{{priority}}\\" for {{count}} task(s).",
-    "exported_tasks": "Exported {{count}} task(s) to CSV."
-  },
-  "users": {
-    "title": "User List",
-    "desc": "Manage your users and their roles here.",
-    "invite_user": "Invite User",
-    "add_user": "Add User",
-    "edit_user": "Edit User",
-    "add_new_user": "Add New User",
-    "edit_user_desc": "Update the user here.",
-    "add_user_desc": "Create new user here.",
-    "click_save": "Click save when you're done.",
-    "first_name": "First Name",
-    "last_name": "Last Name",
-    "username": "Username",
-    "name": "Name",
-    "email": "Email",
-    "phone_number": "Phone Number",
-    "role": "Role",
-    "status": "Status",
-    "select_role": "Select a role",
-    "password": "Password",
-    "confirm_password": "Confirm Password",
-    "save_changes": "Save changes",
-    "delete_user": "Delete User",
-    "delete_confirm": "Are you sure you want to delete {{username}}?",
-    "delete_warning": "This action will permanently remove the user with the role of {{role}} from the system. This cannot be undone.",
-    "enter_username_confirm": "Enter username to confirm deletion.",
-    "warning": "Warning!",
-    "warning_desc": "Please be careful, this operation can not be rolled back.",
-    "invite_title": "Invite User",
-    "invite_desc": "Invite new user to join your team by sending them an email invitation. Assign a role to define their access level.",
-    "invite_email_placeholder": "eg: john.doe@gmail.com",
-    "description_optional": "Description (optional)",
-    "invite_note_placeholder": "Add a personal note to your invitation (optional)",
-    "invite_btn": "Invite",
-    "filter_placeholder": "Filter users...",
-    "delete_multi_title": "Delete {{count}} {{entity}}",
-    "delete_multi_confirm": "Are you sure you want to delete the selected users?",
-    "delete_multi_cannot_undo": "This action cannot be undone.",
-    "delete_multi_confirm_word": "Confirm by typing \\"{{word}}\\":",
-    "delete_multi_placeholder": "Type \\"{{word}}\\" to confirm.",
-    "delete_multi_success": "Deleted {{count}} {{entity}}",
-    "deleting_users": "Deleting users...",
-    "invite_selected": "Invite selected users",
-    "activate_selected": "Activate selected users",
-    "deactivate_selected": "Deactivate selected users",
-    "delete_selected": "Delete selected users",
-    "activating_users": "Activating users...",
-    "deactivating_users": "Deactivating users...",
-    "inviting_users": "Inviting users...",
-    "activated_users": "Activated {{count}} user(s)",
-    "deactivated_users": "Deactivated {{count}} user(s)",
-    "invited_users": "Invited {{count}} user(s)",
-    "error_activating": "Error activating users",
-    "error_deactivating": "Error deactivating users",
-    "error_inviting": "Error inviting users",
-    "deleted_message": "The following user has been deleted:",
-    "please_type_confirm": "Please type \\"{{word}}\\" to confirm.",
-    "role_superadmin": "Superadmin",
-    "role_admin": "Admin",
-    "role_manager": "Manager",
-    "role_cashier": "Cashier",
-    "status_active": "Active",
-    "status_inactive": "Inactive",
-    "status_invited": "Invited",
-    "status_suspended": "Suspended"
-  },
-  "apps": {
-    "title": "App Integrations",
-    "desc": "Here's a list of your apps for the integration!",
-    "all_apps": "All Apps",
-    "connected": "Connected",
-    "not_connected": "Not Connected",
-    "filter_apps": "Filter apps...",
-    "ascending": "Ascending",
-    "descending": "Descending",
-    "connect": "Connect",
-    "desc_telegram": "Connect with Telegram for real-time communication.",
-    "desc_notion": "Effortlessly sync Notion pages for seamless collaboration.",
-    "desc_figma": "View and collaborate on Figma designs in one place.",
-    "desc_trello": "Sync Trello cards for streamlined project management.",
-    "desc_slack": "Integrate Slack for efficient team communication.",
-    "desc_zoom": "Host Zoom meetings directly from the dashboard.",
-    "desc_stripe": "Easily manage Stripe transactions and payments.",
-    "desc_gmail": "Access and manage Gmail messages effortlessly.",
-    "desc_medium": "Explore and share Medium stories on your dashboard.",
-    "desc_skype": "Connect with Skype contacts seamlessly.",
-    "desc_docker": "Effortlessly manage Docker containers on your dashboard.",
-    "desc_github": "Streamline code management with GitHub integration.",
-    "desc_gitlab": "Efficiently manage code projects with GitLab integration.",
-    "desc_discord": "Connect with Discord for seamless team communication.",
-    "desc_whatsapp": "Easily integrate WhatsApp for direct messaging."
-  },
-  "chats": {
-    "inbox": "Inbox",
-    "search_chat": "Search chat...",
-    "your_messages": "Your messages",
-    "send_message_to_start": "Send a message to start a chat.",
-    "send_message": "Send message",
-    "type_messages": "Type your messages...",
-    "send": "Send",
-    "new_message": "New message",
-    "to": "To:",
-    "search_people": "Search people...",
-    "no_people_found": "No people found.",
-    "chat": "Chat"
-  },
-  "theme": {
-    "settings_title": "Theme Settings",
-    "settings_desc": "Adjust the appearance and layout to suit your preferences.",
-    "theme": "Theme",
-    "system": "System",
-    "light": "Light",
-    "dark": "Dark",
-    "sidebar": "Sidebar",
-    "inset": "Inset",
-    "floating": "Floating",
-    "sidebar_style": "Sidebar",
-    "layout": "Layout",
-    "default": "Default",
-    "compact": "Compact",
-    "full_layout": "Full layout",
-    "direction": "Direction",
-    "ltr": "Left to Right",
-    "rtl": "Right to Left",
-    "reset": "Reset",
-    "toggle_theme": "Toggle theme",
-    "reset_theme_aria": "Reset theme preference to default",
-    "reset_sidebar_aria": "Reset sidebar style to default",
-    "reset_layout_aria": "Reset layout options to default",
-    "reset_direction_aria": "Reset text direction to default",
-    "theme_desc_aria": "Choose between system preference, light mode, or dark mode",
-    "sidebar_desc_aria": "Choose between inset, floating, or standard sidebar layout",
-    "layout_desc_aria": "Choose between default expanded, compact icon-only, or full layout mode",
-    "direction_desc_aria": "Choose between left-to-right or right-to-left site direction",
-    "open_settings_aria": "Open theme settings",
-    "reset_all_aria": "Reset all settings to default values",
-    "select_theme_aria": "Select theme preference",
-    "select_sidebar_aria": "Select sidebar style",
-    "select_layout_aria": "Select layout style",
-    "select_direction_aria": "Select site direction",
-    "select_option_aria": "Select {{option}}",
-    "option_preview_aria": "{{option}} option preview"
-  },
-  "profile_dropdown": {
-    "profile": "Profile",
-    "billing": "Billing",
-    "settings": "Settings",
-    "new_team": "New Team",
-    "sign_out": "Sign out"
-  },
-  "sign_out": {
-    "title": "Sign out",
-    "desc": "Are you sure you want to sign out? You will need to sign in again to access your account.",
-    "confirm": "Sign out"
-  },
-  "team_switcher": {
-    "teams": "Teams",
-    "add_team": "Add team"
-  },
-  "data_table": {
-    "page_of": "Page {{current}} of {{total}}",
-    "rows_per_page": "Rows per page",
-    "no_results": "No results found.",
-    "selected": "selected",
-    "clear_filters": "Clear filters",
-    "reset": "Reset",
-    "filter": "Filter...",
-    "view": "View",
-    "toggle_columns": "Toggle columns",
-    "asc": "Asc",
-    "desc": "Desc",
-    "hide": "Hide",
-    "clear_selection": "Clear selection",
-    "bulk_actions_aria": "Bulk actions for {{count}} selected {{entity}}",
-    "selected_announcement": "{{count}} {{entity}} selected. Bulk actions toolbar is available."
-  },
-  "coming_soon": {
-    "title": "Coming Soon!",
-    "desc": "This page has not been created yet. Stay tuned though!"
-  },
-  "confirm_dialog": {
-    "cancel": "Cancel",
-    "continue": "Continue"
-  },
-  "common": {
-    "save": "Save",
-    "cancel": "Cancel",
-    "delete": "Delete",
-    "edit": "Edit",
-    "create": "Create",
-    "update": "Update",
-    "confirm": "Confirm",
-    "loading": "Loading...",
-    "no_data": "No data",
-    "actions": "Actions",
-    "search": "Search",
-    "filter": "Filter",
-    "export": "Export",
-    "import": "Import",
-    "close": "Close",
-    "open": "Open",
-    "yes": "Yes",
-    "no": "No",
-    "language": "Language",
-    "pick_date": "Pick a date",
-    "select": "Select",
-    "skip_to_main": "Skip to Main",
-    "error": "Error",
-    "warning": "Warning!",
-    "warning_desc": "Please be careful, this operation can not be rolled back.",
-    "hide_password": "Hide password",
-    "show_password": "Show password",
-    "submitted_values": "You submitted the following values:",
-    "imported_file": "You have imported the following file:",
-    "task_deleted": "The following task has been deleted:"
-  },
-  "settings_form": {
-    "font": "Font",
-    "font_desc": "Set the font you want to use in the dashboard.",
-    "theme": "Theme",
-    "theme_desc": "Select the theme for the dashboard.",
-    "light": "Light",
-    "dark": "Dark",
-    "update_preferences": "Update preferences",
-    "name": "Name",
-    "name_desc": "This is the name that will be displayed on your profile and in emails.",
-    "dob": "Date of birth",
-    "dob_desc": "Your date of birth is used to calculate your age.",
-    "language": "Language",
-    "language_desc": "This is the language that will be used in the dashboard.",
-    "select_language": "Select language",
-    "search_language": "Search language...",
-    "no_language_found": "No language found.",
-    "update_account": "Update account",
-    "notify_about": "Notify me about...",
-    "all_new_messages": "All new messages",
-    "direct_messages_mentions": "Direct messages and mentions",
-    "nothing": "Nothing",
-    "email_notifications": "Email Notifications",
-    "communication_emails": "Communication emails",
-    "communication_emails_desc": "Receive emails about your account activity.",
-    "marketing_emails": "Marketing emails",
-    "marketing_emails_desc": "Receive emails about new products, features, and more.",
-    "social_emails": "Social emails",
-    "social_emails_desc": "Receive emails for friend requests, follows, and more.",
-    "security_emails": "Security emails",
-    "security_emails_desc": "Receive emails about your account activity and security.",
-    "mobile_settings": "Use different settings for my mobile devices",
-    "mobile_settings_desc": "You can manage your mobile notifications in the mobile settings page.",
-    "update_notifications": "Update notifications",
-    "sidebar_label": "Sidebar",
-    "sidebar_desc": "Select the items you want to display in the sidebar.",
-    "recents": "Recents",
-    "home": "Home",
-    "applications": "Applications",
-    "desktop": "Desktop",
-    "downloads": "Downloads",
-    "documents": "Documents",
-    "update_display": "Update display",
-    "username": "Username",
-    "username_desc": "This is your public display name. It can be your real name or a pseudonym. You can only change this once every 30 days.",
-    "email": "Email",
-    "email_desc": "You can manage verified email addresses in your email settings.",
-    "select_email": "Select a verified email to display",
-    "bio": "Bio",
-    "bio_placeholder": "Tell us a little bit about yourself",
-    "bio_desc": "You can @mention other users and organizations to link to them.",
-    "urls": "URLs",
-    "urls_desc": "Add links to your website, blog, or social media profiles.",
-    "add_url": "Add URL",
-    "update_profile": "Update profile",
-    "your_name": "Your name"
-  },
-  "validation": {
-    "email_required": "Please enter your email.",
-    "email_invalid": "Please enter a valid email address.",
-    "password_required": "Please enter your password.",
-    "password_min_length": "Password must be at least 7 characters long.",
-    "confirm_password_required": "Please confirm your password.",
-    "passwords_not_match": "Passwords don't match.",
-    "first_name_required": "First Name is required.",
-    "last_name_required": "Last Name is required.",
-    "username_required": "Username is required.",
-    "phone_required": "Phone number is required.",
-    "email_field_required": "Email is required.",
-    "role_required": "Role is required.",
-    "password_field_required": "Password is required.",
-    "password_min_8": "Password must be at least 8 characters long.",
-    "password_lowercase": "Password must contain at least one lowercase letter.",
-    "password_number": "Password must contain at least one number.",
-    "invite_email_required": "Please enter an email to invite.",
-    "forgot_email_required": "Please enter your email.",
-    "name_required": "Please enter your name.",
-    "name_min": "Name must be at least 2 characters.",
-    "name_max": "Name must not be longer than 30 characters.",
-    "dob_required": "Please select your date of birth.",
-    "language_required": "Please select a language.",
-    "username_min": "Username must be at least 2 characters.",
-    "username_max": "Username must not be longer than 30 characters.",
-    "select_email": "Please select an email to display.",
-    "url_invalid": "Please enter a valid URL.",
-    "select_one_item": "You have to select at least one item.",
-    "select_notification_type": "Please select a notification type.",
-    "otp_length": "Please enter the 6-digit code.",
-    "title_required": "Title is required.",
-    "select_status": "Please select a status.",
-    "select_label": "Please select a label.",
-    "select_priority": "Please choose a priority.",
-    "upload_file": "Please upload a file.",
-    "upload_csv": "Please upload csv format."
-  },
-  "clerk": {
-    "no_key_title": "No Publishable Key Found!",
-    "no_key_desc": "You need to generate a publishable key from Clerk and put it inside the .env file.",
-    "set_api_key": "Set your Clerk API key",
-    "step_1": "In the Clerk Dashboard, navigate to the API keys page.",
-    "step_2": "In the Quick Copy section, copy your Clerk Publishable Key.",
-    "step_3_prefix": "Rename",
-    "step_3_suffix": "to",
-    "step_4": "Paste your key into your .env file.",
-    "final_result": "The final result should resemble the following:",
-    "optional_title": "Clerk Integration is Optional",
-    "optional_desc_1": "The Clerk integration lives entirely inside src/routes/clerk. If you plan to use Clerk as your auth service, you might want to place ClerkProvider at the root route.",
-    "optional_desc_2": "However, if you don't plan to use Clerk, you can safely remove this directory and related dependency @clerk/react.",
-    "optional_desc_3": "This setup is modular by design and won't affect the rest of the application.",
-    "welcome_example": "Welcome to the example Clerk auth page.",
-    "back_to_dashboard": "Back to Dashboard",
-    "user_list": "User List",
-    "manage_users_desc": "Manage your users and their roles here.",
-    "same_as_users": "This is the same as '/users'",
-    "signout_tip": "You can sign out or manage/delete your account via the User Profile menu in the top-right corner of the page.",
-    "unauthorized": "Unauthorized Access",
-    "must_auth": "You must be authenticated via Clerk to access this resource.",
-    "must_signin_tip": "You must first sign in using Clerk to access this route.",
-    "after_signin_tip": "After signing in, you'll be able to sign out or delete your account via the User Profile dropdown on this page.",
-    "go_back": "Go Back",
-    "sign_in": "Sign in",
-    "redirecting_in": "Redirecting to Sign In page in {{count}}s",
-    "redirecting": "Redirecting...",
-    "cancel_redirect": "Cancel Redirect"
-  }
+	"sidebar": {
+		"general": "General",
+		"dashboard": "Dashboard",
+		"tasks": "Tasks",
+		"apps": "Apps",
+		"chats": "Chats",
+		"users": "Users",
+		"secured_by_clerk": "Secured by Clerk",
+		"sign_in": "Sign In",
+		"sign_up": "Sign Up",
+		"user_management": "User Management",
+		"pages": "Pages",
+		"auth": "Auth",
+		"sign_in_2col": "Sign In (2 Col)",
+		"forgot_password": "Forgot Password",
+		"otp": "OTP",
+		"errors": "Errors",
+		"unauthorized": "Unauthorized",
+		"forbidden": "Forbidden",
+		"not_found": "Not Found",
+		"internal_server_error": "Internal Server Error",
+		"maintenance_error": "Maintenance Error",
+		"other": "Other",
+		"settings": "Settings",
+		"profile": "Profile",
+		"account": "Account",
+		"appearance": "Appearance",
+		"notifications": "Notifications",
+		"display": "Display",
+		"help_center": "Help Center"
+	},
+	"navigation": {
+		"workspace": "Workspace",
+		"dashboard": "Dashboard",
+		"administration": "Administration",
+		"system_management": "System Management",
+		"users": "Users",
+		"roles": "Roles",
+		"audit": "Audit Log",
+		"account": "Account",
+		"settings": "Settings",
+		"profile": "Profile",
+		"account_security": "Account Security",
+		"sidebar": "Sidebar",
+		"mobile_sidebar_desc": "Displays the mobile navigation sidebar.",
+		"toggle_sidebar": "Toggle sidebar",
+		"toggle_navigation": "Toggle navigation",
+		"organizations": "Organizations"
+	},
+	"dashboard": {
+		"title": "Dashboard",
+		"download": "Download",
+		"overview": "Overview",
+		"analytics": "Analytics",
+		"reports": "Reports",
+		"notifications": "Notifications",
+		"total_revenue": "Total Revenue",
+		"subscriptions": "Subscriptions",
+		"sales": "Sales",
+		"active_now": "Active Now",
+		"from_last_month": "{{value}} from last month",
+		"since_last_hour": "+{{value}} since last hour",
+		"recent_sales": "Recent Sales",
+		"recent_sales_desc": "You made {{count}} sales this month.",
+		"customers": "Customers",
+		"products": "Products",
+		"settings": "Settings",
+		"traffic_overview": "Traffic Overview",
+		"weekly_clicks_visitors": "Weekly clicks and unique visitors",
+		"total_clicks": "Total Clicks",
+		"unique_visitors": "Unique Visitors",
+		"bounce_rate": "Bounce Rate",
+		"avg_session": "Avg. Session",
+		"vs_last_week": "{{value}} vs last week",
+		"referrers": "Referrers",
+		"top_sources": "Top sources driving traffic",
+		"devices": "Devices",
+		"how_users_access": "How users access your app",
+		"workspace": "Workspace",
+		"system_status": "System Status",
+		"system_status_desc": "Current availability of core services.",
+		"checking": "Checking...",
+		"healthy": "Healthy",
+		"unavailable": "Unavailable",
+		"api_health_desc": "API service availability",
+		"database": "Database",
+		"database_desc": "Database connectivity",
+		"authentication": "Authentication",
+		"authentication_desc": "Authentication service availability"
+	},
+	"nav_user": {
+		"account": "Account",
+		"billing": "Billing",
+		"notifications": "Notifications",
+		"log_out": "Log out",
+		"upgrade_to_pro": "Upgrade to Pro"
+	},
+	"search": {
+		"placeholder": "Search...",
+		"type_command": "Type a command or search..."
+	},
+	"command_menu": {
+		"title": "Command Menu",
+		"description": "Search for a page or command."
+	},
+	"language_switch": {
+		"label": "Change language"
+	},
+	"auth": {
+		"sign_in_title": "Sign In",
+		"sign_in_desc": "Enter your email and password below to log into your account",
+		"sign_up_title": "Create an account",
+		"sign_up_desc": "Enter your email and password to create an account.",
+		"forgot_password_title": "Forgot Password",
+		"forgot_password_desc": "Enter your registered email and we will send you a link to reset your password.",
+		"otp_title": "Two-factor Authentication",
+		"otp_desc": "Please enter the authentication code. We have sent the authentication code to your email.",
+		"email": "Email",
+		"password": "Password",
+		"confirm_password": "Confirm Password",
+		"username": "Username",
+		"remember_me": "Remember me",
+		"forgot_password_link": "Forgot password?",
+		"no_account": "Don't have an account?",
+		"have_account": "Already have an account?",
+		"continue": "Continue",
+		"send_link": "Send Link",
+		"verify": "Verify",
+		"back_to_login": "Back to Sign In",
+		"sign_in_btn": "Sign in",
+		"create_account_btn": "Create Account",
+		"or_continue_with": "Or continue with",
+		"terms_prefix": "By clicking sign in, you agree to our",
+		"terms_of_service": "Terms of Service",
+		"and": "and",
+		"privacy_policy": "Privacy Policy",
+		"terms_signup_prefix": "By creating an account, you agree to our",
+		"signing_in": "Signing in...",
+		"creating_account": "Creating account...",
+		"sending_email": "Sending email...",
+		"havent_received": "Haven't received it?",
+		"resend_code": "Resend a new code.",
+		"welcome_back": "Welcome back, {{email}}!",
+		"account_created": "Account created for {{email}}.",
+		"email_sent_to": "Email sent to {{email}}",
+		"error": "Error",
+		"name": "Name",
+		"sign_in_error": "Unable to sign in. Check your credentials and try again.",
+		"sign_up_error": "Unable to create your account. Please try again."
+	},
+	"errors": {
+		"unauthorized_title": "Unauthorized Access",
+		"unauthorized_desc": "Please log in with the appropriate credentials to access this resource.",
+		"forbidden_title": "Access Forbidden",
+		"forbidden_desc": "You don't have necessary permission to view this resource.",
+		"not_found_title": "Page Not Found",
+		"not_found_desc": "Sorry, the page you are looking for doesn't exist or might have been removed.",
+		"server_error_title": "Internal Server Error",
+		"server_error_desc": "Sorry, something went wrong on our server.",
+		"maintenance_title": "Website is under maintenance!",
+		"maintenance_desc": "The site is not available at the moment. We'll be back online shortly.",
+		"go_back": "Go Back",
+		"back_to_home": "Back to Home",
+		"learn_more": "Learn more",
+		"something_went_wrong": "Something went wrong!",
+		"no_content": "No content.",
+		"session_expired": "Session expired!",
+		"internal_server": "Internal Server Error!",
+		"content_not_modified": "Content not modified!",
+		"request_failed": "The request failed. Please try again."
+	},
+	"settings": {
+		"title": "Settings",
+		"desc": "Manage your account settings and set e-mail preferences.",
+		"profile": "Profile",
+		"profile_desc": "This is how others will see you on the site.",
+		"account": "Account",
+		"account_desc": "Update your account settings. Set your preferred language and timezone.",
+		"appearance": "Appearance",
+		"appearance_desc": "Customize the appearance of the app. Automatically switch between day and night themes.",
+		"notifications": "Notifications",
+		"notifications_desc": "Configure how you receive notifications.",
+		"display": "Display",
+		"display_desc": "Turn items on or off to control what's displayed in the app.",
+		"local_desc": "Manage your profile, account security, and appearance preferences.",
+		"account_security_desc": "Update your password and secure your account."
+	},
+	"tasks": {
+		"title": "Tasks",
+		"desc": "Here's a list of your tasks for this month!",
+		"import": "Import",
+		"create": "Create",
+		"import_title": "Import Tasks",
+		"import_desc": "Import tasks quickly from a CSV file.",
+		"file": "File",
+		"update_task": "Update Task",
+		"create_task": "Create Task",
+		"update_task_desc": "Update the task by providing necessary info.",
+		"create_task_desc": "Add a new task by providing necessary info.",
+		"click_save": "Click save when you're done.",
+		"task_title": "Title",
+		"task_id": "Task",
+		"enter_title": "Enter a title",
+		"status": "Status",
+		"select_status": "Select dropdown",
+		"label": "Label",
+		"priority": "Priority",
+		"in_progress": "In Progress",
+		"backlog": "Backlog",
+		"todo": "Todo",
+		"canceled": "Canceled",
+		"done": "Done",
+		"documentation": "Documentation",
+		"feature": "Feature",
+		"bug": "Bug",
+		"high": "High",
+		"medium": "Medium",
+		"low": "Low",
+		"critical": "Critical",
+		"save_changes": "Save changes",
+		"filter_placeholder": "Filter by title or ID...",
+		"make_copy": "Make a copy",
+		"favorite": "Favorite",
+		"delete_task_title": "Delete this task: {{id}} ?",
+		"delete_task_desc": "You are about to delete a task with the ID {{id}}. This action cannot be undone.",
+		"delete_multi_title": "Delete {{count}} {{entity}}",
+		"delete_multi_confirm": "Are you sure you want to delete the selected tasks?",
+		"delete_multi_cannot_undo": "This action cannot be undone.",
+		"delete_multi_confirm_word": "Confirm by typing \\"{{word}}\\":",
+		"delete_multi_placeholder": "Type \\"{{word}}\\" to confirm.",
+		"delete_multi_success": "Deleted {{count}} {{entity}}",
+		"deleting_tasks": "Deleting tasks...",
+		"please_type_confirm": "Please type \\"{{word}}\\" to confirm.",
+		"update_status": "Update status",
+		"update_priority": "Update priority",
+		"export_tasks": "Export tasks",
+		"delete_selected": "Delete selected tasks",
+		"updating_status": "Updating status...",
+		"updating_priority": "Updating priority...",
+		"exporting_tasks": "Exporting tasks...",
+		"status_updated": "Status updated to \\"{{status}}\\" for {{count}} task(s).",
+		"priority_updated": "Priority updated to \\"{{priority}}\\" for {{count}} task(s).",
+		"exported_tasks": "Exported {{count}} task(s) to CSV."
+	},
+	"users": {
+		"title": "User List",
+		"desc": "Manage your users and their roles here.",
+		"invite_user": "Invite User",
+		"add_user": "Add User",
+		"edit_user": "Edit User",
+		"add_new_user": "Add New User",
+		"edit_user_desc": "Update the user here.",
+		"add_user_desc": "Create new user here.",
+		"click_save": "Click save when you're done.",
+		"first_name": "First Name",
+		"last_name": "Last Name",
+		"username": "Username",
+		"name": "Name",
+		"email": "Email",
+		"phone_number": "Phone Number",
+		"role": "Role",
+		"status": "Status",
+		"select_role": "Select a role",
+		"password": "Password",
+		"confirm_password": "Confirm Password",
+		"save_changes": "Save changes",
+		"delete_user": "Delete User",
+		"delete_confirm": "Are you sure you want to delete {{username}}?",
+		"delete_warning": "This action will permanently remove the user with the role of {{role}} from the system. This cannot be undone.",
+		"enter_username_confirm": "Enter username to confirm deletion.",
+		"warning": "Warning!",
+		"warning_desc": "Please be careful, this operation can not be rolled back.",
+		"invite_title": "Invite User",
+		"invite_desc": "Invite new user to join your team by sending them an email invitation. Assign a role to define their access level.",
+		"invite_email_placeholder": "eg: john.doe@gmail.com",
+		"description_optional": "Description (optional)",
+		"invite_note_placeholder": "Add a personal note to your invitation (optional)",
+		"invite_btn": "Invite",
+		"filter_placeholder": "Filter users...",
+		"delete_multi_title": "Delete {{count}} {{entity}}",
+		"delete_multi_confirm": "Are you sure you want to delete the selected users?",
+		"delete_multi_cannot_undo": "This action cannot be undone.",
+		"delete_multi_confirm_word": "Confirm by typing \\"{{word}}\\":",
+		"delete_multi_placeholder": "Type \\"{{word}}\\" to confirm.",
+		"delete_multi_success": "Deleted {{count}} {{entity}}",
+		"deleting_users": "Deleting users...",
+		"invite_selected": "Invite selected users",
+		"activate_selected": "Activate selected users",
+		"deactivate_selected": "Deactivate selected users",
+		"delete_selected": "Delete selected users",
+		"activating_users": "Activating users...",
+		"deactivating_users": "Deactivating users...",
+		"inviting_users": "Inviting users...",
+		"activated_users": "Activated {{count}} user(s)",
+		"deactivated_users": "Deactivated {{count}} user(s)",
+		"invited_users": "Invited {{count}} user(s)",
+		"error_activating": "Error activating users",
+		"error_deactivating": "Error deactivating users",
+		"error_inviting": "Error inviting users",
+		"deleted_message": "The following user has been deleted:",
+		"please_type_confirm": "Please type \\"{{word}}\\" to confirm.",
+		"role_superadmin": "Superadmin",
+		"role_admin": "Admin",
+		"role_manager": "Manager",
+		"role_cashier": "Cashier",
+		"status_active": "Active",
+		"status_inactive": "Inactive",
+		"status_invited": "Invited",
+		"status_suspended": "Suspended",
+		"user": "User",
+		"roles": "Roles",
+		"no_role": "No role",
+		"manage_user": "Manage {{name}}",
+		"manage_access": "Manage access",
+		"revoke_sessions": "Revoke sessions",
+		"management_desc": "Manage user access, roles, and account status.",
+		"empty": "No users found.",
+		"manage_title": "Manage {{name}}",
+		"manage_desc": "Assign roles and manage this user's account access.",
+		"enable_account": "Enable account",
+		"suspend_account": "Suspend account",
+		"roles_updated": "User roles updated.",
+		"status_updated": "User status updated.",
+		"sessions_revoked": "User sessions revoked."
+	},
+	"roles": {
+		"title": "Roles",
+		"desc": "Manage roles and their permissions.",
+		"add": "Add role",
+		"created": "Role created.",
+		"updated": "Role updated.",
+		"deleted": "Role deleted.",
+		"role": "Role",
+		"protected": "Protected",
+		"permissions": "Permissions",
+		"members": "Members",
+		"manage_role": "Manage {{name}}",
+		"empty": "No roles found.",
+		"filter_placeholder": "Filter roles...",
+		"edit_title": "Edit {{name}}",
+		"dialog_desc": "Set the role name, description, and permissions.",
+		"view_desc": "Review this role's name, description, and permissions.",
+		"name": "Name",
+		"description": "Description",
+		"delete": "Delete role"
+	},
+	"audit": {
+		"title": "Audit Log",
+		"desc": "Review administrative activity across the system.",
+		"actor": "Actor",
+		"system": "System",
+		"automated_action": "Automated action",
+		"action": "Action",
+		"resource": "Resource",
+		"origin": "Origin",
+		"unknown": "Unknown",
+		"timestamp": "Timestamp",
+		"empty": "No audit events found.",
+		"filter_placeholder": "Filter audit events..."
+	},
+	"apps": {
+		"title": "App Integrations",
+		"desc": "Here's a list of your apps for the integration!",
+		"all_apps": "All Apps",
+		"connected": "Connected",
+		"not_connected": "Not Connected",
+		"filter_apps": "Filter apps...",
+		"ascending": "Ascending",
+		"descending": "Descending",
+		"connect": "Connect",
+		"desc_telegram": "Connect with Telegram for real-time communication.",
+		"desc_notion": "Effortlessly sync Notion pages for seamless collaboration.",
+		"desc_figma": "View and collaborate on Figma designs in one place.",
+		"desc_trello": "Sync Trello cards for streamlined project management.",
+		"desc_slack": "Integrate Slack for efficient team communication.",
+		"desc_zoom": "Host Zoom meetings directly from the dashboard.",
+		"desc_stripe": "Easily manage Stripe transactions and payments.",
+		"desc_gmail": "Access and manage Gmail messages effortlessly.",
+		"desc_medium": "Explore and share Medium stories on your dashboard.",
+		"desc_skype": "Connect with Skype contacts seamlessly.",
+		"desc_docker": "Effortlessly manage Docker containers on your dashboard.",
+		"desc_github": "Streamline code management with GitHub integration.",
+		"desc_gitlab": "Efficiently manage code projects with GitLab integration.",
+		"desc_discord": "Connect with Discord for seamless team communication.",
+		"desc_whatsapp": "Easily integrate WhatsApp for direct messaging."
+	},
+	"chats": {
+		"inbox": "Inbox",
+		"search_chat": "Search chat...",
+		"your_messages": "Your messages",
+		"send_message_to_start": "Send a message to start a chat.",
+		"send_message": "Send message",
+		"type_messages": "Type your messages...",
+		"send": "Send",
+		"new_message": "New message",
+		"to": "To:",
+		"search_people": "Search people...",
+		"no_people_found": "No people found.",
+		"chat": "Chat"
+	},
+	"theme": {
+		"settings_title": "Theme Settings",
+		"settings_desc": "Adjust the appearance and layout to suit your preferences.",
+		"theme": "Theme",
+		"system": "System",
+		"light": "Light",
+		"dark": "Dark",
+		"sidebar": "Sidebar",
+		"inset": "Inset",
+		"floating": "Floating",
+		"sidebar_style": "Sidebar",
+		"layout": "Layout",
+		"default": "Default",
+		"compact": "Compact",
+		"full_layout": "Full layout",
+		"direction": "Direction",
+		"ltr": "Left to Right",
+		"rtl": "Right to Left",
+		"reset": "Reset",
+		"toggle_theme": "Toggle theme",
+		"reset_theme_aria": "Reset theme preference to default",
+		"reset_sidebar_aria": "Reset sidebar style to default",
+		"reset_layout_aria": "Reset layout options to default",
+		"reset_direction_aria": "Reset text direction to default",
+		"theme_desc_aria": "Choose between system preference, light mode, or dark mode",
+		"sidebar_desc_aria": "Choose between inset, floating, or standard sidebar layout",
+		"layout_desc_aria": "Choose between default expanded, compact icon-only, or full layout mode",
+		"direction_desc_aria": "Choose between left-to-right or right-to-left site direction",
+		"open_settings_aria": "Open theme settings",
+		"reset_all_aria": "Reset all settings to default values",
+		"select_theme_aria": "Select theme preference",
+		"select_sidebar_aria": "Select sidebar style",
+		"select_layout_aria": "Select layout style",
+		"select_direction_aria": "Select site direction",
+		"select_option_aria": "Select {{option}}",
+		"option_preview_aria": "{{option}} option preview"
+	},
+	"profile_dropdown": {
+		"profile": "Profile",
+		"billing": "Billing",
+		"settings": "Settings",
+		"new_team": "New Team",
+		"sign_out": "Sign out"
+	},
+	"sign_out": {
+		"title": "Sign out",
+		"desc": "Are you sure you want to sign out? You will need to sign in again to access your account.",
+		"confirm": "Sign out"
+	},
+	"team_switcher": {
+		"teams": "Teams",
+		"add_team": "Add team"
+	},
+	"data_table": {
+		"page_of": "Page {{current}} of {{total}}",
+		"rows_per_page": "Rows per page",
+		"no_results": "No results found.",
+		"selected": "selected",
+		"clear_filters": "Clear filters",
+		"reset": "Reset",
+		"filter": "Filter...",
+		"view": "View",
+		"toggle_columns": "Toggle columns",
+		"asc": "Asc",
+		"desc": "Desc",
+		"hide": "Hide",
+		"clear_selection": "Clear selection",
+		"bulk_actions_aria": "Bulk actions for {{count}} selected {{entity}}",
+		"selected_announcement": "{{count}} {{entity}} selected. Bulk actions toolbar is available.",
+		"selected_count": "{{count}} selected",
+		"clear_selection_shortcut": "Clear selection (Esc)",
+		"rows": "{{count}} rows",
+		"first_page": "Go to first page",
+		"previous_page": "Go to previous page",
+		"next_page": "Go to next page",
+		"last_page": "Go to last page",
+		"go_to_page": "Go to page {{page}}"
+	},
+	"coming_soon": {
+		"title": "Coming Soon!",
+		"desc": "This page has not been created yet. Stay tuned though!"
+	},
+	"confirm_dialog": {
+		"cancel": "Cancel",
+		"continue": "Continue"
+	},
+	"common": {
+		"save": "Save",
+		"cancel": "Cancel",
+		"delete": "Delete",
+		"edit": "Edit",
+		"create": "Create",
+		"update": "Update",
+		"confirm": "Confirm",
+		"loading": "Loading...",
+		"no_data": "No data",
+		"actions": "Actions",
+		"search": "Search",
+		"filter": "Filter",
+		"export": "Export",
+		"import": "Import",
+		"close": "Close",
+		"open": "Open",
+		"yes": "Yes",
+		"no": "No",
+		"language": "Language",
+		"pick_date": "Pick a date",
+		"select": "Select",
+		"skip_to_main": "Skip to Main",
+		"error": "Error",
+		"warning": "Warning!",
+		"warning_desc": "Please be careful, this operation can not be rolled back.",
+		"hide_password": "Hide password",
+		"show_password": "Show password",
+		"submitted_values": "You submitted the following values:",
+		"imported_file": "You have imported the following file:",
+		"task_deleted": "The following task has been deleted:",
+		"done": "Done",
+		"updating": "Updating...",
+		"user": "User",
+		"retry": "Retry"
+	},
+	"settings_form": {
+		"font": "Font",
+		"font_desc": "Set the font you want to use in the dashboard.",
+		"theme": "Theme",
+		"theme_desc": "Select the theme for the dashboard.",
+		"light": "Light",
+		"dark": "Dark",
+		"update_preferences": "Update preferences",
+		"name": "Name",
+		"name_desc": "This is the name that will be displayed on your profile and in emails.",
+		"dob": "Date of birth",
+		"dob_desc": "Your date of birth is used to calculate your age.",
+		"language": "Language",
+		"language_desc": "This is the language that will be used in the dashboard.",
+		"select_language": "Select language",
+		"search_language": "Search language...",
+		"no_language_found": "No language found.",
+		"update_account": "Update account",
+		"notify_about": "Notify me about...",
+		"all_new_messages": "All new messages",
+		"direct_messages_mentions": "Direct messages and mentions",
+		"nothing": "Nothing",
+		"email_notifications": "Email Notifications",
+		"communication_emails": "Communication emails",
+		"communication_emails_desc": "Receive emails about your account activity.",
+		"marketing_emails": "Marketing emails",
+		"marketing_emails_desc": "Receive emails about new products, features, and more.",
+		"social_emails": "Social emails",
+		"social_emails_desc": "Receive emails for friend requests, follows, and more.",
+		"security_emails": "Security emails",
+		"security_emails_desc": "Receive emails about your account activity and security.",
+		"mobile_settings": "Use different settings for my mobile devices",
+		"mobile_settings_desc": "You can manage your mobile notifications in the mobile settings page.",
+		"update_notifications": "Update notifications",
+		"sidebar_label": "Sidebar",
+		"sidebar_desc": "Select the items you want to display in the sidebar.",
+		"recents": "Recents",
+		"home": "Home",
+		"applications": "Applications",
+		"desktop": "Desktop",
+		"downloads": "Downloads",
+		"documents": "Documents",
+		"update_display": "Update display",
+		"username": "Username",
+		"username_desc": "This is your public display name. It can be your real name or a pseudonym. You can only change this once every 30 days.",
+		"email": "Email",
+		"email_desc": "You can manage verified email addresses in your email settings.",
+		"select_email": "Select a verified email to display",
+		"bio": "Bio",
+		"bio_placeholder": "Tell us a little bit about yourself",
+		"bio_desc": "You can @mention other users and organizations to link to them.",
+		"urls": "URLs",
+		"urls_desc": "Add links to your website, blog, or social media profiles.",
+		"add_url": "Add URL",
+		"update_profile": "Update profile",
+		"your_name": "Your name"
+	},
+	"profile_form": {
+		"display_name": "Display name",
+		"display_name_desc": "This name is shown throughout the application.",
+		"email_desc": "Your sign-in email cannot be changed here.",
+		"update_error": "Unable to update your profile.",
+		"updated": "Profile updated."
+	},
+	"account_form": {
+		"current_password": "Current password",
+		"new_password": "New password",
+		"confirm_password": "Confirm new password",
+		"change_password": "Change password",
+		"change_error": "Unable to change your password.",
+		"changed": "Password changed."
+	},
+	"validation": {
+		"email_required": "Please enter your email.",
+		"email_invalid": "Please enter a valid email address.",
+		"password_required": "Please enter your password.",
+		"password_min_length": "Password must be at least 7 characters long.",
+		"confirm_password_required": "Please confirm your password.",
+		"passwords_not_match": "Passwords don't match.",
+		"first_name_required": "First Name is required.",
+		"last_name_required": "Last Name is required.",
+		"username_required": "Username is required.",
+		"phone_required": "Phone number is required.",
+		"email_field_required": "Email is required.",
+		"role_required": "Role is required.",
+		"password_field_required": "Password is required.",
+		"password_min_8": "Password must be at least 8 characters long.",
+		"password_lowercase": "Password must contain at least one lowercase letter.",
+		"password_number": "Password must contain at least one number.",
+		"invite_email_required": "Please enter an email to invite.",
+		"forgot_email_required": "Please enter your email.",
+		"name_required": "Please enter your name.",
+		"name_min": "Name must be at least 2 characters.",
+		"name_max": "Name must not be longer than 30 characters.",
+		"dob_required": "Please select your date of birth.",
+		"language_required": "Please select a language.",
+		"username_min": "Username must be at least 2 characters.",
+		"username_max": "Username must not be longer than 30 characters.",
+		"select_email": "Please select an email to display.",
+		"url_invalid": "Please enter a valid URL.",
+		"select_one_item": "You have to select at least one item.",
+		"select_notification_type": "Please select a notification type.",
+		"otp_length": "Please enter the 6-digit code.",
+		"title_required": "Title is required.",
+		"select_status": "Please select a status.",
+		"select_label": "Please select a label.",
+		"select_priority": "Please choose a priority.",
+		"upload_file": "Please upload a file.",
+		"upload_csv": "Please upload csv format.",
+		"new_passwords_not_match": "New passwords don't match."
+	},
+	"clerk": {
+		"no_key_title": "No Publishable Key Found!",
+		"no_key_desc": "You need to generate a publishable key from Clerk and put it inside the .env file.",
+		"set_api_key": "Set your Clerk API key",
+		"step_1": "In the Clerk Dashboard, navigate to the API keys page.",
+		"step_2": "In the Quick Copy section, copy your Clerk Publishable Key.",
+		"step_3_prefix": "Rename",
+		"step_3_suffix": "to",
+		"step_4": "Paste your key into your .env file.",
+		"final_result": "The final result should resemble the following:",
+		"optional_title": "Clerk Integration is Optional",
+		"optional_desc_1": "The Clerk integration lives entirely inside src/routes/clerk. If you plan to use Clerk as your auth service, you might want to place ClerkProvider at the root route.",
+		"optional_desc_2": "However, if you don't plan to use Clerk, you can safely remove this directory and related dependency @clerk/react.",
+		"optional_desc_3": "This setup is modular by design and won't affect the rest of the application.",
+		"welcome_example": "Welcome to the example Clerk auth page.",
+		"back_to_dashboard": "Back to Dashboard",
+		"user_list": "User List",
+		"manage_users_desc": "Manage your users and their roles here.",
+		"same_as_users": "This is the same as '/users'",
+		"signout_tip": "You can sign out or manage/delete your account via the User Profile menu in the top-right corner of the page.",
+		"unauthorized": "Unauthorized Access",
+		"must_auth": "You must be authenticated via Clerk to access this resource.",
+		"must_signin_tip": "You must first sign in using Clerk to access this route.",
+		"after_signin_tip": "After signing in, you'll be able to sign out or delete your account via the User Profile dropdown on this page.",
+		"go_back": "Go Back",
+		"sign_in": "Sign in",
+		"redirecting_in": "Redirecting to Sign In page in {{count}}s",
+		"redirecting": "Redirecting...",
+		"cancel_redirect": "Cancel Redirect"
+	},
+	"organization": {
+		"administration": "Organization administration",
+		"title": "Organizations",
+		"description": "Manage workspaces, members, invitations, and tenant roles.",
+		"create": "Create organization",
+		"your_organizations": "Your organizations",
+		"select_active_description": "Select the active tenant for all scoped API requests.",
+		"none": "No organizations yet.",
+		"members": "Members",
+		"invite_member": "Invite member",
+		"no_members": "No members found.",
+		"pending_invitations": "Pending invitations",
+		"pending_invitations_description": "Email delivery is not configured by default. Copy the real acceptance link and send it securely.",
+		"no_pending_invitations": "No pending invitations.",
+		"active_workspace": "Active workspace",
+		"member_access_description": "You can use this workspace. Only organization owners and administrators can manage members and invitations.",
+		"select_workspace": "Select a workspace",
+		"select_workspace_description": "Choose an organization to load its tenant-scoped data.",
+		"create_description": "Create a Better Auth organization and become its owner.",
+		"name": "Name",
+		"slug": "Slug",
+		"role": "Role",
+		"role_owner": "Owner",
+		"role_admin": "Administrator",
+		"role_member": "Member",
+		"create_invitation": "Create invitation",
+		"invite_description": "Create a Better Auth invitation. Copy the acceptance link because email delivery is not configured.",
+		"update_member_role": "Update member role",
+		"update_member_role_description": "Roles are scoped to the active organization.",
+		"member_role_updated": "Member role updated",
+		"create_failed": "Could not create organization",
+		"invitation_create_failed": "Could not create invitation",
+		"invitation_created": "Invitation created. Copy its link from the pending invitations list.",
+		"invitation_link_copied": "Invitation link copied",
+		"switch_failed": "Could not switch organization",
+		"copy_invitation_aria": "Copy invitation link for {{email}}",
+		"invitation_title": "Organization invitation",
+		"invitation_accept_description": "Join the organization using the invitation issued for your signed-in email address.",
+		"accept_invitation": "Accept invitation",
+		"invitation_accept_failed": "Could not accept invitation",
+		"invitation_accepted": "Invitation accepted"
+	}
 }
 `],
   ["addons/admin/packages/i18n/src/locales/zh.json", `{
-  "sidebar": {
-    "general": "通用",
-    "dashboard": "仪表盘",
-    "tasks": "任务",
-    "apps": "应用",
-    "chats": "聊天",
-    "users": "用户",
-    "secured_by_clerk": "Clerk 安全认证",
-    "sign_in": "登录",
-    "sign_up": "注册",
-    "user_management": "用户管理",
-    "pages": "页面",
-    "auth": "认证",
-    "sign_in_2col": "登录 (双栏)",
-    "forgot_password": "忘记密码",
-    "otp": "验证码",
-    "errors": "错误页",
-    "unauthorized": "未授权",
-    "forbidden": "禁止访问",
-    "not_found": "未找到",
-    "internal_server_error": "服务器内部错误",
-    "maintenance_error": "维护错误",
-    "other": "其他",
-    "settings": "设置",
-    "profile": "个人资料",
-    "account": "账户",
-    "appearance": "外观",
-    "notifications": "通知",
-    "display": "显示",
-    "help_center": "帮助中心"
-  },
-  "dashboard": {
-    "title": "仪表盘",
-    "download": "下载",
-    "overview": "概览",
-    "analytics": "分析",
-    "reports": "报告",
-    "notifications": "通知",
-    "total_revenue": "总收入",
-    "subscriptions": "订阅",
-    "sales": "销售额",
-    "active_now": "当前活跃",
-    "from_last_month": "较上月 {{value}}",
-    "since_last_hour": "较上小时 +{{value}}",
-    "recent_sales": "最近销售",
-    "recent_sales_desc": "本月完成 {{count}} 笔销售",
-    "customers": "客户",
-    "products": "产品",
-    "settings": "设置",
-    "traffic_overview": "流量概览",
-    "weekly_clicks_visitors": "每周点击量和独立访客",
-    "total_clicks": "总点击量",
-    "unique_visitors": "独立访客",
-    "bounce_rate": "跳出率",
-    "avg_session": "平均会话时长",
-    "vs_last_week": "较上周 {{value}}",
-    "referrers": "来源",
-    "top_sources": "驱动流量的主要来源",
-    "devices": "设备",
-    "how_users_access": "用户如何访问您的应用"
-  },
-  "nav_user": {
-    "account": "账户",
-    "billing": "账单",
-    "notifications": "通知",
-    "log_out": "退出登录",
-    "upgrade_to_pro": "升级到 Pro"
-  },
-  "search": {
-    "placeholder": "搜索...",
-    "type_command": "输入命令或搜索..."
-  },
-  "auth": {
-    "sign_in_title": "登录",
-    "sign_in_desc": "在下方输入您的邮箱和密码登录账户",
-    "sign_up_title": "创建账户",
-    "sign_up_desc": "输入您的邮箱和密码创建账户",
-    "forgot_password_title": "忘记密码",
-    "forgot_password_desc": "输入您的注册邮箱，我们将发送重置链接",
-    "otp_title": "双因素验证",
-    "otp_desc": "请输入验证码。我们已将验证码发送到您的邮箱。",
-    "email": "邮箱",
-    "password": "密码",
-    "confirm_password": "确认密码",
-    "username": "用户名",
-    "remember_me": "记住我",
-    "forgot_password_link": "忘记密码?",
-    "no_account": "还没有账户?",
-    "have_account": "已有账户?",
-    "continue": "继续",
-    "send_link": "发送链接",
-    "verify": "验证",
-    "back_to_login": "返回登录",
-    "sign_in_btn": "登录",
-    "create_account_btn": "创建账户",
-    "or_continue_with": "或通过以下方式继续",
-    "terms_prefix": "点击登录即表示您同意我们的",
-    "terms_of_service": "服务条款",
-    "and": "和",
-    "privacy_policy": "隐私政策",
-    "terms_signup_prefix": "创建账户即表示您同意我们的",
-    "signing_in": "登录中...",
-    "creating_account": "创建账户中...",
-    "sending_email": "发送邮件中...",
-    "havent_received": "没有收到?",
-    "resend_code": "重新发送验证码",
-    "welcome_back": "欢迎回来，{{email}}！",
-    "account_created": "已为 {{email}} 创建账户。",
-    "email_sent_to": "邮件已发送至 {{email}}",
-    "error": "错误"
-  },
-  "errors": {
-    "unauthorized_title": "未授权访问",
-    "unauthorized_desc": "请使用正确的凭证登录后查看此资源。",
-    "forbidden_title": "禁止访问",
-    "forbidden_desc": "您没有权限访问此资源。",
-    "not_found_title": "页面未找到",
-    "not_found_desc": "抱歉，您请求的页面不存在或已被移动。",
-    "server_error_title": "服务器内部错误",
-    "server_error_desc": "抱歉，服务器出了问题。",
-    "maintenance_title": "系统维护中",
-    "maintenance_desc": "网站目前正在维护中，我们很快就会恢复。",
-    "go_back": "返回",
-    "back_to_home": "返回首页",
-    "learn_more": "了解更多",
-    "something_went_wrong": "出了点问题！",
-    "no_content": "无内容。",
-    "session_expired": "会话已过期！",
-    "internal_server": "服务器内部错误！",
-    "content_not_modified": "内容未修改！"
-  },
-  "settings": {
-    "title": "设置",
-    "desc": "管理您的账户设置和偏好。",
-    "profile": "个人资料",
-    "profile_desc": "这是其他人在网站上看到您的方式。",
-    "account": "账户",
-    "account_desc": "更新账户设置。设置您的首选语言和时区。",
-    "appearance": "外观",
-    "appearance_desc": "自定义应用外观。自动切换日间和夜间主题。",
-    "notifications": "通知",
-    "notifications_desc": "配置您接收通知的方式。",
-    "display": "显示",
-    "display_desc": "打开或关闭项目以控制应用中显示的内容。"
-  },
-  "tasks": {
-    "title": "任务",
-    "desc": "这是您本月的任务列表！",
-    "import": "导入",
-    "create": "创建",
-    "import_title": "导入任务",
-    "import_desc": "从 CSV 文件快速导入任务。",
-    "file": "文件",
-    "update_task": "更新任务",
-    "create_task": "创建任务",
-    "update_task_desc": "更新任务信息。",
-    "create_task_desc": "添加新任务信息。",
-    "click_save": "完成后点击保存。",
-    "task_title": "标题",
-    "task_id": "任务",
-    "enter_title": "输入标题",
-    "status": "状态",
-    "select_status": "选择状态",
-    "label": "标签",
-    "priority": "优先级",
-    "in_progress": "进行中",
-    "backlog": "待办",
-    "todo": "计划中",
-    "canceled": "已取消",
-    "done": "已完成",
-    "documentation": "文档",
-    "feature": "功能",
-    "bug": "缺陷",
-    "high": "高",
-    "medium": "中",
-    "low": "低",
-    "critical": "紧急",
-    "save_changes": "保存更改",
-    "filter_placeholder": "按标题或ID筛选...",
-    "make_copy": "复制",
-    "favorite": "收藏",
-    "delete_task_title": "删除任务: {{id}} ?",
-    "delete_task_desc": "您即将删除 ID 为 {{id}} 的任务。此操作不可撤销。",
-    "delete_multi_title": "删除 {{count}} 个{{entity}}",
-    "delete_multi_confirm": "确定要删除所选任务吗？",
-    "delete_multi_cannot_undo": "此操作不可撤销。",
-    "delete_multi_confirm_word": "输入 \\"{{word}}\\" 以确认：",
-    "delete_multi_placeholder": "输入 \\"{{word}}\\" 以确认。",
-    "delete_multi_success": "已删除 {{count}} 个{{entity}}",
-    "deleting_tasks": "正在删除任务...",
-    "please_type_confirm": "请输入 \\"{{word}}\\" 以确认。",
-    "update_status": "更新状态",
-    "update_priority": "更新优先级",
-    "export_tasks": "导出任务",
-    "delete_selected": "删除所选任务",
-    "updating_status": "正在更新状态...",
-    "updating_priority": "正在更新优先级...",
-    "exporting_tasks": "正在导出任务...",
-    "status_updated": "已将 {{count}} 个任务的状态更新为 \\"{{status}}\\"。",
-    "priority_updated": "已将 {{count}} 个任务的优先级更新为 \\"{{priority}}\\"。",
-    "exported_tasks": "已导出 {{count}} 个任务到 CSV。"
-  },
-  "users": {
-    "title": "用户列表",
-    "desc": "在此管理您的用户及其角色。",
-    "invite_user": "邀请用户",
-    "add_user": "添加用户",
-    "edit_user": "编辑用户",
-    "add_new_user": "添加新用户",
-    "edit_user_desc": "在此更新用户信息。",
-    "add_user_desc": "在此创建新用户。",
-    "click_save": "完成后点击保存。",
-    "first_name": "名",
-    "last_name": "姓",
-    "username": "用户名",
-    "name": "姓名",
-    "email": "邮箱",
-    "phone_number": "电话号码",
-    "role": "角色",
-    "status": "状态",
-    "select_role": "选择角色",
-    "password": "密码",
-    "confirm_password": "确认密码",
-    "save_changes": "保存更改",
-    "delete_user": "删除用户",
-    "delete_confirm": "确定要删除 {{username}} 吗？",
-    "delete_warning": "此操作将永久移除角色为 {{role}} 的用户。此操作不可撤销。",
-    "enter_username_confirm": "输入用户名以确认删除。",
-    "warning": "警告！",
-    "warning_desc": "请注意，此操作不可回滚。",
-    "invite_title": "邀请用户",
-    "invite_desc": "通过发送邮件邀请新用户加入您的团队。分配角色以定义其访问级别。",
-    "invite_email_placeholder": "例如: john.doe@gmail.com",
-    "description_optional": "描述 (可选)",
-    "invite_note_placeholder": "添加个人备注到邀请（可选）",
-    "invite_btn": "邀请",
-    "filter_placeholder": "筛选用户...",
-    "delete_multi_title": "删除 {{count}} 个{{entity}}",
-    "delete_multi_confirm": "确定要删除所选用户吗？",
-    "delete_multi_cannot_undo": "此操作不可撤销。",
-    "delete_multi_confirm_word": "输入 \\"{{word}}\\" 以确认：",
-    "delete_multi_placeholder": "输入 \\"{{word}}\\" 以确认。",
-    "delete_multi_success": "已删除 {{count}} 个{{entity}}",
-    "deleting_users": "正在删除用户...",
-    "invite_selected": "邀请所选用户",
-    "activate_selected": "激活所选用户",
-    "deactivate_selected": "停用所选用户",
-    "delete_selected": "删除所选用户",
-    "activating_users": "正在激活用户...",
-    "deactivating_users": "正在停用用户...",
-    "inviting_users": "正在邀请用户...",
-    "activated_users": "已激活 {{count}} 个用户",
-    "deactivated_users": "已停用 {{count}} 个用户",
-    "invited_users": "已邀请 {{count}} 个用户",
-    "error_activating": "激活用户时出错",
-    "error_deactivating": "停用用户时出错",
-    "error_inviting": "邀请用户时出错",
-    "deleted_message": "以下用户已被删除：",
-    "please_type_confirm": "请输入 \\"{{word}}\\" 以确认。",
-    "role_superadmin": "超级管理员",
-    "role_admin": "管理员",
-    "role_manager": "经理",
-    "role_cashier": "收银员",
-    "status_active": "活跃",
-    "status_inactive": "未激活",
-    "status_invited": "已邀请",
-    "status_suspended": "已暂停"
-  },
-  "apps": {
-    "title": "应用集成",
-    "desc": "这是您用于集成的应用列表！",
-    "all_apps": "所有应用",
-    "connected": "已连接",
-    "not_connected": "未连接",
-    "filter_apps": "筛选应用...",
-    "ascending": "升序",
-    "descending": "降序",
-    "connect": "连接",
-    "desc_telegram": "连接 Telegram 进行实时通讯。",
-    "desc_notion": "轻松同步 Notion 页面，实现无缝协作。",
-    "desc_figma": "在一个地方查看和协作 Figma 设计。",
-    "desc_trello": "同步 Trello 卡片，简化项目管理。",
-    "desc_slack": "集成 Slack，实现高效团队沟通。",
-    "desc_zoom": "直接从仪表盘主持 Zoom 会议。",
-    "desc_stripe": "轻松管理 Stripe 交易和支付。",
-    "desc_gmail": "轻松访问和管理 Gmail 邮件。",
-    "desc_medium": "在仪表盘上探索和分享 Medium 文章。",
-    "desc_skype": "无缝连接 Skype 联系人。",
-    "desc_docker": "在仪表盘上轻松管理 Docker 容器。",
-    "desc_github": "通过 GitHub 集成简化代码管理。",
-    "desc_gitlab": "通过 GitLab 集成高效管理代码项目。",
-    "desc_discord": "连接 Discord 实现无缝团队沟通。",
-    "desc_whatsapp": "轻松集成 WhatsApp 进行直接消息传递。"
-  },
-  "chats": {
-    "inbox": "收件箱",
-    "search_chat": "搜索聊天...",
-    "your_messages": "您的消息",
-    "send_message_to_start": "发送消息开始聊天。",
-    "send_message": "发送消息",
-    "type_messages": "输入您的消息...",
-    "send": "发送",
-    "new_message": "新消息",
-    "to": "收件人:",
-    "search_people": "搜索联系人...",
-    "no_people_found": "未找到联系人。",
-    "chat": "聊天"
-  },
-  "theme": {
-    "settings_title": "主题设置",
-    "settings_desc": "调整外观和布局以适应您的偏好。",
-    "theme": "主题",
-    "system": "跟随系统",
-    "light": "浅色",
-    "dark": "深色",
-    "sidebar": "侧边栏",
-    "inset": "内嵌",
-    "floating": "浮动",
-    "sidebar_style": "侧边栏",
-    "layout": "布局",
-    "default": "默认",
-    "compact": "紧凑",
-    "full_layout": "全屏",
-    "direction": "方向",
-    "ltr": "从左到右",
-    "rtl": "从右到左",
-    "reset": "重置",
-    "toggle_theme": "切换主题",
-    "reset_theme_aria": "重置主题偏好为默认",
-    "reset_sidebar_aria": "重置侧边栏样式为默认",
-    "reset_layout_aria": "重置布局选项为默认",
-    "reset_direction_aria": "重置文字方向为默认",
-    "theme_desc_aria": "选择跟随系统、浅色模式或深色模式",
-    "sidebar_desc_aria": "选择内嵌、浮动或标准侧边栏布局",
-    "layout_desc_aria": "选择默认展开、紧凑图标或全屏布局模式",
-    "direction_desc_aria": "选择从左到右或从右到左的方向",
-    "open_settings_aria": "打开主题设置",
-    "reset_all_aria": "重置所有设置为默认值",
-    "select_theme_aria": "选择主题偏好",
-    "select_sidebar_aria": "选择侧边栏样式",
-    "select_layout_aria": "选择布局样式",
-    "select_direction_aria": "选择站点方向",
-    "select_option_aria": "选择 {{option}}",
-    "option_preview_aria": "{{option}} 选项预览"
-  },
-  "profile_dropdown": {
-    "profile": "个人资料",
-    "billing": "账单",
-    "settings": "设置",
-    "new_team": "新建团队",
-    "sign_out": "退出登录"
-  },
-  "sign_out": {
-    "title": "退出登录",
-    "desc": "确定要退出登录吗？您需要重新登录才能访问账户。",
-    "confirm": "退出登录"
-  },
-  "team_switcher": {
-    "teams": "团队",
-    "add_team": "添加团队"
-  },
-  "data_table": {
-    "page_of": "第 {{current}} 页，共 {{total}} 页",
-    "rows_per_page": "每页行数",
-    "no_results": "无结果。",
-    "selected": "已选择",
-    "clear_filters": "清除筛选",
-    "reset": "重置",
-    "filter": "筛选...",
-    "view": "视图",
-    "toggle_columns": "切换列",
-    "asc": "升序",
-    "desc": "降序",
-    "hide": "隐藏",
-    "clear_selection": "清除选择",
-    "bulk_actions_aria": "{{count}} 个已选 {{entity}} 的批量操作",
-    "selected_announcement": "已选择 {{count}} 个 {{entity}}。批量操作工具栏已可用。"
-  },
-  "coming_soon": {
-    "title": "即将推出！",
-    "desc": "此页面尚未创建。敬请期待！"
-  },
-  "confirm_dialog": {
-    "cancel": "取消",
-    "continue": "继续"
-  },
-  "common": {
-    "save": "保存",
-    "cancel": "取消",
-    "delete": "删除",
-    "edit": "编辑",
-    "create": "创建",
-    "update": "更新",
-    "confirm": "确认",
-    "loading": "加载中...",
-    "no_data": "暂无数据",
-    "actions": "操作",
-    "search": "搜索",
-    "filter": "筛选",
-    "export": "导出",
-    "import": "导入",
-    "close": "关闭",
-    "open": "打开",
-    "yes": "是",
-    "no": "否",
-    "language": "语言",
-    "pick_date": "选择日期",
-    "select": "请选择",
-    "skip_to_main": "跳转到主内容",
-    "error": "错误",
-    "warning": "警告！",
-    "warning_desc": "请注意，此操作不可回滚。",
-    "hide_password": "隐藏密码",
-    "show_password": "显示密码",
-    "submitted_values": "您提交了以下值：",
-    "imported_file": "您已导入以下文件：",
-    "task_deleted": "以下任务已被删除："
-  },
-  "settings_form": {
-    "font": "字体",
-    "font_desc": "设置仪表盘中使用的字体。",
-    "theme": "主题",
-    "theme_desc": "选择仪表盘的主题。",
-    "light": "浅色",
-    "dark": "深色",
-    "update_preferences": "更新偏好",
-    "name": "姓名",
-    "name_desc": "这是将在您的个人资料和邮件中显示的名称。",
-    "dob": "出生日期",
-    "dob_desc": "出生日期用于计算年龄。",
-    "language": "语言",
-    "language_desc": "这是将在仪表盘中使用的语言。",
-    "select_language": "选择语言",
-    "search_language": "搜索语言...",
-    "no_language_found": "未找到语言。",
-    "update_account": "更新账户",
-    "notify_about": "通知方式...",
-    "all_new_messages": "所有新消息",
-    "direct_messages_mentions": "私信和提及",
-    "nothing": "无",
-    "email_notifications": "邮件通知",
-    "communication_emails": "通讯邮件",
-    "communication_emails_desc": "接收有关您账户活动的邮件。",
-    "marketing_emails": "营销邮件",
-    "marketing_emails_desc": "接收有关新产品、功能等的邮件。",
-    "social_emails": "社交邮件",
-    "social_emails_desc": "接收好友请求、关注等邮件。",
-    "security_emails": "安全邮件",
-    "security_emails_desc": "接收有关账户活动和安全的邮件。",
-    "mobile_settings": "为移动设备使用不同的设置",
-    "mobile_settings_desc": "您可以在移动设置页面管理移动通知。",
-    "update_notifications": "更新通知",
-    "sidebar_label": "侧边栏",
-    "sidebar_desc": "选择要在侧边栏中显示的项目。",
-    "recents": "最近",
-    "home": "主页",
-    "applications": "应用程序",
-    "desktop": "桌面",
-    "downloads": "下载",
-    "documents": "文档",
-    "update_display": "更新显示",
-    "username": "用户名",
-    "username_desc": "这是您的公开显示名称。可以是真名或昵称。每 30 天只能更改一次。",
-    "email": "邮箱",
-    "email_desc": "您可以在邮箱设置中管理已验证的邮箱地址。",
-    "select_email": "选择要显示的已验证邮箱",
-    "bio": "简介",
-    "bio_placeholder": "简单介绍一下自己",
-    "bio_desc": "您可以 @提及 其他用户和组织以链接到他们。",
-    "urls": "链接",
-    "urls_desc": "添加您的网站、博客或社交媒体链接。",
-    "add_url": "添加链接",
-    "update_profile": "更新个人资料",
-    "your_name": "您的姓名"
-  },
-  "validation": {
-    "email_required": "请输入您的邮箱。",
-    "email_invalid": "请输入有效的邮箱地址。",
-    "password_required": "请输入您的密码。",
-    "password_min_length": "密码长度至少为 7 个字符。",
-    "confirm_password_required": "请确认您的密码。",
-    "passwords_not_match": "两次输入的密码不一致。",
-    "first_name_required": "名字为必填项。",
-    "last_name_required": "姓氏为必填项。",
-    "username_required": "用户名为必填项。",
-    "phone_required": "电话号码为必填项。",
-    "email_field_required": "邮箱为必填项。",
-    "role_required": "角色为必填项。",
-    "password_field_required": "密码为必填项。",
-    "password_min_8": "密码长度至少为 8 个字符。",
-    "password_lowercase": "密码必须包含至少一个小写字母。",
-    "password_number": "密码必须包含至少一个数字。",
-    "invite_email_required": "请输入要邀请的邮箱。",
-    "forgot_email_required": "请输入您的邮箱。",
-    "name_required": "请输入您的姓名。",
-    "name_min": "姓名至少为 2 个字符。",
-    "name_max": "姓名不得超过 30 个字符。",
-    "dob_required": "请选择您的出生日期。",
-    "language_required": "请选择一种语言。",
-    "username_min": "用户名至少为 2 个字符。",
-    "username_max": "用户名不得超过 30 个字符。",
-    "select_email": "请选择要显示的邮箱。",
-    "url_invalid": "请输入有效的 URL。",
-    "select_one_item": "必须至少选择一项。",
-    "select_notification_type": "请选择通知类型。",
-    "otp_length": "请输入 6 位验证码。",
-    "title_required": "标题为必填项。",
-    "select_status": "请选择状态。",
-    "select_label": "请选择标签。",
-    "select_priority": "请选择优先级。",
-    "upload_file": "请上传文件。",
-    "upload_csv": "请上传 CSV 格式文件。"
-  },
-  "clerk": {
-    "no_key_title": "未找到 Publishable Key！",
-    "no_key_desc": "您需要从 Clerk 生成一个 publishable key 并将其放入 .env 文件中。",
-    "set_api_key": "设置您的 Clerk API 密钥",
-    "step_1": "在 Clerk 仪表盘中，导航到 API 密钥页面。",
-    "step_2": "在 Quick Copy 部分，复制您的 Clerk Publishable Key。",
-    "step_3_prefix": "将",
-    "step_3_suffix": "重命名为",
-    "step_4": "将您的密钥粘贴到 .env 文件中。",
-    "final_result": "最终结果应如下所示：",
-    "optional_title": "Clerk 集成是可选的",
-    "optional_desc_1": "Clerk 集成完全位于 src/routes/clerk 内。如果您计划使用 Clerk 作为认证服务，您可能需要将 ClerkProvider 放在根路由。",
-    "optional_desc_2": "但是，如果您不打算使用 Clerk，您可以安全地删除此目录和相关依赖 @clerk/react。",
-    "optional_desc_3": "此设置是模块化的，不会影响应用的其余部分。",
-    "welcome_example": "欢迎来到示例 Clerk 认证页面。",
-    "back_to_dashboard": "返回仪表盘",
-    "user_list": "用户列表",
-    "manage_users_desc": "在此管理您的用户及其角色。",
-    "same_as_users": "这与 '/users' 页面相同",
-    "signout_tip": "您可以通过页面右上角的用户资料菜单退出登录或管理/删除您的账户。",
-    "unauthorized": "未授权访问",
-    "must_auth": "您必须通过 Clerk 认证才能访问此资源。",
-    "must_signin_tip": "您必须先使用 Clerk 登录才能访问此路由。",
-    "after_signin_tip": "登录后，您可以通过此页面的用户资料下拉菜单退出或删除账户。",
-    "go_back": "返回",
-    "sign_in": "登录",
-    "redirecting_in": "将在 {{count}} 秒后跳转到登录页面",
-    "redirecting": "跳转中...",
-    "cancel_redirect": "取消跳转"
-  }
+	"sidebar": {
+		"general": "通用",
+		"dashboard": "仪表盘",
+		"tasks": "任务",
+		"apps": "应用",
+		"chats": "聊天",
+		"users": "用户",
+		"secured_by_clerk": "Clerk 安全认证",
+		"sign_in": "登录",
+		"sign_up": "注册",
+		"user_management": "用户管理",
+		"pages": "页面",
+		"auth": "认证",
+		"sign_in_2col": "登录 (双栏)",
+		"forgot_password": "忘记密码",
+		"otp": "验证码",
+		"errors": "错误页",
+		"unauthorized": "未授权",
+		"forbidden": "禁止访问",
+		"not_found": "未找到",
+		"internal_server_error": "服务器内部错误",
+		"maintenance_error": "维护错误",
+		"other": "其他",
+		"settings": "设置",
+		"profile": "个人资料",
+		"account": "账户",
+		"appearance": "外观",
+		"notifications": "通知",
+		"display": "显示",
+		"help_center": "帮助中心"
+	},
+	"navigation": {
+		"workspace": "工作区",
+		"dashboard": "仪表盘",
+		"administration": "管理",
+		"system_management": "系统管理",
+		"users": "用户",
+		"roles": "角色",
+		"audit": "审计日志",
+		"account": "账户",
+		"settings": "设置",
+		"profile": "个人资料",
+		"account_security": "账户安全",
+		"sidebar": "侧边栏",
+		"mobile_sidebar_desc": "显示移动端导航侧边栏。",
+		"toggle_sidebar": "切换侧边栏",
+		"toggle_navigation": "切换导航",
+		"organizations": "组织"
+	},
+	"dashboard": {
+		"title": "仪表盘",
+		"download": "下载",
+		"overview": "概览",
+		"analytics": "分析",
+		"reports": "报告",
+		"notifications": "通知",
+		"total_revenue": "总收入",
+		"subscriptions": "订阅",
+		"sales": "销售额",
+		"active_now": "当前活跃",
+		"from_last_month": "较上月 {{value}}",
+		"since_last_hour": "较上小时 +{{value}}",
+		"recent_sales": "最近销售",
+		"recent_sales_desc": "本月完成 {{count}} 笔销售",
+		"customers": "客户",
+		"products": "产品",
+		"settings": "设置",
+		"traffic_overview": "流量概览",
+		"weekly_clicks_visitors": "每周点击量和独立访客",
+		"total_clicks": "总点击量",
+		"unique_visitors": "独立访客",
+		"bounce_rate": "跳出率",
+		"avg_session": "平均会话时长",
+		"vs_last_week": "较上周 {{value}}",
+		"referrers": "来源",
+		"top_sources": "驱动流量的主要来源",
+		"devices": "设备",
+		"how_users_access": "用户如何访问您的应用",
+		"workspace": "工作区",
+		"system_status": "系统状态",
+		"system_status_desc": "核心服务的当前可用状态。",
+		"checking": "检查中...",
+		"healthy": "正常",
+		"unavailable": "不可用",
+		"api_health_desc": "API 服务可用状态",
+		"database": "数据库",
+		"database_desc": "数据库连接状态",
+		"authentication": "身份认证",
+		"authentication_desc": "身份认证服务可用状态"
+	},
+	"nav_user": {
+		"account": "账户",
+		"billing": "账单",
+		"notifications": "通知",
+		"log_out": "退出登录",
+		"upgrade_to_pro": "升级到 Pro"
+	},
+	"search": {
+		"placeholder": "搜索...",
+		"type_command": "输入命令或搜索..."
+	},
+	"command_menu": {
+		"title": "命令菜单",
+		"description": "搜索页面或命令。"
+	},
+	"language_switch": {
+		"label": "切换语言"
+	},
+	"auth": {
+		"sign_in_title": "登录",
+		"sign_in_desc": "在下方输入您的邮箱和密码登录账户",
+		"sign_up_title": "创建账户",
+		"sign_up_desc": "输入您的邮箱和密码创建账户",
+		"forgot_password_title": "忘记密码",
+		"forgot_password_desc": "输入您的注册邮箱，我们将发送重置链接",
+		"otp_title": "双因素验证",
+		"otp_desc": "请输入验证码。我们已将验证码发送到您的邮箱。",
+		"email": "邮箱",
+		"password": "密码",
+		"confirm_password": "确认密码",
+		"username": "用户名",
+		"remember_me": "记住我",
+		"forgot_password_link": "忘记密码?",
+		"no_account": "还没有账户?",
+		"have_account": "已有账户?",
+		"continue": "继续",
+		"send_link": "发送链接",
+		"verify": "验证",
+		"back_to_login": "返回登录",
+		"sign_in_btn": "登录",
+		"create_account_btn": "创建账户",
+		"or_continue_with": "或通过以下方式继续",
+		"terms_prefix": "点击登录即表示您同意我们的",
+		"terms_of_service": "服务条款",
+		"and": "和",
+		"privacy_policy": "隐私政策",
+		"terms_signup_prefix": "创建账户即表示您同意我们的",
+		"signing_in": "登录中...",
+		"creating_account": "创建账户中...",
+		"sending_email": "发送邮件中...",
+		"havent_received": "没有收到?",
+		"resend_code": "重新发送验证码",
+		"welcome_back": "欢迎回来，{{email}}！",
+		"account_created": "已为 {{email}} 创建账户。",
+		"email_sent_to": "邮件已发送至 {{email}}",
+		"error": "错误",
+		"name": "姓名",
+		"sign_in_error": "无法登录，请检查凭证后重试。",
+		"sign_up_error": "无法创建账户，请重试。"
+	},
+	"errors": {
+		"unauthorized_title": "未授权访问",
+		"unauthorized_desc": "请使用正确的凭证登录后查看此资源。",
+		"forbidden_title": "禁止访问",
+		"forbidden_desc": "您没有权限访问此资源。",
+		"not_found_title": "页面未找到",
+		"not_found_desc": "抱歉，您请求的页面不存在或已被移动。",
+		"server_error_title": "服务器内部错误",
+		"server_error_desc": "抱歉，服务器出了问题。",
+		"maintenance_title": "系统维护中",
+		"maintenance_desc": "网站目前正在维护中，我们很快就会恢复。",
+		"go_back": "返回",
+		"back_to_home": "返回首页",
+		"learn_more": "了解更多",
+		"something_went_wrong": "出了点问题！",
+		"no_content": "无内容。",
+		"session_expired": "会话已过期！",
+		"internal_server": "服务器内部错误！",
+		"content_not_modified": "内容未修改！",
+		"request_failed": "请求失败，请重试。"
+	},
+	"settings": {
+		"title": "设置",
+		"desc": "管理您的账户设置和偏好。",
+		"profile": "个人资料",
+		"profile_desc": "这是其他人在网站上看到您的方式。",
+		"account": "账户",
+		"account_desc": "更新账户设置。设置您的首选语言和时区。",
+		"appearance": "外观",
+		"appearance_desc": "自定义应用外观。自动切换日间和夜间主题。",
+		"notifications": "通知",
+		"notifications_desc": "配置您接收通知的方式。",
+		"display": "显示",
+		"display_desc": "打开或关闭项目以控制应用中显示的内容。",
+		"local_desc": "管理个人资料、账户安全和外观偏好。",
+		"account_security_desc": "更新密码并保护您的账户。"
+	},
+	"tasks": {
+		"title": "任务",
+		"desc": "这是您本月的任务列表！",
+		"import": "导入",
+		"create": "创建",
+		"import_title": "导入任务",
+		"import_desc": "从 CSV 文件快速导入任务。",
+		"file": "文件",
+		"update_task": "更新任务",
+		"create_task": "创建任务",
+		"update_task_desc": "更新任务信息。",
+		"create_task_desc": "添加新任务信息。",
+		"click_save": "完成后点击保存。",
+		"task_title": "标题",
+		"task_id": "任务",
+		"enter_title": "输入标题",
+		"status": "状态",
+		"select_status": "选择状态",
+		"label": "标签",
+		"priority": "优先级",
+		"in_progress": "进行中",
+		"backlog": "待办",
+		"todo": "计划中",
+		"canceled": "已取消",
+		"done": "已完成",
+		"documentation": "文档",
+		"feature": "功能",
+		"bug": "缺陷",
+		"high": "高",
+		"medium": "中",
+		"low": "低",
+		"critical": "紧急",
+		"save_changes": "保存更改",
+		"filter_placeholder": "按标题或ID筛选...",
+		"make_copy": "复制",
+		"favorite": "收藏",
+		"delete_task_title": "删除任务: {{id}} ?",
+		"delete_task_desc": "您即将删除 ID 为 {{id}} 的任务。此操作不可撤销。",
+		"delete_multi_title": "删除 {{count}} 个{{entity}}",
+		"delete_multi_confirm": "确定要删除所选任务吗？",
+		"delete_multi_cannot_undo": "此操作不可撤销。",
+		"delete_multi_confirm_word": "输入 \\"{{word}}\\" 以确认：",
+		"delete_multi_placeholder": "输入 \\"{{word}}\\" 以确认。",
+		"delete_multi_success": "已删除 {{count}} 个{{entity}}",
+		"deleting_tasks": "正在删除任务...",
+		"please_type_confirm": "请输入 \\"{{word}}\\" 以确认。",
+		"update_status": "更新状态",
+		"update_priority": "更新优先级",
+		"export_tasks": "导出任务",
+		"delete_selected": "删除所选任务",
+		"updating_status": "正在更新状态...",
+		"updating_priority": "正在更新优先级...",
+		"exporting_tasks": "正在导出任务...",
+		"status_updated": "已将 {{count}} 个任务的状态更新为 \\"{{status}}\\"。",
+		"priority_updated": "已将 {{count}} 个任务的优先级更新为 \\"{{priority}}\\"。",
+		"exported_tasks": "已导出 {{count}} 个任务到 CSV。"
+	},
+	"users": {
+		"title": "用户列表",
+		"desc": "在此管理您的用户及其角色。",
+		"invite_user": "邀请用户",
+		"add_user": "添加用户",
+		"edit_user": "编辑用户",
+		"add_new_user": "添加新用户",
+		"edit_user_desc": "在此更新用户信息。",
+		"add_user_desc": "在此创建新用户。",
+		"click_save": "完成后点击保存。",
+		"first_name": "名",
+		"last_name": "姓",
+		"username": "用户名",
+		"name": "姓名",
+		"email": "邮箱",
+		"phone_number": "电话号码",
+		"role": "角色",
+		"status": "状态",
+		"select_role": "选择角色",
+		"password": "密码",
+		"confirm_password": "确认密码",
+		"save_changes": "保存更改",
+		"delete_user": "删除用户",
+		"delete_confirm": "确定要删除 {{username}} 吗？",
+		"delete_warning": "此操作将永久移除角色为 {{role}} 的用户。此操作不可撤销。",
+		"enter_username_confirm": "输入用户名以确认删除。",
+		"warning": "警告！",
+		"warning_desc": "请注意，此操作不可回滚。",
+		"invite_title": "邀请用户",
+		"invite_desc": "通过发送邮件邀请新用户加入您的团队。分配角色以定义其访问级别。",
+		"invite_email_placeholder": "例如: john.doe@gmail.com",
+		"description_optional": "描述 (可选)",
+		"invite_note_placeholder": "添加个人备注到邀请（可选）",
+		"invite_btn": "邀请",
+		"filter_placeholder": "筛选用户...",
+		"delete_multi_title": "删除 {{count}} 个{{entity}}",
+		"delete_multi_confirm": "确定要删除所选用户吗？",
+		"delete_multi_cannot_undo": "此操作不可撤销。",
+		"delete_multi_confirm_word": "输入 \\"{{word}}\\" 以确认：",
+		"delete_multi_placeholder": "输入 \\"{{word}}\\" 以确认。",
+		"delete_multi_success": "已删除 {{count}} 个{{entity}}",
+		"deleting_users": "正在删除用户...",
+		"invite_selected": "邀请所选用户",
+		"activate_selected": "激活所选用户",
+		"deactivate_selected": "停用所选用户",
+		"delete_selected": "删除所选用户",
+		"activating_users": "正在激活用户...",
+		"deactivating_users": "正在停用用户...",
+		"inviting_users": "正在邀请用户...",
+		"activated_users": "已激活 {{count}} 个用户",
+		"deactivated_users": "已停用 {{count}} 个用户",
+		"invited_users": "已邀请 {{count}} 个用户",
+		"error_activating": "激活用户时出错",
+		"error_deactivating": "停用用户时出错",
+		"error_inviting": "邀请用户时出错",
+		"deleted_message": "以下用户已被删除：",
+		"please_type_confirm": "请输入 \\"{{word}}\\" 以确认。",
+		"role_superadmin": "超级管理员",
+		"role_admin": "管理员",
+		"role_manager": "经理",
+		"role_cashier": "收银员",
+		"status_active": "活跃",
+		"status_inactive": "未激活",
+		"status_invited": "已邀请",
+		"status_suspended": "已暂停",
+		"user": "用户",
+		"roles": "角色",
+		"no_role": "无角色",
+		"manage_user": "管理 {{name}}",
+		"manage_access": "管理访问权限",
+		"revoke_sessions": "撤销会话",
+		"management_desc": "管理用户访问权限、角色和账户状态。",
+		"empty": "未找到用户。",
+		"manage_title": "管理 {{name}}",
+		"manage_desc": "分配角色并管理该用户的账户访问权限。",
+		"enable_account": "启用账户",
+		"suspend_account": "暂停账户",
+		"roles_updated": "用户角色已更新。",
+		"status_updated": "用户状态已更新。",
+		"sessions_revoked": "用户会话已撤销。"
+	},
+	"roles": {
+		"title": "角色",
+		"desc": "管理角色及其权限。",
+		"add": "添加角色",
+		"created": "角色已创建。",
+		"updated": "角色已更新。",
+		"deleted": "角色已删除。",
+		"role": "角色",
+		"protected": "受保护",
+		"permissions": "权限",
+		"members": "成员",
+		"manage_role": "管理 {{name}}",
+		"empty": "未找到角色。",
+		"filter_placeholder": "筛选角色...",
+		"edit_title": "编辑 {{name}}",
+		"dialog_desc": "设置角色名称、描述和权限。",
+		"view_desc": "查看该角色的名称、描述和权限。",
+		"name": "名称",
+		"description": "描述",
+		"delete": "删除角色"
+	},
+	"audit": {
+		"title": "审计日志",
+		"desc": "查看系统中的管理操作记录。",
+		"actor": "操作者",
+		"system": "系统",
+		"automated_action": "自动操作",
+		"action": "操作",
+		"resource": "资源",
+		"origin": "来源",
+		"unknown": "未知",
+		"timestamp": "时间",
+		"empty": "未找到审计事件。",
+		"filter_placeholder": "筛选审计事件..."
+	},
+	"apps": {
+		"title": "应用集成",
+		"desc": "这是您用于集成的应用列表！",
+		"all_apps": "所有应用",
+		"connected": "已连接",
+		"not_connected": "未连接",
+		"filter_apps": "筛选应用...",
+		"ascending": "升序",
+		"descending": "降序",
+		"connect": "连接",
+		"desc_telegram": "连接 Telegram 进行实时通讯。",
+		"desc_notion": "轻松同步 Notion 页面，实现无缝协作。",
+		"desc_figma": "在一个地方查看和协作 Figma 设计。",
+		"desc_trello": "同步 Trello 卡片，简化项目管理。",
+		"desc_slack": "集成 Slack，实现高效团队沟通。",
+		"desc_zoom": "直接从仪表盘主持 Zoom 会议。",
+		"desc_stripe": "轻松管理 Stripe 交易和支付。",
+		"desc_gmail": "轻松访问和管理 Gmail 邮件。",
+		"desc_medium": "在仪表盘上探索和分享 Medium 文章。",
+		"desc_skype": "无缝连接 Skype 联系人。",
+		"desc_docker": "在仪表盘上轻松管理 Docker 容器。",
+		"desc_github": "通过 GitHub 集成简化代码管理。",
+		"desc_gitlab": "通过 GitLab 集成高效管理代码项目。",
+		"desc_discord": "连接 Discord 实现无缝团队沟通。",
+		"desc_whatsapp": "轻松集成 WhatsApp 进行直接消息传递。"
+	},
+	"chats": {
+		"inbox": "收件箱",
+		"search_chat": "搜索聊天...",
+		"your_messages": "您的消息",
+		"send_message_to_start": "发送消息开始聊天。",
+		"send_message": "发送消息",
+		"type_messages": "输入您的消息...",
+		"send": "发送",
+		"new_message": "新消息",
+		"to": "收件人:",
+		"search_people": "搜索联系人...",
+		"no_people_found": "未找到联系人。",
+		"chat": "聊天"
+	},
+	"theme": {
+		"settings_title": "主题设置",
+		"settings_desc": "调整外观和布局以适应您的偏好。",
+		"theme": "主题",
+		"system": "跟随系统",
+		"light": "浅色",
+		"dark": "深色",
+		"sidebar": "侧边栏",
+		"inset": "内嵌",
+		"floating": "浮动",
+		"sidebar_style": "侧边栏",
+		"layout": "布局",
+		"default": "默认",
+		"compact": "紧凑",
+		"full_layout": "全屏",
+		"direction": "方向",
+		"ltr": "从左到右",
+		"rtl": "从右到左",
+		"reset": "重置",
+		"toggle_theme": "切换主题",
+		"reset_theme_aria": "重置主题偏好为默认",
+		"reset_sidebar_aria": "重置侧边栏样式为默认",
+		"reset_layout_aria": "重置布局选项为默认",
+		"reset_direction_aria": "重置文字方向为默认",
+		"theme_desc_aria": "选择跟随系统、浅色模式或深色模式",
+		"sidebar_desc_aria": "选择内嵌、浮动或标准侧边栏布局",
+		"layout_desc_aria": "选择默认展开、紧凑图标或全屏布局模式",
+		"direction_desc_aria": "选择从左到右或从右到左的方向",
+		"open_settings_aria": "打开主题设置",
+		"reset_all_aria": "重置所有设置为默认值",
+		"select_theme_aria": "选择主题偏好",
+		"select_sidebar_aria": "选择侧边栏样式",
+		"select_layout_aria": "选择布局样式",
+		"select_direction_aria": "选择站点方向",
+		"select_option_aria": "选择 {{option}}",
+		"option_preview_aria": "{{option}} 选项预览"
+	},
+	"profile_dropdown": {
+		"profile": "个人资料",
+		"billing": "账单",
+		"settings": "设置",
+		"new_team": "新建团队",
+		"sign_out": "退出登录"
+	},
+	"sign_out": {
+		"title": "退出登录",
+		"desc": "确定要退出登录吗？您需要重新登录才能访问账户。",
+		"confirm": "退出登录"
+	},
+	"team_switcher": {
+		"teams": "团队",
+		"add_team": "添加团队"
+	},
+	"data_table": {
+		"page_of": "第 {{current}} 页，共 {{total}} 页",
+		"rows_per_page": "每页行数",
+		"no_results": "无结果。",
+		"selected": "已选择",
+		"clear_filters": "清除筛选",
+		"reset": "重置",
+		"filter": "筛选...",
+		"view": "视图",
+		"toggle_columns": "切换列",
+		"asc": "升序",
+		"desc": "降序",
+		"hide": "隐藏",
+		"clear_selection": "清除选择",
+		"bulk_actions_aria": "{{count}} 个已选 {{entity}} 的批量操作",
+		"selected_announcement": "已选择 {{count}} 个 {{entity}}。批量操作工具栏已可用。",
+		"selected_count": "已选择 {{count}} 个",
+		"clear_selection_shortcut": "清除选择 (Esc)",
+		"rows": "{{count}} 行",
+		"first_page": "转到第一页",
+		"previous_page": "转到上一页",
+		"next_page": "转到下一页",
+		"last_page": "转到最后一页",
+		"go_to_page": "转到第 {{page}} 页"
+	},
+	"coming_soon": {
+		"title": "即将推出！",
+		"desc": "此页面尚未创建。敬请期待！"
+	},
+	"confirm_dialog": {
+		"cancel": "取消",
+		"continue": "继续"
+	},
+	"common": {
+		"save": "保存",
+		"cancel": "取消",
+		"delete": "删除",
+		"edit": "编辑",
+		"create": "创建",
+		"update": "更新",
+		"confirm": "确认",
+		"loading": "加载中...",
+		"no_data": "暂无数据",
+		"actions": "操作",
+		"search": "搜索",
+		"filter": "筛选",
+		"export": "导出",
+		"import": "导入",
+		"close": "关闭",
+		"open": "打开",
+		"yes": "是",
+		"no": "否",
+		"language": "语言",
+		"pick_date": "选择日期",
+		"select": "请选择",
+		"skip_to_main": "跳转到主内容",
+		"error": "错误",
+		"warning": "警告！",
+		"warning_desc": "请注意，此操作不可回滚。",
+		"hide_password": "隐藏密码",
+		"show_password": "显示密码",
+		"submitted_values": "您提交了以下值：",
+		"imported_file": "您已导入以下文件：",
+		"task_deleted": "以下任务已被删除：",
+		"done": "完成",
+		"updating": "更新中...",
+		"user": "用户",
+		"retry": "重试"
+	},
+	"settings_form": {
+		"font": "字体",
+		"font_desc": "设置仪表盘中使用的字体。",
+		"theme": "主题",
+		"theme_desc": "选择仪表盘的主题。",
+		"light": "浅色",
+		"dark": "深色",
+		"update_preferences": "更新偏好",
+		"name": "姓名",
+		"name_desc": "这是将在您的个人资料和邮件中显示的名称。",
+		"dob": "出生日期",
+		"dob_desc": "出生日期用于计算年龄。",
+		"language": "语言",
+		"language_desc": "这是将在仪表盘中使用的语言。",
+		"select_language": "选择语言",
+		"search_language": "搜索语言...",
+		"no_language_found": "未找到语言。",
+		"update_account": "更新账户",
+		"notify_about": "通知方式...",
+		"all_new_messages": "所有新消息",
+		"direct_messages_mentions": "私信和提及",
+		"nothing": "无",
+		"email_notifications": "邮件通知",
+		"communication_emails": "通讯邮件",
+		"communication_emails_desc": "接收有关您账户活动的邮件。",
+		"marketing_emails": "营销邮件",
+		"marketing_emails_desc": "接收有关新产品、功能等的邮件。",
+		"social_emails": "社交邮件",
+		"social_emails_desc": "接收好友请求、关注等邮件。",
+		"security_emails": "安全邮件",
+		"security_emails_desc": "接收有关账户活动和安全的邮件。",
+		"mobile_settings": "为移动设备使用不同的设置",
+		"mobile_settings_desc": "您可以在移动设置页面管理移动通知。",
+		"update_notifications": "更新通知",
+		"sidebar_label": "侧边栏",
+		"sidebar_desc": "选择要在侧边栏中显示的项目。",
+		"recents": "最近",
+		"home": "主页",
+		"applications": "应用程序",
+		"desktop": "桌面",
+		"downloads": "下载",
+		"documents": "文档",
+		"update_display": "更新显示",
+		"username": "用户名",
+		"username_desc": "这是您的公开显示名称。可以是真名或昵称。每 30 天只能更改一次。",
+		"email": "邮箱",
+		"email_desc": "您可以在邮箱设置中管理已验证的邮箱地址。",
+		"select_email": "选择要显示的已验证邮箱",
+		"bio": "简介",
+		"bio_placeholder": "简单介绍一下自己",
+		"bio_desc": "您可以 @提及 其他用户和组织以链接到他们。",
+		"urls": "链接",
+		"urls_desc": "添加您的网站、博客或社交媒体链接。",
+		"add_url": "添加链接",
+		"update_profile": "更新个人资料",
+		"your_name": "您的姓名"
+	},
+	"profile_form": {
+		"display_name": "显示名称",
+		"display_name_desc": "此名称会显示在应用的各个位置。",
+		"email_desc": "无法在此处更改登录邮箱。",
+		"update_error": "无法更新个人资料。",
+		"updated": "个人资料已更新。"
+	},
+	"account_form": {
+		"current_password": "当前密码",
+		"new_password": "新密码",
+		"confirm_password": "确认新密码",
+		"change_password": "更改密码",
+		"change_error": "无法更改密码。",
+		"changed": "密码已更改。"
+	},
+	"validation": {
+		"email_required": "请输入您的邮箱。",
+		"email_invalid": "请输入有效的邮箱地址。",
+		"password_required": "请输入您的密码。",
+		"password_min_length": "密码长度至少为 7 个字符。",
+		"confirm_password_required": "请确认您的密码。",
+		"passwords_not_match": "两次输入的密码不一致。",
+		"first_name_required": "名字为必填项。",
+		"last_name_required": "姓氏为必填项。",
+		"username_required": "用户名为必填项。",
+		"phone_required": "电话号码为必填项。",
+		"email_field_required": "邮箱为必填项。",
+		"role_required": "角色为必填项。",
+		"password_field_required": "密码为必填项。",
+		"password_min_8": "密码长度至少为 8 个字符。",
+		"password_lowercase": "密码必须包含至少一个小写字母。",
+		"password_number": "密码必须包含至少一个数字。",
+		"invite_email_required": "请输入要邀请的邮箱。",
+		"forgot_email_required": "请输入您的邮箱。",
+		"name_required": "请输入您的姓名。",
+		"name_min": "姓名至少为 2 个字符。",
+		"name_max": "姓名不得超过 30 个字符。",
+		"dob_required": "请选择您的出生日期。",
+		"language_required": "请选择一种语言。",
+		"username_min": "用户名至少为 2 个字符。",
+		"username_max": "用户名不得超过 30 个字符。",
+		"select_email": "请选择要显示的邮箱。",
+		"url_invalid": "请输入有效的 URL。",
+		"select_one_item": "必须至少选择一项。",
+		"select_notification_type": "请选择通知类型。",
+		"otp_length": "请输入 6 位验证码。",
+		"title_required": "标题为必填项。",
+		"select_status": "请选择状态。",
+		"select_label": "请选择标签。",
+		"select_priority": "请选择优先级。",
+		"upload_file": "请上传文件。",
+		"upload_csv": "请上传 CSV 格式文件。",
+		"new_passwords_not_match": "两次输入的新密码不一致。"
+	},
+	"clerk": {
+		"no_key_title": "未找到 Publishable Key！",
+		"no_key_desc": "您需要从 Clerk 生成一个 publishable key 并将其放入 .env 文件中。",
+		"set_api_key": "设置您的 Clerk API 密钥",
+		"step_1": "在 Clerk 仪表盘中，导航到 API 密钥页面。",
+		"step_2": "在 Quick Copy 部分，复制您的 Clerk Publishable Key。",
+		"step_3_prefix": "将",
+		"step_3_suffix": "重命名为",
+		"step_4": "将您的密钥粘贴到 .env 文件中。",
+		"final_result": "最终结果应如下所示：",
+		"optional_title": "Clerk 集成是可选的",
+		"optional_desc_1": "Clerk 集成完全位于 src/routes/clerk 内。如果您计划使用 Clerk 作为认证服务，您可能需要将 ClerkProvider 放在根路由。",
+		"optional_desc_2": "但是，如果您不打算使用 Clerk，您可以安全地删除此目录和相关依赖 @clerk/react。",
+		"optional_desc_3": "此设置是模块化的，不会影响应用的其余部分。",
+		"welcome_example": "欢迎来到示例 Clerk 认证页面。",
+		"back_to_dashboard": "返回仪表盘",
+		"user_list": "用户列表",
+		"manage_users_desc": "在此管理您的用户及其角色。",
+		"same_as_users": "这与 '/users' 页面相同",
+		"signout_tip": "您可以通过页面右上角的用户资料菜单退出登录或管理/删除您的账户。",
+		"unauthorized": "未授权访问",
+		"must_auth": "您必须通过 Clerk 认证才能访问此资源。",
+		"must_signin_tip": "您必须先使用 Clerk 登录才能访问此路由。",
+		"after_signin_tip": "登录后，您可以通过此页面的用户资料下拉菜单退出或删除账户。",
+		"go_back": "返回",
+		"sign_in": "登录",
+		"redirecting_in": "将在 {{count}} 秒后跳转到登录页面",
+		"redirecting": "跳转中...",
+		"cancel_redirect": "取消跳转"
+	},
+	"organization": {
+		"administration": "组织管理",
+		"title": "组织",
+		"description": "管理工作区、成员、邀请和租户角色。",
+		"create": "创建组织",
+		"your_organizations": "我的组织",
+		"select_active_description": "选择当前租户，所有租户范围 API 请求都将使用该组织。",
+		"none": "暂无组织。",
+		"members": "成员",
+		"invite_member": "邀请成员",
+		"no_members": "未找到成员。",
+		"pending_invitations": "待处理邀请",
+		"pending_invitations_description": "默认未配置邮件发送。请复制真实接受链接并通过安全渠道发送。",
+		"no_pending_invitations": "暂无待处理邀请。",
+		"active_workspace": "当前工作区",
+		"member_access_description": "您可以使用此工作区。只有组织所有者和管理员可以管理成员和邀请。",
+		"select_workspace": "选择工作区",
+		"select_workspace_description": "请选择一个组织以加载其租户范围数据。",
+		"create_description": "创建一个 Better Auth 组织并成为其所有者。",
+		"name": "名称",
+		"slug": "标识",
+		"role": "角色",
+		"role_owner": "所有者",
+		"role_admin": "管理员",
+		"role_member": "成员",
+		"create_invitation": "创建邀请",
+		"invite_description": "创建 Better Auth 邀请。由于未配置邮件发送，请复制接受链接。",
+		"update_member_role": "更新成员角色",
+		"update_member_role_description": "角色仅在当前组织内生效。",
+		"member_role_updated": "成员角色已更新",
+		"create_failed": "无法创建组织",
+		"invitation_create_failed": "无法创建邀请",
+		"invitation_created": "邀请已创建。请从待处理邀请列表复制链接。",
+		"invitation_link_copied": "邀请链接已复制",
+		"switch_failed": "无法切换组织",
+		"copy_invitation_aria": "复制 {{email}} 的邀请链接",
+		"invitation_title": "组织邀请",
+		"invitation_accept_description": "使用发送到当前登录邮箱的邀请加入组织。",
+		"accept_invitation": "接受邀请",
+		"invitation_accept_failed": "无法接受邀请",
+		"invitation_accepted": "已接受邀请"
+	}
 }
 `],
   ["addons/admin/packages/i18n/src/react.ts", `// biome-ignore lint/performance/noBarrelFile: package entrypoint intentionally exposes the supported React integration.
@@ -25343,6 +28350,263 @@ export function cn(...inputs: ClassValue[]) {
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules"]
+}
+`],
+  ["addons/admin/scripts/check-i18n.mjs", `import { readdirSync, readFileSync } from "node:fs";
+import { dirname, extname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const sourceRoot = join(repoRoot, "apps", "web", "src");
+const localePaths = {
+  en: join(repoRoot, "packages", "i18n", "src", "locales", "en.json"),
+  zh: join(repoRoot, "packages", "i18n", "src", "locales", "zh.json"),
+};
+
+const userFacingAttributes = new Set([
+  "alt",
+  "aria-label",
+  "cancelBtnText",
+  "confirmText",
+  "desc",
+  "description",
+  "empty",
+  "label",
+  "placeholder",
+  "title",
+]);
+const userFacingProperties = new Set([
+  "cancelBtnText",
+  "confirmText",
+  "desc",
+  "description",
+  "empty",
+  "label",
+  "placeholder",
+  "title",
+]);
+
+// Product names, application branding, avatar initials, and keyboard shortcuts are intentionally invariant.
+const invariantUiText = new Set([
+  "API",
+  "Better Auth",
+  "K",
+  "PostgreSQL",
+  "SN",
+  readJson(join(repoRoot, "package.json")).name,
+  "⌘S",
+  "⇧⌘P",
+  "⇧⌘Q",
+]);
+
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function flatten(value, prefix = "", result = new Map()) {
+  for (const [key, child] of Object.entries(value)) {
+    const fullKey = prefix ? \`\${prefix}.\${key}\` : key;
+    if (child && typeof child === "object" && !Array.isArray(child)) {
+      flatten(child, fullKey, result);
+    } else {
+      result.set(fullKey, child);
+    }
+  }
+  return result;
+}
+
+function listSourceFiles(directory) {
+  const files = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listSourceFiles(path));
+    } else if ([".ts", ".tsx"].includes(extname(entry.name))) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+function interpolationTokens(value) {
+  if (typeof value !== "string") {
+    return [];
+  }
+  return [...value.matchAll(/{{\\s*([^},\\s]+)[^}]*}}/g)]
+    .map((match) => match[1])
+    .sort();
+}
+
+function isTranslationCall(node) {
+  if (!ts.isCallExpression(node)) {
+    return false;
+  }
+  if (ts.isIdentifier(node.expression)) {
+    return node.expression.text === "t";
+  }
+  return (
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === "t"
+  );
+}
+
+function staticText(node) {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return node.text;
+  }
+}
+
+function normalizedUiText(value) {
+  return value.trim().replace(/\\s+/g, " ");
+}
+
+function isUserFacingText(value) {
+  const normalized = normalizedUiText(value);
+  if (!/[A-Za-z\\u3400-\\u9fff]/u.test(normalized)) {
+    return false;
+  }
+  if (invariantUiText.has(normalized)) {
+    return false;
+  }
+  if (/^\\S+@\\S+\\.\\S+$/.test(normalized)) {
+    return false;
+  }
+  return true;
+}
+
+const locales = Object.fromEntries(
+  Object.entries(localePaths).map(([language, path]) => [
+    language,
+    flatten(readJson(path)),
+  ])
+);
+const [referenceLanguage] = Object.keys(locales);
+const reference = locales[referenceLanguage];
+const violations = [];
+
+for (const [language, locale] of Object.entries(locales)) {
+  for (const key of reference.keys()) {
+    if (!locale.has(key)) {
+      violations.push(\`\${language}: missing locale key "\${key}"\`);
+    }
+  }
+  for (const key of locale.keys()) {
+    if (!reference.has(key)) {
+      violations.push(\`\${language}: extra locale key "\${key}"\`);
+    }
+  }
+  for (const [key, referenceValue] of reference) {
+    if (!locale.has(key)) {
+      continue;
+    }
+    const expected = interpolationTokens(referenceValue);
+    const actual = interpolationTokens(locale.get(key));
+    if (expected.join("\\0") !== actual.join("\\0")) {
+      violations.push(
+        \`\${language}: interpolation tokens for "\${key}" are [\${actual.join(", ")}], expected [\${expected.join(", ")}]\`
+      );
+    }
+  }
+}
+
+for (const path of listSourceFiles(sourceRoot).sort()) {
+  const normalizedPath = path.replaceAll("\\\\", "/");
+  if (
+    normalizedPath.includes("/assets/") ||
+    normalizedPath.includes(".test.") ||
+    normalizedPath.includes(".spec.") ||
+    normalizedPath.endsWith("/routeTree.gen.ts")
+  ) {
+    continue;
+  }
+
+  const source = readFileSync(path, "utf8");
+  const sourceFile = ts.createSourceFile(
+    path,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  );
+  const location = (node) => {
+    const { line } = sourceFile.getLineAndCharacterOfPosition(
+      node.getStart(sourceFile)
+    );
+    return \`\${relative(repoRoot, path).replaceAll("\\\\", "/")}:\${line + 1}\`;
+  };
+  const reportUiText = (node, kind, value) => {
+    const normalized = normalizedUiText(value);
+    if (isUserFacingText(normalized)) {
+      violations.push(\`\${location(node)}: hard-coded \${kind} "\${normalized}"\`);
+    }
+  };
+
+  const visit = (node) => {
+    if (isTranslationCall(node)) {
+      const key = node.arguments[0] && staticText(node.arguments[0]);
+      if (key && !reference.has(key)) {
+        violations.push(\`\${location(node)}: unknown translation key "\${key}"\`);
+      }
+    }
+
+    if (ts.isJsxText(node)) {
+      reportUiText(node, "JSX text", node.getText(sourceFile));
+    }
+
+    if (
+      ts.isJsxAttribute(node) &&
+      userFacingAttributes.has(node.name.getText(sourceFile)) &&
+      node.initializer &&
+      ts.isStringLiteral(node.initializer)
+    ) {
+      reportUiText(
+        node,
+        \`"\${node.name.getText(sourceFile)}" attribute\`,
+        node.initializer.text
+      );
+    }
+
+    if (
+      ts.isPropertyAssignment(node) &&
+      userFacingProperties.has(node.name.getText(sourceFile))
+    ) {
+      const value = staticText(node.initializer);
+      if (value !== undefined) {
+        reportUiText(
+          node,
+          \`"\${node.name.getText(sourceFile)}" property\`,
+          value
+        );
+      }
+    }
+
+    if (
+      ts.isJsxExpression(node) &&
+      node.expression &&
+      (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))
+    ) {
+      const value = staticText(node.expression);
+      if (value !== undefined) {
+        reportUiText(node, "JSX expression", value);
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+}
+
+if (violations.length > 0) {
+  console.error(\`i18n check failed with \${violations.length} violation(s):\`);
+  for (const violation of violations) {
+    console.error(\`- \${violation}\`);
+  }
+  process.exitCode = 1;
+} else {
+  console.log(
+    \`i18n check passed: \${reference.size} locale keys across \${Object.keys(locales).length} locales; no hard-coded UI text found.\`
+  );
 }
 `],
   ["addons/admin/turbo.json", `{
@@ -51341,7 +54605,7 @@ minimumReleaseAgeExclude:
   - "babel-preset-solid@2.0.0-rc.0"
   - "solid-js@2.0.0-rc.0"
 {{/if}}
-{{#if (or (eq runtime "node") (eq webDeploy "cloudflare") (eq serverDeploy "cloudflare") (eq webDeploy "prisma") (eq serverDeploy "prisma") (eq webDeploy "docker") (eq serverDeploy "docker") (eq webDeploy "vercel") (eq serverDeploy "vercel") (eq orm "prisma") (includes addons "lefthook") (includes addons "nx") (includes addons "pwa") (includes addons "turborepo") (includes addons "vite-plus") (includes frontend "react-router") (includes frontend "next") (includes frontend "nuxt"))}}
+{{#if (or (eq runtime "node") (eq webDeploy "cloudflare") (eq serverDeploy "cloudflare") (eq webDeploy "prisma") (eq serverDeploy "prisma") (eq webDeploy "docker") (eq serverDeploy "docker") (eq webDeploy "vercel") (eq serverDeploy "vercel") (eq orm "prisma") (includes addons "lefthook") (includes addons "nx") (includes addons "pwa") (includes addons "rbac") (includes addons "turborepo") (includes addons "vite-plus") (includes frontend "react-router") (includes frontend "next") (includes frontend "nuxt"))}}
 
 # pnpm 11 blocks dependency lifecycle scripts unless they are approved here.
 # Entries are scoped to packages this generated stack can pull in.
@@ -51359,6 +54623,13 @@ allowBuilds:
 {{#if (or (includes addons "admin") (eq webDeploy "cloudflare") (eq serverDeploy "cloudflare") (eq webDeploy "prisma") (eq serverDeploy "prisma"))}}
   msgpackr-extract: true
   workerd: true
+{{/if}}
+{{#if (includes addons "rbac")}}
+  "@embedded-postgres/windows-x64": true
+  "@embedded-postgres/linux-x64": true
+  "@embedded-postgres/linux-arm64": true
+  "@embedded-postgres/darwin-x64": true
+  "@embedded-postgres/darwin-arm64": true
 {{/if}}
 {{#if (eq orm "prisma")}}
   "@prisma/client": true
@@ -61183,4 +64454,4 @@ export default function Success() {
 `]
 ]);
 
-export const TEMPLATE_COUNT = 863;
+export const TEMPLATE_COUNT = 880;

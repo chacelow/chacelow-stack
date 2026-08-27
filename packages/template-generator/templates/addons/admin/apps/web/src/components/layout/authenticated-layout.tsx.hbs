@@ -1,0 +1,50 @@
+import { Outlet } from "@tanstack/react-router";
+
+import { AppSidebar } from "@/components/layout/app-sidebar";
+import { SkipToMain } from "@/components/skip-to-main";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+{{#if (includes addons "rbac")}}
+import { AuthenticatedAccessProvider } from "@/context/access-context";
+{{/if}}
+import { LayoutProvider } from "@/context/layout-provider";
+import { SearchProvider } from "@/context/search-provider";
+import { getCookie } from "@/lib/cookies";
+import { cn } from "@/lib/utils";
+
+type AuthenticatedLayoutProps = {
+  children?: React.ReactNode;
+};
+
+export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
+  const defaultOpen = getCookie("sidebar_state") !== "false";
+  const content = (
+    <SearchProvider>
+      <LayoutProvider>
+        <SidebarProvider defaultOpen={defaultOpen}>
+          <SkipToMain />
+          <AppSidebar />
+          <SidebarInset
+            className={cn(
+              // 设置内容容器，供 container queries 使用。
+              "@container/content",
+
+              // 固定布局使用视口高度，避免页面溢出。
+              "has-data-[layout=fixed]:h-svh",
+
+              // inset 固定布局需要扣除外围间距。
+              "peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-(var(--spacing)*4))]",
+            )}
+          >
+            {children ?? <Outlet />}
+          </SidebarInset>
+        </SidebarProvider>
+      </LayoutProvider>
+    </SearchProvider>
+  );
+
+  {{#if (includes addons "rbac")}}
+  return <AuthenticatedAccessProvider>{content}</AuthenticatedAccessProvider>;
+  {{else}}
+  return content;
+  {{/if}}
+}

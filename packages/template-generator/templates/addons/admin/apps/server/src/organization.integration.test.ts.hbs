@@ -1,0 +1,277 @@
+import type { AppRouter } from "@{{projectName}}/api/routers/index";
+import { db } from "@{{projectName}}/db";
+import { session } from "@{{projectName}}/db/schema/auth";
+import {
+  invitation,
+  member,
+  organization,
+  organizationRole,
+} from "@{{projectName}}/db/schema/organization";
+import type { HTTPBatchLinkOptions, TRPCClient } from "@trpc/client";
+import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import app from "./index";
+
+interface Actor {
+  client: TRPCClient<AppRouter>;
+  id: string;
+}
+
+type AppClientTypes = AppRouter["_def"]["_config"]["$types"];
+type AppFetch = NonNullable<HTTPBatchLinkOptions<AppClientTypes>["fetch"]>;
+
+let actorSequence = 0;
+
+async function createActor(name: string): Promise<Actor> {
+  actorSequence += 1;
+  const response = await app.request(
+    "http://localhost/api/auth/sign-up/email",
+    {
+      body: JSON.stringify({
+        email: `${name}-${actorSequence}@example.com`,
+        name,
+        password: "organization-test-password",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    },
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { user: { id: string } };
+  const sessionCookie = response.headers
+    .getSetCookie()
+    .find((value) => value.includes("session_token"))
+    ?.split(";", 1)[0];
+  expect(sessionCookie).toBeTruthy();
+
+  // 两个库的运行时 Response 兼容，但各自声明的 stream 类型不同。
+  const fetchFromApp = (async (url: URL | string, options?: RequestInit) => {
+    const request = new Request(url.toString(), options);
+    request.headers.set("cookie", sessionCookie ?? "");
+    return await app.request(request);
+  }) as AppFetch;
+
+  const client = createTRPCClient<AppRouter>({
+    links: [
+      httpBatchLink({
+        fetch: fetchFromApp,
+        url: "http://localhost/trpc",
+      }),
+    ],
+  });
+  return { client, id: body.user.id };
+}
+
+async function setActiveOrganization(actor: Actor, organizationId: string) {
+  await db
+    .update(session)
+    .set({ activeOrganizationId: organizationId })
+    .where(eq(session.userId, actor.id));
+}
+
+describe("组织租户隔离 API integration", () => {
+  const organizationAId = "organization-a";
+  const organizationBId = "organization-b";
+  const ownerAMemberId = "organization-a-owner";
+  const memberAMemberId = "organization-a-member";
+  const ownerBMemberId = "organization-b-owner";
+  let memberA: Actor;
+  let outsider: Actor;
+  let ownerA: Actor;
+  let ownerB: Actor;
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  beforeAll(async () => {
+    ownerA = await createActor("OrganizationAOwner");
+    memberA = await createActor("OrganizationAMember");
+    ownerB = await createActor("OrganizationBOwner");
+    outsider = await createActor("OrganizationOutsider");
+
+    await db.insert(organization).values([
+      { id: organizationAId, name: "Organization A", slug: "organization-a" },
+      { id: organizationBId, name: "Organization B", slug: "organization-b" },
+    ]);
+    await db.insert(member).values([
+      {
+        id: ownerAMemberId,
+        organizationId: organizationAId,
+        role: "owner",
+        userId: ownerA.id,
+      },
+      {
+        id: memberAMemberId,
+        organizationId: organizationAId,
+        role: "member",
+        userId: memberA.id,
+      },
+      {
+        id: ownerBMemberId,
+        organizationId: organizationBId,
+        role: "owner",
+        userId: ownerB.id,
+      },
+    ]);
+    await db.insert(invitation).values([
+      {
+        email: "invite-a@example.com",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        id: "invitation-a",
+        inviterId: ownerA.id,
+        organizationId: organizationAId,
+        role: "member",
+      },
+      {
+        email: "invite-b@example.com",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        id: "invitation-b",
+        inviterId: ownerB.id,
+        organizationId: organizationBId,
+        role: "member",
+      },
+    ]);
+    await db.insert(organizationRole).values([
+      {
+        id: "organization-a-billing-role",
+        organizationId: organizationAId,
+        permission: JSON.stringify({ billing: ["read"] }),
+        role: "billing",
+      },
+      {
+        id: "organization-a-manager-role",
+        organizationId: organizationAId,
+        permission: JSON.stringify({ member: ["update"] }),
+        role: "manager",
+      },
+      {
+        id: "organization-b-support-role",
+        organizationId: organizationBId,
+        permission: JSON.stringify({ support: ["read"] }),
+        role: "support",
+      },
+    ]);
+
+    await setActiveOrganization(ownerA, organizationAId);
+    await setActiveOrganization(memberA, organizationAId);
+    await setActiveOrganization(ownerB, organizationBId);
+    await setActiveOrganization(outsider, organizationAId);
+  });
+
+  it("只返回当前活动组织的数据", async () => {
+    const [active, members, invitations, roles] = await Promise.all([
+      ownerA.client.organization.active.query(),
+      ownerA.client.organization.members.query(),
+      ownerA.client.organization.invitations.query(),
+      ownerA.client.organization.roles.query(),
+    ]);
+
+    expect(active).toMatchObject({
+      id: organizationAId,
+      memberRole: "owner",
+    });
+    expect(members).toHaveLength(2);
+    expect(members.map(({ id }) => id)).toEqual(
+      expect.arrayContaining([memberAMemberId, ownerAMemberId]),
+    );
+    expect(invitations.map(({ id }) => id)).toEqual(["invitation-a"]);
+    expect(roles).toHaveLength(2);
+    expect(roles.map(({ role }) => role)).toEqual(
+      expect.arrayContaining(["billing", "manager"]),
+    );
+  });
+
+  it("拒绝非组织成员使用伪造的活动组织会话", async () => {
+    await expect(
+      outsider.client.organization.active.query(),
+    ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+  });
+
+  it("允许普通成员读取同租户成员但拒绝管理操作", async () => {
+    const visibleMembers = await memberA.client.organization.members.query();
+    expect(visibleMembers).toHaveLength(2);
+    expect(visibleMembers.every(({ id }) => id !== ownerBMemberId)).toBe(true);
+    await expect(
+      memberA.client.organization.updateMemberRole.mutate({
+        memberId: memberAMemberId,
+        role: "admin",
+      }),
+    ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+  });
+
+  it("拒绝通过其他租户的成员 ID 跨租户修改角色", async () => {
+    await expect(
+      ownerA.client.organization.updateMemberRole.mutate({
+        memberId: ownerBMemberId,
+        role: "member",
+      }),
+    ).rejects.toMatchObject({ data: { code: "NOT_FOUND" } });
+
+    const [tenantBOwner] = await db
+      .select({ role: member.role })
+      .from(member)
+      .where(eq(member.id, ownerBMemberId));
+    expect(tenantBOwner?.role).toBe("owner");
+  });
+
+  it("拒绝移除租户最后一名所有者", async () => {
+    await expect(
+      ownerA.client.organization.updateMemberRole.mutate({
+        memberId: ownerAMemberId,
+        role: "admin",
+      }),
+    ).rejects.toMatchObject({ data: { code: "PRECONDITION_FAILED" } });
+  });
+
+  it("只接受内置角色或当前租户已有的自定义角色", async () => {
+    await expect(
+      ownerA.client.organization.updateMemberRole.mutate({
+        memberId: memberAMemberId,
+        role: "support",
+      }),
+    ).rejects.toMatchObject({ data: { code: "BAD_REQUEST" } });
+
+    await ownerA.client.organization.updateMemberRole.mutate({
+      memberId: memberAMemberId,
+      role: "billing",
+    });
+    const [updatedMember] = await db
+      .select({ role: member.role })
+      .from(member)
+      .where(eq(member.id, memberAMemberId));
+    expect(updatedMember?.role).toBe("billing");
+  });
+
+  it("拒绝组织管理员授予所有者身份", async () => {
+    await ownerA.client.organization.updateMemberRole.mutate({
+      memberId: memberAMemberId,
+      role: "admin",
+    });
+    await expect(
+      memberA.client.organization.updateMemberRole.mutate({
+        memberId: memberAMemberId,
+        role: "owner",
+      }),
+    ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
+    await ownerA.client.organization.updateMemberRole.mutate({
+      memberId: memberAMemberId,
+      role: "member",
+    });
+  });
+
+  it("按当前租户的动态角色权限授权成员管理", async () => {
+    await ownerA.client.organization.updateMemberRole.mutate({
+      memberId: memberAMemberId,
+      role: "manager",
+    });
+    await expect(
+      memberA.client.organization.updateMemberRole.mutate({
+        memberId: memberAMemberId,
+        role: "member",
+      }),
+    ).resolves.toEqual({ success: true });
+  });
+});
