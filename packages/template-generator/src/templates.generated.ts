@@ -2,6 +2,96 @@
 // Run 'bun run generate-templates' to regenerate
 
 export const EMBEDDED_TEMPLATES: Map<string, string> = new Map([
+  ["addons/admin/AGENTS.md.hbs", `# Repository Guidelines
+
+## 项目概览
+
+\`{{projectName}}\` 是一个 TypeScript monorepo 管理工作台。React/Vite Web 应用提供仪表盘、用户、角色、审计日志和设置；Bun/Hono 服务端暴露 Better Auth 与类型安全的 tRPC API；PostgreSQL 通过 Drizzle 持久化。管理接口由应用自有 RBAC 保护。
+{{#if (includes addons "organization")}}
+系统还包含组织、成员、邀请和租户范围访问；所有组织数据操作必须绑定当前有效组织和成员关系。
+{{/if}}
+
+## 架构与数据流
+
+1. \`apps/web/src/main.tsx\` 创建 TanStack Query、TanStack Router 和 tRPC provider，再挂载主题、字体与文字方向 providers。
+2. \`apps/web/src/routes/\` 下的 TanStack 文件路由选择 feature UI；\`routes/_authenticated/route.tsx\` 在受保护页面加载前检查 Better Auth session 和管理访问权。
+3. 认证请求通过 \`apps/web/src/lib/auth-client.ts\` 访问 \`/api/auth/*\`；业务数据统一通过 \`apps/web/src/lib/trpc.ts\` 访问 tRPC。
+4. \`apps/server/src/index.ts\` 挂载 Better Auth 和 tRPC \`appRouter\`；每个请求的 context 解析 session，permission procedures 执行授权。
+5. API routers 使用 Zod 校验输入，通过 Drizzle 查询或事务写入数据，并记录审计元数据；schemas 位于 \`packages/db/src/schema/\`。
+{{#if (includes addons "organization")}}
+6. 组织 router 从 session 解析 active organization，再验证成员关系和 owner/admin role；租户查询必须包含 organization id 条件。
+{{/if}}
+
+## 关键目录
+
+| 路径 | 用途 |
+| --- | --- |
+| \`apps/web/src/routes/\` | TanStack 路由定义和认证边界 |
+| \`apps/web/src/features/\` | dashboard、users、roles、audit、settings 等领域 UI |
+| \`apps/web/src/components/\` | 应用共享组件；本地 shadcn primitives 位于 \`components/ui/\` |
+| \`apps/web/src/{context,hooks,stores,lib}/\` | providers、hooks、客户端状态和集成 helpers |
+| \`apps/server/src/\` | Hono HTTP 组合层和权限集成测试 |
+| \`packages/api/src/\` | tRPC context、procedures、routers、permissions、RBAC 和审计逻辑 |
+| \`packages/auth/src/\` | Better Auth 服务端配置 |
+| \`packages/db/src/\` | Drizzle client、auth/RBAC schemas 和数据库工具 |
+| \`packages/{env,i18n,ui}/src/\` | 环境变量、类型化翻译和共享 UI |
+| \`scripts/check-i18n.mjs\` | Web 多语言静态检查 |
+| \`docs/agents/\` | Issue tracker、triage 和领域文档消费规则 |
+
+## 开发与验证
+
+命令以根 \`package.json\` scripts 为准，通过项目选择的 package manager 运行：
+
+| Script | 用途 |
+| --- | --- |
+| \`dev\` | 启动 Web 和 server 开发任务 |
+| \`build\` | 构建所有 workspaces |
+| \`check-types\` | 检查类型，并构建 Web |
+| \`check:i18n\` | 检查 locale 键、插值变量、翻译引用和硬编码 UI 文案 |
+| \`test\` | 运行 workspace tests |
+| \`test:permissions\` | 运行 Web 与 server RBAC 权限定向测试 |
+| \`db:push\` / \`db:generate\` / \`db:migrate\` | 应用、生成或执行 Drizzle schema 变更 |
+| \`db:start\` / \`db:stop\` | 启停模板自带的本地 PostgreSQL Compose 服务 |
+
+\`bts.jsonc\` 保存可复现的 stack 配置和 addon 命令。MCP 与 Agent Skills 是可选工具集成；需要时通过其中记录的 \`add\` 命令选择 \`mcp\`、\`skills\`，不影响应用运行时。
+
+## 代码约定
+
+- 全仓库使用 ESM；内部依赖使用 \`workspace:*\`；优先 named exports。
+- 文件通常使用 kebab-case，React 组件使用 PascalCase；保持 strict TypeScript 和 workspace 路径边界。
+- \`@\` 只代表当前 workspace；跨 package 使用 \`@{{projectName}}/*\` export subpaths。
+- 新 procedure 放入具名 tRPC router，输入使用 Zod；认证使用 \`protectedProcedure\`，授权使用 permission middleware。
+- 多步骤 RBAC 写入必须位于 \`db.transaction\` 中，并保留审计记录。
+- Web query/mutation 使用 \`useTRPC()\` options 交给 React Query；mutation 成功后显式 invalidate 受影响的 query keys。
+- 用户可见 Web 文案必须同时进入 \`packages/i18n/src/locales/en.json\` 和 \`zh.json\`，不得在 JSX、toast、placeholder 或无障碍属性中硬编码。
+- Markdown 正文和面向开发者的说明使用中文；路径、命令、代码标识符和协议名保留原拼写。
+- 遵循现有两空格 TypeScript/JSON 格式和 import 顺序；不要引入同一职责的第二套 client、state 或 helper。
+
+## 权限与数据不变量
+
+- \`RBAC_BOOTSTRAP_ADMIN_EMAIL\` 只授予已经注册的匹配用户超级管理员角色，不创建用户。
+- 系统必须始终保留至少一个超级管理员；不得删除受保护角色或移除最后一个超级管理员分配。
+- 权限检查在服务端 procedure 边界执行；前端 guard 只负责导航和界面反馈，不能替代服务端授权。
+- 用户暂停、角色变更、session 撤销和审计事件是不同操作；保持各自语义和持久化边界。
+{{#if (includes addons "organization")}}
+- 组织成员、邀请和角色读取必须受 active organization 约束；不得跨租户按裸 id 更新记录。
+- 每个组织必须保留至少一个 owner；最后一个 owner 不能被降级或移除。
+{{/if}}
+
+## 测试约定
+
+- Web 测试与源码同置为 \`*.test.ts(x)\`，使用 Vitest Chromium Browser Mode；服务端权限测试使用隔离的 embedded PostgreSQL。
+- 测试可观察行为和权限边界；DOM 查询优先 role、accessible name、label 或 placeholder。
+- 使用 awaited \`userEvent\` 和 \`expect.element(...)\`；异步状态使用 \`vi.waitFor\`，不使用固定延时。
+- 每项行为修改至少运行直接覆盖它的测试；多语言改动同时运行 \`check:i18n\`，权限改动运行 \`test:permissions\`。
+
+## Agent 上下文
+
+- **Issue tracker**：创建、读取或更新本地 issue/spec 时，先读 \`docs/agents/issue-tracker.md\`。
+- **Triage**：分配或解释 triage role 时，先读 \`docs/agents/triage-labels.md\`。
+- **Domain**：命名领域概念、修改权限模型或评审架构边界前，先读 \`CONTEXT-MAP.md\`，再读其中指向的相关 \`CONTEXT.md\`；消费规则见 \`docs/agents/domain.md\`。
+- 环境文件是本地凭据输入，不输出其内容；只通过正常客户端使用，并在日志和 diff 中保持凭据不可见。
+`],
   ["addons/admin/apps/server/.gitignore", `# prod
 dist/
 /build
@@ -21465,6 +21555,14 @@ export default mergeConfig(
 	}),
 );
 `],
+  ["addons/admin/CLAUDE.md", `@AGENTS.md
+`],
+  ["addons/admin/CONTEXT-MAP.md", `# 领域上下文地图
+
+## 上下文
+
+- [身份与访问](./packages/api/CONTEXT.md) - 定义谁可以访问系统，以及他们可以执行哪些操作
+`],
   ["addons/admin/docker-compose.yml.hbs", `name: {{projectName}}
 
 services:
@@ -21517,6 +21615,79 @@ services:
 
 volumes:
   {{projectName}}_postgres_data:
+`],
+  ["addons/admin/docs/agents/domain.md", `# 领域文档
+
+本文件规定 engineering work 探索 codebase 时如何使用仓库的领域文档。
+
+## 探索前读取
+
+1. 读取仓库根目录的 \`CONTEXT-MAP.md\`。
+2. 读取其中指向且与当前任务相关的 \`CONTEXT.md\`。
+3. 检查 \`docs/adr/\` 中与当前区域相关的系统级 ADR。
+4. 对于相关 context，同时检查其 \`docs/adr/\` 中的 context 级决策。
+
+缺少某层文档时继续使用当前源码和测试作为事实来源；只有真实领域概念或决策明确后才补充 context 或 ADR。
+
+## 文件结构
+
+\`\`\`text
+/
+├── CONTEXT-MAP.md                    ← context 索引
+├── docs/adr/                         ← 系统级决策
+├── apps/
+│   └── <context>/
+│       ├── CONTEXT.md
+│       └── docs/adr/                 ← context 级决策
+└── packages/
+    └── <context>/
+        ├── CONTEXT.md
+        └── docs/adr/                 ← context 级决策
+\`\`\`
+
+\`CONTEXT-MAP.md\` 只列出真实存在的领域 contexts。配置、环境和通用 UI 等纯技术 package 通常不需要独立 glossary。
+
+## 统一语言
+
+Issue title、重构提案、hypothesis、API 和 test name 使用相关 \`CONTEXT.md\` 定义的 canonical term。需要的新概念尚未定义时，先确认源码中确实存在领域缺口，再更新 glossary。
+
+## ADR 冲突
+
+实现或提案与现有 ADR 冲突时，明确列出 ADR、冲突点和重新决策理由，不静默覆盖。
+`],
+  ["addons/admin/docs/agents/issue-tracker.md", `# Issue Tracker：本地 Markdown
+
+本仓库的 issues 和 specs 以 Markdown 文件形式存放在 \`.scratch/\` 中。
+
+## 约定
+
+- 每个 feature 使用一个目录：\`.scratch/<feature-slug>/\`
+- Spec 路径为 \`.scratch/<feature-slug>/spec.md\`
+- 每个 implementation ticket 使用独立文件：\`.scratch/<feature-slug>/issues/<NN>-<slug>.md\`，从 \`01\` 开始编号；不得合并成一个 tickets 文件
+- 每个 issue 文件顶部附近使用 \`Status:\` 记录 triage state；role 字符串见 \`triage-labels.md\`
+- Comments 和对话历史追加到文件底部的 \`## Comments\` 标题下
+
+## 发布到 Issue Tracker
+
+在 \`.scratch/<feature-slug>/\` 下创建新文件，必要时创建目录。工作开始前确认 issue 仍未被领取；完成后写入可验证结果和相关路径。
+
+## 读取 Ticket
+
+读取用户提供的路径或 issue number。实现前解析 acceptance criteria、阻塞关系和最新 comments；完成条件是每项 criteria 都有当前源码或运行证据。
+`],
+  ["addons/admin/docs/agents/triage-labels.md", `# Triage 标签
+
+Skills 使用五个 canonical triage roles。本文件把这些 roles 映射到本仓库 Issue Tracker 实际使用的 label 字符串。
+
+| Canonical role    | 本仓库 Label      | 含义                         |
+| ----------------- | ----------------- | ---------------------------- |
+| \`needs-triage\`    | \`needs-triage\`    | 等待维护者评估 issue         |
+| \`needs-info\`      | \`needs-info\`      | 等待报告者补充信息           |
+| \`ready-for-agent\` | \`ready-for-agent\` | 已完整定义，可交给 AFK agent |
+| \`ready-for-human\` | \`ready-for-human\` | 需要人工实现                 |
+| \`wontfix\`         | \`wontfix\`         | 不会处理                     |
+
+当工具或 skill 提到某个 triage role 时，使用表中对应的 label 字符串。Issue Tracker vocabulary 变化时只修改右侧映射。
 `],
   ["addons/admin/package.json.hbs", `{
   "name": "{{projectName}}",
@@ -64454,4 +64625,4 @@ export default function Success() {
 `]
 ]);
 
-export const TEMPLATE_COUNT = 880;
+export const TEMPLATE_COUNT = 886;

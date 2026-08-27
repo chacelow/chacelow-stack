@@ -1,0 +1,89 @@
+# Repository Guidelines
+
+## 项目概览
+
+`{{projectName}}` 是一个 TypeScript monorepo 管理工作台。React/Vite Web 应用提供仪表盘、用户、角色、审计日志和设置；Bun/Hono 服务端暴露 Better Auth 与类型安全的 tRPC API；PostgreSQL 通过 Drizzle 持久化。管理接口由应用自有 RBAC 保护。
+{{#if (includes addons "organization")}}
+系统还包含组织、成员、邀请和租户范围访问；所有组织数据操作必须绑定当前有效组织和成员关系。
+{{/if}}
+
+## 架构与数据流
+
+1. `apps/web/src/main.tsx` 创建 TanStack Query、TanStack Router 和 tRPC provider，再挂载主题、字体与文字方向 providers。
+2. `apps/web/src/routes/` 下的 TanStack 文件路由选择 feature UI；`routes/_authenticated/route.tsx` 在受保护页面加载前检查 Better Auth session 和管理访问权。
+3. 认证请求通过 `apps/web/src/lib/auth-client.ts` 访问 `/api/auth/*`；业务数据统一通过 `apps/web/src/lib/trpc.ts` 访问 tRPC。
+4. `apps/server/src/index.ts` 挂载 Better Auth 和 tRPC `appRouter`；每个请求的 context 解析 session，permission procedures 执行授权。
+5. API routers 使用 Zod 校验输入，通过 Drizzle 查询或事务写入数据，并记录审计元数据；schemas 位于 `packages/db/src/schema/`。
+{{#if (includes addons "organization")}}
+6. 组织 router 从 session 解析 active organization，再验证成员关系和 owner/admin role；租户查询必须包含 organization id 条件。
+{{/if}}
+
+## 关键目录
+
+| 路径 | 用途 |
+| --- | --- |
+| `apps/web/src/routes/` | TanStack 路由定义和认证边界 |
+| `apps/web/src/features/` | dashboard、users、roles、audit、settings 等领域 UI |
+| `apps/web/src/components/` | 应用共享组件；本地 shadcn primitives 位于 `components/ui/` |
+| `apps/web/src/{context,hooks,stores,lib}/` | providers、hooks、客户端状态和集成 helpers |
+| `apps/server/src/` | Hono HTTP 组合层和权限集成测试 |
+| `packages/api/src/` | tRPC context、procedures、routers、permissions、RBAC 和审计逻辑 |
+| `packages/auth/src/` | Better Auth 服务端配置 |
+| `packages/db/src/` | Drizzle client、auth/RBAC schemas 和数据库工具 |
+| `packages/{env,i18n,ui}/src/` | 环境变量、类型化翻译和共享 UI |
+| `scripts/check-i18n.mjs` | Web 多语言静态检查 |
+| `docs/agents/` | Issue tracker、triage 和领域文档消费规则 |
+
+## 开发与验证
+
+命令以根 `package.json` scripts 为准，通过项目选择的 package manager 运行：
+
+| Script | 用途 |
+| --- | --- |
+| `dev` | 启动 Web 和 server 开发任务 |
+| `build` | 构建所有 workspaces |
+| `check-types` | 检查类型，并构建 Web |
+| `check:i18n` | 检查 locale 键、插值变量、翻译引用和硬编码 UI 文案 |
+| `test` | 运行 workspace tests |
+| `test:permissions` | 运行 Web 与 server RBAC 权限定向测试 |
+| `db:push` / `db:generate` / `db:migrate` | 应用、生成或执行 Drizzle schema 变更 |
+| `db:start` / `db:stop` | 启停模板自带的本地 PostgreSQL Compose 服务 |
+
+`bts.jsonc` 保存可复现的 stack 配置和 addon 命令。MCP 与 Agent Skills 是可选工具集成；需要时通过其中记录的 `add` 命令选择 `mcp`、`skills`，不影响应用运行时。
+
+## 代码约定
+
+- 全仓库使用 ESM；内部依赖使用 `workspace:*`；优先 named exports。
+- 文件通常使用 kebab-case，React 组件使用 PascalCase；保持 strict TypeScript 和 workspace 路径边界。
+- `@` 只代表当前 workspace；跨 package 使用 `@{{projectName}}/*` export subpaths。
+- 新 procedure 放入具名 tRPC router，输入使用 Zod；认证使用 `protectedProcedure`，授权使用 permission middleware。
+- 多步骤 RBAC 写入必须位于 `db.transaction` 中，并保留审计记录。
+- Web query/mutation 使用 `useTRPC()` options 交给 React Query；mutation 成功后显式 invalidate 受影响的 query keys。
+- 用户可见 Web 文案必须同时进入 `packages/i18n/src/locales/en.json` 和 `zh.json`，不得在 JSX、toast、placeholder 或无障碍属性中硬编码。
+- Markdown 正文和面向开发者的说明使用中文；路径、命令、代码标识符和协议名保留原拼写。
+- 遵循现有两空格 TypeScript/JSON 格式和 import 顺序；不要引入同一职责的第二套 client、state 或 helper。
+
+## 权限与数据不变量
+
+- `RBAC_BOOTSTRAP_ADMIN_EMAIL` 只授予已经注册的匹配用户超级管理员角色，不创建用户。
+- 系统必须始终保留至少一个超级管理员；不得删除受保护角色或移除最后一个超级管理员分配。
+- 权限检查在服务端 procedure 边界执行；前端 guard 只负责导航和界面反馈，不能替代服务端授权。
+- 用户暂停、角色变更、session 撤销和审计事件是不同操作；保持各自语义和持久化边界。
+{{#if (includes addons "organization")}}
+- 组织成员、邀请和角色读取必须受 active organization 约束；不得跨租户按裸 id 更新记录。
+- 每个组织必须保留至少一个 owner；最后一个 owner 不能被降级或移除。
+{{/if}}
+
+## 测试约定
+
+- Web 测试与源码同置为 `*.test.ts(x)`，使用 Vitest Chromium Browser Mode；服务端权限测试使用隔离的 embedded PostgreSQL。
+- 测试可观察行为和权限边界；DOM 查询优先 role、accessible name、label 或 placeholder。
+- 使用 awaited `userEvent` 和 `expect.element(...)`；异步状态使用 `vi.waitFor`，不使用固定延时。
+- 每项行为修改至少运行直接覆盖它的测试；多语言改动同时运行 `check:i18n`，权限改动运行 `test:permissions`。
+
+## Agent 上下文
+
+- **Issue tracker**：创建、读取或更新本地 issue/spec 时，先读 `docs/agents/issue-tracker.md`。
+- **Triage**：分配或解释 triage role 时，先读 `docs/agents/triage-labels.md`。
+- **Domain**：命名领域概念、修改权限模型或评审架构边界前，先读 `CONTEXT-MAP.md`，再读其中指向的相关 `CONTEXT.md`；消费规则见 `docs/agents/domain.md`。
+- 环境文件是本地凭据输入，不输出其内容；只通过正常客户端使用，并在日志和 diff 中保持凭据不可见。
