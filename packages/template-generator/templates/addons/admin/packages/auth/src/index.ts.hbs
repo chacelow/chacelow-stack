@@ -13,6 +13,14 @@ import {
   organizationRole,
 } from "@{{projectName}}/db/schema/organization";
 {{/if}}
+{{#if (includes addons "ldap")}}
+import { credentials } from "better-auth-credentials-plugin";
+import { z } from "zod";
+
+import { authenticateLdap, LDAP_PROVIDER_ID } from "./ldap";
+import { loadLdapConfig } from "./ldap-settings";
+import { prepareLdapIdentityForSignIn } from "./ldap-user";
+{{/if}}
 import { env } from "@{{projectName}}/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -25,6 +33,44 @@ import {
 
 export function createAuth(database: Database = createDb()) {
   const isProduction = env.NODE_ENV === "production";
+  {{#if (includes addons "ldap")}}
+  const ldapPlugin = credentials({
+    autoSignUp: true,
+    async callback(_ctx, input) {
+      const ldapConfig = await loadLdapConfig(database);
+      if (!ldapConfig) {
+        throw new Error("LDAP authentication is disabled");
+      }
+
+      const identity = await authenticateLdap(
+        ldapConfig,
+        input.credential,
+        input.password,
+      );
+
+      const existing = await prepareLdapIdentityForSignIn(database, identity);
+      if (existing?.banned) {
+        throw new Error("User access is suspended");
+      }
+
+      return {
+        email: identity.email,
+        emailVerified: true,
+        name: identity.name,
+        onLinkAccount: () => ({ accountId: identity.dn }),
+        onSignUp: (userData) => ({ ...userData, emailVerified: true }),
+      };
+    },
+    inputSchema: z.object({
+      credential: z.string().trim().min(1),
+      password: z.string().min(1),
+      rememberMe: z.boolean().optional(),
+    }),
+    linkAccountIfExisting: true,
+    path: "/sign-in/ldap",
+    providerId: LDAP_PROVIDER_ID,
+  });
+  {{/if}}
 
   return betterAuth({
     advanced: {
@@ -57,6 +103,9 @@ export function createAuth(database: Database = createDb()) {
       admin(),
       {{#if (includes addons "organization")}}
       organization({ dynamicAccessControl: { enabled: true } }),
+      {{/if}}
+      {{#if (includes addons "ldap")}}
+      ldapPlugin,
       {{/if}}
     ],
     secret: env.BETTER_AUTH_SECRET,

@@ -10364,8 +10364,13 @@ import { useTranslation } from "@{{projectName}}/i18n/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, LogIn } from "lucide-react";
+{{#if (includes addons "ldap")}}
+import { useCallback, useMemo, useState } from "react";
+import { type ControllerRenderProps, useForm } from "react-hook-form";
+{{else}}
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+{{/if}}
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -10380,6 +10385,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+{{#if (includes addons "ldap")}}
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+{{/if}}
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -10388,17 +10396,42 @@ interface UserAuthValues {
   password: string;
 }
 
+{{#if (includes addons "ldap")}}
+type SignInMethod = "ldap" | "local";
+{{/if}}
+
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
   redirectTo?: string;
 }
 
 export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormProps) {
   const [isLoading, setIsLoading] = useState(false);
+  {{#if (includes addons "ldap")}}
+  const [method, setMethod] = useState<SignInMethod>("local");
+  {{/if}}
   const navigate = useNavigate();
   const { t } = useTranslation();
   const formSchema = useMemo(
     () =>
       z.object({
+        {{#if (includes addons "ldap")}}
+        email:
+          method === "ldap"
+            ? z.string().trim().min(1, t("validation.credential_required"))
+            : z.email({
+                error: (issue) =>
+                  issue.input === ""
+                    ? t("validation.email_required")
+                    : t("validation.email_invalid"),
+              }),
+        password:
+          method === "ldap"
+            ? z.string().min(1, t("validation.password_required"))
+            : z
+                .string()
+                .min(1, t("validation.password_required"))
+                .min(8, t("validation.password_min_8")),
+        {{else}}
         email: z.email({
           error: (issue) =>
             issue.input === ""
@@ -10409,8 +10442,9 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
           .string()
           .min(1, t("validation.password_required"))
           .min(8, t("validation.password_min_8")),
+        {{/if}}
       }),
-    [t],
+    [{{#if (includes addons "ldap")}}method, {{/if}}t],
   );
 
   const form = useForm<UserAuthValues>({
@@ -10421,6 +10455,72 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
     resolver: zodResolver(formSchema),
   });
 
+  {{#if (includes addons "ldap")}}
+  const onSubmit = useCallback(
+    async (data: UserAuthValues) => {
+      setIsLoading(true);
+      const { error } =
+        method === "ldap"
+          ? await authClient.signIn.ldap({
+              credential: data.email,
+              password: data.password,
+            })
+          : await authClient.signIn.email({
+              email: data.email,
+              password: data.password,
+            });
+      setIsLoading(false);
+      if (error) {
+        toast.error(t("auth.sign_in_error"));
+        return;
+      }
+      toast.success(t("auth.welcome_back", { email: data.email }));
+      await navigate({ replace: true, to: redirectTo || "/" });
+    },
+    [method, navigate, redirectTo, t],
+  );
+  const changeMethod = useCallback(
+    (value: string) => setMethod(value === "ldap" ? "ldap" : "local"),
+    [],
+  );
+  const renderEmailField = useCallback(
+    ({ field }: { field: ControllerRenderProps<UserAuthValues, "email"> }) => (
+      <FormItem>
+        <FormLabel>
+          {method === "ldap" ? t("auth.directory_credential") : t("auth.email")}
+        </FormLabel>
+        <FormControl>
+          <Input
+            placeholder={
+              method === "ldap"
+                ? t("auth.directory_credential_placeholder")
+                : t("auth.email_placeholder")
+            }
+            {...field}
+          />
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    ),
+    [method, t],
+  );
+  const renderPasswordField = useCallback(
+    ({
+      field,
+    }: {
+      field: ControllerRenderProps<UserAuthValues, "password">;
+    }) => (
+      <FormItem className="relative">
+        <FormLabel>{t("auth.password")}</FormLabel>
+        <FormControl>
+          <PasswordInput placeholder="********" {...field} />
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    ),
+    [t],
+  );
+  {{else}}
   async function onSubmit(data: UserAuthValues) {
     setIsLoading(true);
     const { error } = await authClient.signIn.email({
@@ -10435,46 +10535,65 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
     toast.success(t("auth.welcome_back", { email: data.email }));
     await navigate({ replace: true, to: redirectTo || "/" });
   }
+  {{/if}}
 
   return (
-    <Form {...form}>
-      <form
-        className={cn("grid gap-3", className)}
-        onSubmit={form.handleSubmit(onSubmit)}
-        {...props}
-      >
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t("auth.email")}</FormLabel>
-              <FormControl>
-                <Input placeholder="name@example.com" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem className="relative">
-              <FormLabel>{t("auth.password")}</FormLabel>
-              <FormControl>
-                <PasswordInput placeholder="********" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <Button className="mt-2" disabled={isLoading}>
-          {isLoading ? <Loader2 className="animate-spin" /> : <LogIn />}
-          {t("auth.sign_in_btn")}
-        </Button>
-      </form>
-    </Form>
+    <>
+      {{#if (includes addons "ldap")}}
+      <Tabs className="mb-4" onValueChange={changeMethod} value={method}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="local">{t("auth.local_account")}</TabsTrigger>
+          <TabsTrigger value="ldap">{t("auth.directory_account")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {{/if}}
+      <Form {...form}>
+        <form
+          className={cn("grid gap-3", className)}
+          onSubmit={form.handleSubmit(onSubmit)}
+          {...props}
+        >
+          <FormField
+            control={form.control}
+            name="email"
+            {{#if (includes addons "ldap")}}
+            render={renderEmailField}
+            {{else}}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t("auth.email")}</FormLabel>
+                <FormControl>
+                  <Input placeholder="name@example.com" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+            {{/if}}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            {{#if (includes addons "ldap")}}
+            render={renderPasswordField}
+            {{else}}
+            render={({ field }) => (
+              <FormItem className="relative">
+                <FormLabel>{t("auth.password")}</FormLabel>
+                <FormControl>
+                  <PasswordInput placeholder="********" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+            {{/if}}
+          />
+          <Button className="mt-2" disabled={isLoading}>
+            {isLoading ? <Loader2 className="animate-spin" /> : <LogIn />}
+            {t("auth.sign_in_btn")}
+          </Button>
+        </form>
+      </Form>
+    </>
   );
 }
 `],
@@ -13761,6 +13880,220 @@ export function SidebarNav({ className, items, ...props }: SidebarNavProps) {
   );
 }
 `],
+  ["addons/admin/apps/web/src/features/settings/directory/directory-form.tsx.hbs", `import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { useTRPC } from "@/lib/trpc";
+
+interface DirectorySettings {
+  baseDn: string;
+  bindDn: string;
+  caCert?: string;
+  emailAttribute: string;
+  enabled: boolean;
+  nameAttribute: string;
+  passwordConfigured: boolean;
+  url: string;
+  userFilter: string;
+}
+
+interface DirectorySettingsInput
+  extends Omit<DirectorySettings, "passwordConfigured"> {
+  bindPassword?: string;
+}
+
+export function DirectoryForm() {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const settingsQuery = useQuery(trpc.admin.ldapSettings.queryOptions());
+  const settings = settingsQuery.data;
+  const refresh = useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: trpc.admin.ldapSettings.queryKey(),
+      }),
+    [queryClient, trpc.admin.ldapSettings],
+  );
+  const update = useMutation(
+    trpc.admin.updateLdapSettings.mutationOptions({
+      onError: () => toast.error(t("ldap_settings.save_error")),
+      onSuccess: async () => {
+        await refresh();
+        toast.success(t("ldap_settings.saved"));
+      },
+    }),
+  );
+
+  if (!settings) {
+    return null;
+  }
+
+  return (
+    <DirectorySettingsFields
+      key={JSON.stringify(settings)}
+      pending={update.isPending}
+      settings={settings}
+      submit={update.mutate}
+    />
+  );
+}
+
+function DirectorySettingsFields({
+  pending,
+  settings,
+  submit,
+}: {
+  pending: boolean;
+  settings: DirectorySettings;
+  submit: (input: DirectorySettingsInput) => void;
+}) {
+  const [enabled, setEnabled] = useState(settings.enabled);
+  const { t } = useTranslation();
+  const onSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const value = (name: string) => String(form.get(name) ?? "");
+      submit({
+        baseDn: value("baseDn"),
+        bindDn: value("bindDn"),
+        bindPassword: value("bindPassword") || undefined,
+        caCert: value("caCert") || undefined,
+        emailAttribute: value("emailAttribute"),
+        enabled,
+        nameAttribute: value("nameAttribute"),
+        url: value("url"),
+        userFilter: value("userFilter"),
+      });
+    },
+    [enabled, submit],
+  );
+
+  return (
+    <form className="space-y-8" onSubmit={onSubmit}>
+      <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+        <div className="space-y-1">
+          <Label htmlFor="ldap-enabled">{t("ldap_settings.enabled")}</Label>
+          <p className="text-muted-foreground text-sm">
+            {t("ldap_settings.enabled_desc")}
+          </p>
+        </div>
+        <Switch
+          checked={enabled}
+          id="ldap-enabled"
+          onCheckedChange={setEnabled}
+        />
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Field
+          defaultValue={settings.url}
+          label={t("ldap_settings.url")}
+          name="url"
+          required={enabled}
+        />
+        <Field
+          defaultValue={settings.baseDn}
+          label={t("ldap_settings.base_dn")}
+          name="baseDn"
+          required={enabled}
+        />
+        <Field
+          defaultValue={settings.bindDn}
+          label={t("ldap_settings.bind_dn")}
+          name="bindDn"
+          required={enabled}
+        />
+        <Field
+          autoComplete="new-password"
+          label={t("ldap_settings.bind_password")}
+          name="bindPassword"
+          placeholder={
+            settings.passwordConfigured
+              ? t("ldap_settings.password_configured")
+              : t("ldap_settings.password_required")
+          }
+          required={enabled && !settings.passwordConfigured}
+          type="password"
+        />
+        <Field
+          defaultValue={settings.emailAttribute}
+          label={t("ldap_settings.email_attribute")}
+          name="emailAttribute"
+          required
+        />
+        <Field
+          defaultValue={settings.nameAttribute}
+          label={t("ldap_settings.name_attribute")}
+          name="nameAttribute"
+          required
+        />
+      </div>
+
+      <Field
+        defaultValue={settings.userFilter}
+        label={t("ldap_settings.user_filter")}
+        name="userFilter"
+        placeholder={t("ldap_settings.user_filter_placeholder")}
+        required
+      />
+      <div className="space-y-2">
+        <Label htmlFor="ldap-ca-cert">{t("ldap_settings.ca_cert")}</Label>
+        <Textarea
+          className="min-h-32 font-mono"
+          defaultValue={settings.caCert}
+          id="ldap-ca-cert"
+          name="caCert"
+          placeholder={t("ldap_settings.ca_cert_placeholder")}
+        />
+      </div>
+
+      <Button disabled={pending} type="submit">
+        {pending ? t("common.updating") : t("ldap_settings.save")}
+      </Button>
+    </form>
+  );
+}
+
+function Field({
+  label,
+  name,
+  ...props
+}: React.ComponentProps<typeof Input> & { label: string; name: string }) {
+  const id = \`ldap-\${name}\`;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} name={name} {...props} />
+    </div>
+  );
+}
+`],
+  ["addons/admin/apps/web/src/features/settings/directory/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
+
+import { ContentSection } from "../components/content-section";
+import { DirectoryForm } from "./directory-form";
+
+export function SettingsDirectory() {
+  const { t } = useTranslation();
+  return (
+    <ContentSection
+      desc={t("ldap_settings.description")}
+      title={t("ldap_settings.title")}
+    >
+      <DirectoryForm />
+    </ContentSection>
+  );
+}
+`],
   ["addons/admin/apps/web/src/features/settings/display/display-form.tsx", `import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -13888,7 +14221,7 @@ export function SettingsDisplay() {
 `],
   ["addons/admin/apps/web/src/features/settings/index.tsx.hbs", `import { useTranslation } from "@{{projectName}}/i18n/react";
 import { Outlet } from "@tanstack/react-router";
-import { Palette, UserCog, Wrench } from "lucide-react";
+import { Palette, ServerCog, UserCog, Wrench } from "lucide-react";
 
 import { ConfigDrawer } from "@/components/config-drawer";
 import { Header } from "@/components/layout/header";
@@ -13918,6 +14251,13 @@ export function Settings() {
       icon: <Palette size={18} />,
       title: t("settings.appearance"),
     },
+    {{#if (includes addons "ldap")}}
+    {
+      href: "/settings/directory",
+      icon: <ServerCog size={18} />,
+      title: t("ldap_settings.title"),
+    },
+    {{/if}}
   ];
   return (
     <>
@@ -19774,6 +20114,29 @@ export const Route = createFileRoute("/_authenticated/settings/appearance")({
   component: SettingsAppearance,
 });
 `],
+  ["addons/admin/apps/web/src/routes/_authenticated/settings/directory.tsx.hbs", `import { createFileRoute } from "@tanstack/react-router";
+
+{{#if (includes addons "rbac")}}
+import { PermissionGuard } from "@/components/permission-guard";
+{{/if}}
+import { SettingsDirectory } from "@/features/settings/directory";
+
+export const Route = createFileRoute("/_authenticated/settings/directory")({
+  component: DirectorySettingsRoute,
+});
+
+function DirectorySettingsRoute() {
+  return (
+    {{#if (includes addons "rbac")}}
+    <PermissionGuard permission="setting:read">
+      <SettingsDirectory />
+    </PermissionGuard>
+    {{else}}
+    <SettingsDirectory />
+    {{/if}}
+  );
+}
+`],
   ["addons/admin/apps/web/src/routes/_authenticated/settings/display.tsx", `import { createFileRoute } from "@tanstack/react-router";
 
 import { SettingsDisplay } from "@/features/settings/display";
@@ -21939,7 +22302,7 @@ export const permissionProcedure = (permission: PermissionKey) =>
   });
 {{/if}}
 `],
-  ["addons/admin/packages/api/src/permissions.ts", `export const PERMISSIONS = [
+  ["addons/admin/packages/api/src/permissions.ts.hbs", `export const PERMISSIONS = [
   {
     action: "read",
     description: "View the dashboard",
@@ -22000,6 +22363,20 @@ export const permissionProcedure = (permission: PermissionKey) =>
     key: "audit:read",
     resource: "Audit",
   },
+  {{#if (includes addons "ldap")}}
+  {
+    action: "read",
+    description: "View system settings",
+    key: "setting:read",
+    resource: "Settings",
+  },
+  {
+    action: "update",
+    description: "Update system settings",
+    key: "setting:update",
+    resource: "Settings",
+  },
+  {{/if}}
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number]["key"];
@@ -22206,7 +22583,14 @@ export async function existingRoleIds(ids: string[]) {
 	return rows.map(({ id }) => id);
 }
 `],
-  ["addons/admin/packages/api/src/routers/admin.ts.hbs", `import { db } from "@{{projectName}}/db";
+  ["addons/admin/packages/api/src/routers/admin.ts.hbs", `{{#if (includes addons "ldap")}}
+import {
+	getLdapSettings,
+	ldapSettingsInputSchema,
+	saveLdapSettings,
+} from "@{{projectName}}/auth/ldap-settings";
+{{/if}}
+import { db } from "@{{projectName}}/db";
 import { user } from "@{{projectName}}/db/schema/auth";
 import {
 	auditLog,
@@ -22296,6 +22680,28 @@ export const adminRouter = router({
 			.orderBy(desc(auditLog.createdAt))
 			.limit(200),
 	),
+
+	{{#if (includes addons "ldap")}}
+	ldapSettings: permissionProcedure("setting:read").query(() =>
+		getLdapSettings(db),
+	),
+
+	updateLdapSettings: permissionProcedure("setting:update")
+		.input(ldapSettingsInputSchema)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				await saveLdapSettings(db, input, auditContext(ctx));
+			} catch (error) {
+				const message =
+					error instanceof Error &&
+					error.message === "A bind password is required when LDAP is enabled"
+						? error.message
+						: "Unable to save LDAP settings";
+				throw new TRPCError({ cause: error, code: "BAD_REQUEST", message });
+			}
+			return getLdapSettings(db);
+		}),
+	{{/if}}
 
 	createRole: permissionProcedure("role:create")
 		.input(
@@ -22990,6 +23396,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
     "@{{projectName}}/db": "workspace:*",
     "@{{projectName}}/env": "workspace:*",
     "better-auth": "1.6.27",
+    {{#if (includes addons "ldap")}}
+    "better-auth-credentials-plugin": "0.5.2",
+    "ldapts": "9.0.0",
+    {{/if}}
     "dotenv": "^17.4.2",
     "zod": "^4.4.3"
   },
@@ -23014,6 +23424,14 @@ import {
   organizationRole,
 } from "@{{projectName}}/db/schema/organization";
 {{/if}}
+{{#if (includes addons "ldap")}}
+import { credentials } from "better-auth-credentials-plugin";
+import { z } from "zod";
+
+import { authenticateLdap, LDAP_PROVIDER_ID } from "./ldap";
+import { loadLdapConfig } from "./ldap-settings";
+import { prepareLdapIdentityForSignIn } from "./ldap-user";
+{{/if}}
 import { env } from "@{{projectName}}/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -23026,6 +23444,44 @@ import {
 
 export function createAuth(database: Database = createDb()) {
   const isProduction = env.NODE_ENV === "production";
+  {{#if (includes addons "ldap")}}
+  const ldapPlugin = credentials({
+    autoSignUp: true,
+    async callback(_ctx, input) {
+      const ldapConfig = await loadLdapConfig(database);
+      if (!ldapConfig) {
+        throw new Error("LDAP authentication is disabled");
+      }
+
+      const identity = await authenticateLdap(
+        ldapConfig,
+        input.credential,
+        input.password,
+      );
+
+      const existing = await prepareLdapIdentityForSignIn(database, identity);
+      if (existing?.banned) {
+        throw new Error("User access is suspended");
+      }
+
+      return {
+        email: identity.email,
+        emailVerified: true,
+        name: identity.name,
+        onLinkAccount: () => ({ accountId: identity.dn }),
+        onSignUp: (userData) => ({ ...userData, emailVerified: true }),
+      };
+    },
+    inputSchema: z.object({
+      credential: z.string().trim().min(1),
+      password: z.string().min(1),
+      rememberMe: z.boolean().optional(),
+    }),
+    linkAccountIfExisting: true,
+    path: "/sign-in/ldap",
+    providerId: LDAP_PROVIDER_ID,
+  });
+  {{/if}}
 
   return betterAuth({
     advanced: {
@@ -23059,6 +23515,9 @@ export function createAuth(database: Database = createDb()) {
       {{#if (includes addons "organization")}}
       organization({ dynamicAccessControl: { enabled: true } }),
       {{/if}}
+      {{#if (includes addons "ldap")}}
+      ldapPlugin,
+      {{/if}}
     ],
     secret: env.BETTER_AUTH_SECRET,
     trustedOrigins: [env.CORS_ORIGIN],
@@ -23066,6 +23525,450 @@ export function createAuth(database: Database = createDb()) {
 }
 
 export const auth = createAuth();
+`],
+  ["addons/admin/packages/auth/src/ldap-settings.ts.hbs", `import { Buffer } from "node:buffer";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "node:crypto";
+import { createDb, type Database } from "@{{projectName}}/db";
+{{#if (includes addons "rbac")}}
+import { auditLog } from "@{{projectName}}/db/schema/rbac";
+{{/if}}
+import { ldapSettings } from "@{{projectName}}/db/schema/settings";
+import { env } from "@{{projectName}}/env/server";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+
+import { type LdapConfig, parseLdapConfig } from "./ldap";
+
+const LDAP_SETTINGS_ID = "default";
+const ldapAttribute = z.string().regex(/^[A-Za-z0-9.-]+$/);
+const ldapFilter = z
+  .string()
+  .regex(/^\\(.+\\)$/)
+  .refine((value) => value.includes("{0}"), "Filter must include {0}");
+const ldapUrl = z
+  .string()
+  .trim()
+  .max(2048)
+  .refine(
+    (value) =>
+      value === "" ||
+      (URL.canParse(value) &&
+        ["ldap:", "ldaps:"].includes(new URL(value).protocol)),
+    "URL must use ldap:// or ldaps://",
+  );
+
+export const ldapSettingsInputSchema = z
+  .object({
+    baseDn: z.string().trim().max(1024),
+    bindDn: z.string().trim().max(1024),
+    bindPassword: z.string().max(4096).optional(),
+    caCert: z.string().trim().max(100_000).optional(),
+    emailAttribute: ldapAttribute,
+    enabled: z.boolean(),
+    nameAttribute: ldapAttribute,
+    url: ldapUrl,
+    userFilter: ldapFilter,
+  })
+  .superRefine((settings, context) => {
+    if (!settings.enabled) {
+      return;
+    }
+    for (const field of ["baseDn", "bindDn", "url"] as const) {
+      if (!settings[field]) {
+        context.addIssue({
+          code: "custom",
+          message: "Required when LDAP is enabled",
+          path: [field],
+        });
+      }
+    }
+  });
+
+export type LdapSettingsInput = z.infer<typeof ldapSettingsInputSchema>;
+
+export interface LdapSettingsView
+  extends Omit<LdapSettingsInput, "bindPassword"> {
+  passwordConfigured: boolean;
+}
+
+const defaultSettings: LdapSettingsView = {
+  baseDn: "",
+  bindDn: "",
+  caCert: undefined,
+  emailAttribute: "mail",
+  enabled: false,
+  nameAttribute: "displayName",
+  passwordConfigured: false,
+  url: "",
+  userFilter: "(uid={0})",
+};
+
+function encryptionKey() {
+  return createHash("sha256").update(env.BETTER_AUTH_SECRET).digest();
+}
+
+function encryptPassword(password: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const encrypted = Buffer.concat([
+    cipher.update(password, "utf8"),
+    cipher.final(),
+  ]);
+  return [
+    "v1",
+    Buffer.from(iv).toString("base64url"),
+    Buffer.from(cipher.getAuthTag()).toString("base64url"),
+    encrypted.toString("base64url"),
+  ].join(".");
+}
+
+function decryptPassword(value: string) {
+  const [version, encodedIv, encodedTag, encodedPassword] = value.split(".");
+  if (
+    version !== "v1" ||
+    !encodedIv ||
+    !encodedTag ||
+    encodedPassword === undefined
+  ) {
+    throw new Error("Invalid encrypted LDAP password");
+  }
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    encryptionKey(),
+    Buffer.from(encodedIv, "base64url"),
+  );
+  decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encodedPassword, "base64url")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+async function readSettings(database: Database) {
+  const [settings] = await database
+    .select()
+    .from(ldapSettings)
+    .where(eq(ldapSettings.id, LDAP_SETTINGS_ID))
+    .limit(1);
+  return settings;
+}
+
+export async function getLdapSettings(
+  database: Database = createDb(),
+): Promise<LdapSettingsView> {
+  const settings = await readSettings(database);
+  if (!settings) {
+    return defaultSettings;
+  }
+  return {
+    baseDn: settings.baseDn,
+    bindDn: settings.bindDn,
+    caCert: settings.caCert ?? undefined,
+    emailAttribute: settings.emailAttribute,
+    enabled: settings.enabled,
+    nameAttribute: settings.nameAttribute,
+    passwordConfigured: settings.bindPassword !== null,
+    url: settings.url,
+    userFilter: settings.userFilter,
+  };
+}
+
+export async function loadLdapConfig(
+  database: Database = createDb(),
+): Promise<LdapConfig | null> {
+  const settings = await readSettings(database);
+  if (!settings?.enabled || !settings.bindPassword) {
+    return null;
+  }
+  return parseLdapConfig({
+    ...settings,
+    bindPassword: decryptPassword(settings.bindPassword),
+    caCert: settings.caCert ?? undefined,
+  });
+}
+
+export async function saveLdapSettings(
+  database: Database,
+  rawInput: LdapSettingsInput,
+  actor: { actorId: string; ipAddress?: string; userAgent?: string },
+) {
+  const input = ldapSettingsInputSchema.parse(rawInput);
+  const current = await readSettings(database);
+  const bindPassword = input.bindPassword
+    ? encryptPassword(input.bindPassword)
+    : current?.bindPassword;
+  if (input.enabled && !bindPassword) {
+    throw new Error("A bind password is required when LDAP is enabled");
+  }
+
+  await database.transaction(async (tx) => {
+    await tx
+      .insert(ldapSettings)
+      .values({
+        baseDn: input.baseDn,
+        bindDn: input.bindDn,
+        bindPassword,
+        caCert: input.caCert || null,
+        emailAttribute: input.emailAttribute,
+        enabled: input.enabled,
+        id: LDAP_SETTINGS_ID,
+        nameAttribute: input.nameAttribute,
+        url: input.url,
+        userFilter: input.userFilter,
+      })
+      .onConflictDoUpdate({
+        set: {
+          baseDn: input.baseDn,
+          bindDn: input.bindDn,
+          ...(input.bindPassword ? { bindPassword } : {}),
+          caCert: input.caCert || null,
+          emailAttribute: input.emailAttribute,
+          enabled: input.enabled,
+          nameAttribute: input.nameAttribute,
+          updatedAt: new Date(),
+          url: input.url,
+          userFilter: input.userFilter,
+        },
+        target: ldapSettings.id,
+      });
+    {{#if (includes addons "rbac")}}
+    await tx.insert(auditLog).values({
+      ...actor,
+      action: "settings.ldap.updated",
+      id: crypto.randomUUID(),
+      metadata: { enabled: input.enabled },
+      targetId: LDAP_SETTINGS_ID,
+      targetType: "settings",
+    });
+    {{/if}}
+  });
+}
+`],
+  ["addons/admin/packages/auth/src/ldap-user.ts.hbs", `import type { Database } from "@{{projectName}}/db";
+import { account, user } from "@{{projectName}}/db/schema/auth";
+import { and, eq } from "drizzle-orm";
+
+import { LDAP_PROVIDER_ID, type LdapIdentity } from "./ldap";
+
+type DirectoryUser = {
+  banned: boolean;
+  banReason: string | null;
+  email: string;
+  id: string;
+};
+
+async function findDirectoryUser(database: Database, identity: LdapIdentity) {
+  const [linked] = await database
+    .select({
+      banned: user.banned,
+      banReason: user.banReason,
+      email: user.email,
+      id: user.id,
+    })
+    .from(account)
+    .innerJoin(user, eq(account.userId, user.id))
+    .where(
+      and(
+        eq(account.providerId, LDAP_PROVIDER_ID),
+        eq(account.accountId, identity.dn),
+      ),
+    )
+    .limit(1);
+  if (linked) {
+    return linked;
+  }
+
+  const [matchingEmail] = await database
+    .select({
+      banned: user.banned,
+      banReason: user.banReason,
+      email: user.email,
+      id: user.id,
+    })
+    .from(user)
+    .where(eq(user.email, identity.email))
+    .limit(1);
+  return matchingEmail;
+}
+
+export async function prepareLdapIdentityForSignIn(
+  database: Database,
+  identity: LdapIdentity,
+): Promise<DirectoryUser | undefined> {
+  const existing = await findDirectoryUser(database, identity);
+  if (!existing) {
+    return undefined;
+  }
+
+  await database
+    .update(user)
+    .set({
+      email: identity.email,
+      emailVerified: true,
+      name: identity.name,
+    })
+    .where(eq(user.id, existing.id));
+
+  return { ...existing, email: identity.email };
+}
+`],
+  ["addons/admin/packages/auth/src/ldap.ts.hbs", `import { Buffer } from "node:buffer";
+import { env } from "@{{projectName}}/env/server";
+import { Client, type Entry, Filter } from "ldapts";
+import { z } from "zod";
+
+export const LDAP_PROVIDER_ID = "ldap";
+
+const ldapAttribute = z.string().regex(/^[A-Za-z0-9.-]+$/);
+const ldapFilter = z
+  .string()
+  .regex(/^\\(.+\\)$/)
+  .refine((value) => value.includes("{0}"), "Filter must include {0}");
+
+const configSchema = z.object({
+  baseDn: z.string().min(1),
+  bindDn: z.string().min(1),
+  bindPassword: z.string().min(1),
+  caCert: z.string().min(1).optional(),
+  emailAttribute: ldapAttribute,
+  nameAttribute: ldapAttribute,
+  url: z
+    .url()
+    .refine((value) => ["ldap:", "ldaps:"].includes(new URL(value).protocol)),
+  userFilter: ldapFilter,
+});
+
+export type LdapConfig = z.infer<typeof configSchema>;
+
+export interface LdapIdentity {
+  dn: string;
+  email: string;
+  name: string;
+}
+
+export function parseLdapConfig(input: unknown): LdapConfig {
+  const config = configSchema.parse(input);
+  if (
+    env.NODE_ENV === "production" &&
+    new URL(config.url).protocol !== "ldaps:"
+  ) {
+    throw new Error("LDAP URL must use ldaps:// in production");
+  }
+  return config;
+}
+
+function createClient(config: LdapConfig) {
+  return new Client({
+    connectTimeout: 5000,
+    strictDN: true,
+    timeout: 5000,
+    ...(new URL(config.url).protocol === "ldaps:"
+      ? {
+          tlsOptions: {
+            ...(config.caCert ? { ca: config.caCert } : {}),
+            minVersion: "TLSv1.2" as const,
+          },
+        }
+      : {}),
+    url: config.url,
+  });
+}
+
+function readAttribute(entry: Entry, attribute: string): string | undefined {
+  const value = entry[attribute];
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return String(value);
+  }
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const first = value[0];
+  return first === undefined ? undefined : String(first);
+}
+
+async function unbind(client: Client) {
+  try {
+    await client.unbind();
+  } catch {
+    // The connection may already be closed after an LDAP failure.
+  }
+}
+
+async function findLdapIdentity(
+  config: LdapConfig,
+  credential: string,
+): Promise<LdapIdentity> {
+  const client = createClient(config);
+  try {
+    try {
+      await client.bind(config.bindDn, config.bindPassword);
+    } catch (cause) {
+      throw new Error("LDAP service bind failed", { cause });
+    }
+    const filter = config.userFilter.replaceAll(
+      "{0}",
+      Filter.escape(credential),
+    );
+    let searchEntries: Entry[];
+    try {
+      ({ searchEntries } = await client.search(config.baseDn, {
+        attributes: [config.emailAttribute, config.nameAttribute],
+        filter,
+        scope: "sub",
+        sizeLimit: 2,
+      }));
+    } catch (cause) {
+      throw new Error("LDAP user search failed", { cause });
+    }
+    if (searchEntries.length !== 1) {
+      throw new Error(
+        "LDAP credential did not resolve to exactly one identity",
+      );
+    }
+
+    const entry = searchEntries[0];
+    if (!entry) {
+      throw new Error("LDAP identity was not returned");
+    }
+    const email = z
+      .email()
+      .parse(readAttribute(entry, config.emailAttribute)?.toLowerCase());
+    return {
+      dn: entry.dn,
+      email,
+      name: readAttribute(entry, config.nameAttribute) ?? credential,
+    };
+  } finally {
+    await unbind(client);
+  }
+}
+
+export async function authenticateLdap(
+  config: LdapConfig,
+  credential: string,
+  password: string,
+): Promise<LdapIdentity> {
+  const identity = await findLdapIdentity(config, credential);
+  const client = createClient(config);
+  try {
+    try {
+      await client.bind(identity.dn, password);
+    } catch (cause) {
+      throw new Error("LDAP user bind failed", { cause });
+    }
+    return identity;
+  } finally {
+    await unbind(client);
+  }
+}
 `],
   ["addons/admin/packages/auth/tsconfig.json.hbs", `{
   "extends": "@{{projectName}}/config/tsconfig.base.json",
@@ -23250,6 +24153,9 @@ import {
   organizationRole,
 } from "./schema/organization";
 {{/if}}
+{{#if (includes addons "ldap")}}
+import { ldapSettings } from "./schema/settings";
+{{/if}}
 
 export function createDb() {
   return drizzle(env.DATABASE_URL, {
@@ -23279,6 +24185,9 @@ export function createDb() {
       member,
       organization,
       organizationRole,
+      {{/if}}
+      {{#if (includes addons "ldap")}}
+      ldapSettings,
       {{/if}}
     },
   });
@@ -23397,6 +24306,9 @@ export * from "./rbac";
 {{/if}}
 {{#if (includes addons "organization")}}
 export * from "./organization";
+{{/if}}
+{{#if (includes addons "ldap")}}
+export * from "./settings";
 {{/if}}
 `],
   ["addons/admin/packages/db/src/schema/organization.ts", `import { relations } from "drizzle-orm";
@@ -23607,6 +24519,26 @@ export const rolePermissionRelations = relations(rolePermission, ({ one }) => ({
   }),
   role: one(role, { fields: [rolePermission.roleId], references: [role.id] }),
 }));
+`],
+  ["addons/admin/packages/db/src/schema/settings.ts.hbs", `import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+export const ldapSettings = pgTable("ldap_settings", {
+  baseDn: text("base_dn").notNull(),
+  bindDn: text("bind_dn").notNull(),
+  bindPassword: text("bind_password"),
+  caCert: text("ca_cert"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  emailAttribute: text("email_attribute").notNull(),
+  enabled: boolean("enabled").default(false).notNull(),
+  id: text("id").primaryKey(),
+  nameAttribute: text("name_attribute").notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+  url: text("url").notNull(),
+  userFilter: text("user_filter").notNull(),
+});
 `],
   ["addons/admin/packages/db/tsconfig.json.hbs", `{
   "extends": "@{{projectName}}/config/tsconfig.base.json",
@@ -23909,7 +24841,12 @@ export const i18n = i18next;
 		"error": "Error",
 		"name": "Name",
 		"sign_in_error": "Unable to sign in. Check your credentials and try again.",
-		"sign_up_error": "Unable to create your account. Please try again."
+		"sign_up_error": "Unable to create your account. Please try again.",
+		"local_account": "Local account",
+		"directory_account": "Directory account",
+		"directory_credential": "Directory credential",
+		"directory_credential_placeholder": "Enter your directory username, UPN, or email",
+		"email_placeholder": "name@example.com"
 	},
 	"errors": {
 		"unauthorized_title": "Unauthorized Access",
@@ -24392,7 +25329,8 @@ export const i18n = i18next;
 		"select_priority": "Please choose a priority.",
 		"upload_file": "Please upload a file.",
 		"upload_csv": "Please upload csv format.",
-		"new_passwords_not_match": "New passwords don't match."
+		"new_passwords_not_match": "New passwords don't match.",
+		"credential_required": "Please enter your directory credential."
 	},
 	"clerk": {
 		"no_key_title": "No Publishable Key Found!",
@@ -24465,6 +25403,27 @@ export const i18n = i18next;
 		"accept_invitation": "Accept invitation",
 		"invitation_accept_failed": "Could not accept invitation",
 		"invitation_accepted": "Invitation accepted"
+	},
+	"ldap_settings": {
+		"title": "Directory (LDAP)",
+		"description": "Configure LDAP/AD directory sign-in for this application.",
+		"enabled": "Enable directory sign-in",
+		"enabled_desc": "When enabled, users can log in with directory credentials in addition to local accounts.",
+		"url": "Server URL",
+		"base_dn": "Base DN",
+		"bind_dn": "Bind DN",
+		"bind_password": "Bind password",
+		"password_configured": "Password already set. Leave blank to keep.",
+		"password_required": "Enter the bind password.",
+		"email_attribute": "Email attribute",
+		"name_attribute": "Name attribute",
+		"user_filter": "User filter",
+		"user_filter_placeholder": "(uid={0})",
+		"ca_cert": "Custom CA certificate (PEM)",
+		"ca_cert_placeholder": "Paste a PEM-encoded CA if the LDAPS host uses a private CA.",
+		"save": "Save settings",
+		"saved": "LDAP settings saved.",
+		"save_error": "Unable to save LDAP settings."
 	}
 }
 `],
@@ -24617,7 +25576,12 @@ export const i18n = i18next;
 		"error": "错误",
 		"name": "姓名",
 		"sign_in_error": "无法登录，请检查凭证后重试。",
-		"sign_up_error": "无法创建账户，请重试。"
+		"sign_up_error": "无法创建账户，请重试。",
+		"local_account": "本地账户",
+		"directory_account": "目录账户",
+		"directory_credential": "目录凭证",
+		"directory_credential_placeholder": "输入目录用户名、UPN 或邮箱",
+		"email_placeholder": "name@example.com"
 	},
 	"errors": {
 		"unauthorized_title": "未授权访问",
@@ -25100,7 +26064,8 @@ export const i18n = i18next;
 		"select_priority": "请选择优先级。",
 		"upload_file": "请上传文件。",
 		"upload_csv": "请上传 CSV 格式文件。",
-		"new_passwords_not_match": "两次输入的新密码不一致。"
+		"new_passwords_not_match": "两次输入的新密码不一致。",
+		"credential_required": "请输入您的目录凭证。"
 	},
 	"clerk": {
 		"no_key_title": "未找到 Publishable Key！",
@@ -25173,6 +26138,27 @@ export const i18n = i18next;
 		"accept_invitation": "接受邀请",
 		"invitation_accept_failed": "无法接受邀请",
 		"invitation_accepted": "已接受邀请"
+	},
+	"ldap_settings": {
+		"title": "目录（LDAP）",
+		"description": "为本应用配置 LDAP/AD 目录登录。",
+		"enabled": "启用目录登录",
+		"enabled_desc": "启用后，用户可使用目录凭证登录，同时保留本地账户登录。",
+		"url": "服务器 URL",
+		"base_dn": "Base DN",
+		"bind_dn": "Bind DN",
+		"bind_password": "Bind 密码",
+		"password_configured": "已配置密码，留空则保留原值。",
+		"password_required": "请输入 Bind 密码。",
+		"email_attribute": "邮箱属性",
+		"name_attribute": "姓名属性",
+		"user_filter": "用户过滤器",
+		"user_filter_placeholder": "(uid={0})",
+		"ca_cert": "自定义 CA 证书（PEM）",
+		"ca_cert_placeholder": "如果 LDAPS 主机使用私有 CA，请粘贴 PEM 编码的 CA 证书。",
+		"save": "保存设置",
+		"saved": "LDAP 设置已保存。",
+		"save_error": "无法保存 LDAP 设置。"
 	}
 }
 `],
@@ -64625,4 +65611,4 @@ export default function Success() {
 `]
 ]);
 
-export const TEMPLATE_COUNT = 886;
+export const TEMPLATE_COUNT = 893;

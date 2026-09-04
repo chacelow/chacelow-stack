@@ -41,6 +41,10 @@ function getAddonDisplay(addon: Addons): AddonDisplay {
       label = "RBAC";
       hint = "Dynamic roles, static permissions, server enforcement, and audit logs";
       break;
+    case "ldap":
+      label = "LDAP directory login";
+      hint = "Bind against an LDAP/AD directory as a second sign-in method";
+      break;
     case "i18n":
       label = "Internationalization";
       hint = "Upstream i18next integration with Chinese and English locales";
@@ -126,7 +130,7 @@ function getAddonDisplay(addon: Addons): AddonDisplay {
 }
 
 const ADDON_GROUPS = {
-  "Application Infrastructure": ["admin", "rbac", "i18n"],
+  "Application Infrastructure": ["admin", "rbac", "ldap", "i18n"],
   "Monorepo & Tasks": ["turborepo", "nx", "vite-plus"],
   "Code Quality": ["biome", "oxlint", "ultracite", "husky", "lefthook"],
   Documentation: ["starlight", "fumadocs"],

@@ -147,7 +147,12 @@
 		"error": "Error",
 		"name": "Name",
 		"sign_in_error": "Unable to sign in. Check your credentials and try again.",
-		"sign_up_error": "Unable to create your account. Please try again."
+		"sign_up_error": "Unable to create your account. Please try again.",
+		"local_account": "Local account",
+		"directory_account": "Directory account",
+		"directory_credential": "Directory credential",
+		"directory_credential_placeholder": "Enter your directory username, UPN, or email",
+		"email_placeholder": "name@example.com"
 	},
 	"errors": {
 		"unauthorized_title": "Unauthorized Access",
@@ -630,7 +635,8 @@
 		"select_priority": "Please choose a priority.",
 		"upload_file": "Please upload a file.",
 		"upload_csv": "Please upload csv format.",
-		"new_passwords_not_match": "New passwords don't match."
+		"new_passwords_not_match": "New passwords don't match.",
+		"credential_required": "Please enter your directory credential."
 	},
 	"clerk": {
 		"no_key_title": "No Publishable Key Found!",
@@ -703,5 +709,26 @@
 		"accept_invitation": "Accept invitation",
 		"invitation_accept_failed": "Could not accept invitation",
 		"invitation_accepted": "Invitation accepted"
+	},
+	"ldap_settings": {
+		"title": "Directory (LDAP)",
+		"description": "Configure LDAP/AD directory sign-in for this application.",
+		"enabled": "Enable directory sign-in",
+		"enabled_desc": "When enabled, users can log in with directory credentials in addition to local accounts.",
+		"url": "Server URL",
+		"base_dn": "Base DN",
+		"bind_dn": "Bind DN",
+		"bind_password": "Bind password",
+		"password_configured": "Password already set. Leave blank to keep.",
+		"password_required": "Enter the bind password.",
+		"email_attribute": "Email attribute",
+		"name_attribute": "Name attribute",
+		"user_filter": "User filter",
+		"user_filter_placeholder": "(uid={0})",
+		"ca_cert": "Custom CA certificate (PEM)",
+		"ca_cert_placeholder": "Paste a PEM-encoded CA if the LDAPS host uses a private CA.",
+		"save": "Save settings",
+		"saved": "LDAP settings saved.",
+		"save_error": "Unable to save LDAP settings."
 	}
 }

@@ -1,0 +1,16 @@
+import { useTranslation } from "@{{projectName}}/i18n/react";
+
+import { ContentSection } from "../components/content-section";
+import { DirectoryForm } from "./directory-form";
+
+export function SettingsDirectory() {
+  const { t } = useTranslation();
+  return (
+    <ContentSection
+      desc={t("ldap_settings.description")}
+      title={t("ldap_settings.title")}
+    >
+      <DirectoryForm />
+    </ContentSection>
+  );
+}

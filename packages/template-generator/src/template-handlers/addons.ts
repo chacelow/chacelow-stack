@@ -100,6 +100,38 @@ export async function processAddonTemplates(
     }
   }
 
+  if (!config.addons.includes("ldap")) {
+    for (const ldapPath of [
+      "packages/auth/src/ldap.ts",
+      "packages/auth/src/ldap-settings.ts",
+      "packages/auth/src/ldap-user.ts",
+      "packages/db/src/schema/settings.ts",
+      "apps/web/src/features/settings/directory",
+      "apps/web/src/routes/_authenticated/settings/directory.tsx",
+    ]) {
+      vfs.deletePath(ldapPath);
+    }
+
+    for (const localePath of [
+      "packages/i18n/src/locales/en.json",
+      "packages/i18n/src/locales/zh.json",
+    ]) {
+      const locale = vfs.readJson<JsonObject>(localePath);
+      if (!locale) continue;
+      delete locale.ldap_settings;
+      const authSection = locale.auth as JsonObject | undefined;
+      if (authSection) {
+        delete authSection.local_account;
+        delete authSection.directory_account;
+        delete authSection.directory_credential;
+        delete authSection.directory_credential_placeholder;
+      }
+      const validation = locale.validation as JsonObject | undefined;
+      if (validation) delete validation.credential_required;
+      vfs.writeJson(localePath, locale);
+    }
+  }
+
   if (!config.addons.includes("organization")) {
     for (const organizationPath of [
       "apps/server/src/organization.integration.test.ts",

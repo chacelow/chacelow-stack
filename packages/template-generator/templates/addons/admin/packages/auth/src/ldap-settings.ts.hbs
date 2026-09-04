@@ -1,0 +1,222 @@
+import { Buffer } from "node:buffer";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "node:crypto";
+import { createDb, type Database } from "@{{projectName}}/db";
+{{#if (includes addons "rbac")}}
+import { auditLog } from "@{{projectName}}/db/schema/rbac";
+{{/if}}
+import { ldapSettings } from "@{{projectName}}/db/schema/settings";
+import { env } from "@{{projectName}}/env/server";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+
+import { type LdapConfig, parseLdapConfig } from "./ldap";
+
+const LDAP_SETTINGS_ID = "default";
+const ldapAttribute = z.string().regex(/^[A-Za-z0-9.-]+$/);
+const ldapFilter = z
+  .string()
+  .regex(/^\(.+\)$/)
+  .refine((value) => value.includes("{0}"), "Filter must include {0}");
+const ldapUrl = z
+  .string()
+  .trim()
+  .max(2048)
+  .refine(
+    (value) =>
+      value === "" ||
+      (URL.canParse(value) &&
+        ["ldap:", "ldaps:"].includes(new URL(value).protocol)),
+    "URL must use ldap:// or ldaps://",
+  );
+
+export const ldapSettingsInputSchema = z
+  .object({
+    baseDn: z.string().trim().max(1024),
+    bindDn: z.string().trim().max(1024),
+    bindPassword: z.string().max(4096).optional(),
+    caCert: z.string().trim().max(100_000).optional(),
+    emailAttribute: ldapAttribute,
+    enabled: z.boolean(),
+    nameAttribute: ldapAttribute,
+    url: ldapUrl,
+    userFilter: ldapFilter,
+  })
+  .superRefine((settings, context) => {
+    if (!settings.enabled) {
+      return;
+    }
+    for (const field of ["baseDn", "bindDn", "url"] as const) {
+      if (!settings[field]) {
+        context.addIssue({
+          code: "custom",
+          message: "Required when LDAP is enabled",
+          path: [field],
+        });
+      }
+    }
+  });
+
+export type LdapSettingsInput = z.infer<typeof ldapSettingsInputSchema>;
+
+export interface LdapSettingsView
+  extends Omit<LdapSettingsInput, "bindPassword"> {
+  passwordConfigured: boolean;
+}
+
+const defaultSettings: LdapSettingsView = {
+  baseDn: "",
+  bindDn: "",
+  caCert: undefined,
+  emailAttribute: "mail",
+  enabled: false,
+  nameAttribute: "displayName",
+  passwordConfigured: false,
+  url: "",
+  userFilter: "(uid={0})",
+};
+
+function encryptionKey() {
+  return createHash("sha256").update(env.BETTER_AUTH_SECRET).digest();
+}
+
+function encryptPassword(password: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const encrypted = Buffer.concat([
+    cipher.update(password, "utf8"),
+    cipher.final(),
+  ]);
+  return [
+    "v1",
+    Buffer.from(iv).toString("base64url"),
+    Buffer.from(cipher.getAuthTag()).toString("base64url"),
+    encrypted.toString("base64url"),
+  ].join(".");
+}
+
+function decryptPassword(value: string) {
+  const [version, encodedIv, encodedTag, encodedPassword] = value.split(".");
+  if (
+    version !== "v1" ||
+    !encodedIv ||
+    !encodedTag ||
+    encodedPassword === undefined
+  ) {
+    throw new Error("Invalid encrypted LDAP password");
+  }
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    encryptionKey(),
+    Buffer.from(encodedIv, "base64url"),
+  );
+  decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encodedPassword, "base64url")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+async function readSettings(database: Database) {
+  const [settings] = await database
+    .select()
+    .from(ldapSettings)
+    .where(eq(ldapSettings.id, LDAP_SETTINGS_ID))
+    .limit(1);
+  return settings;
+}
+
+export async function getLdapSettings(
+  database: Database = createDb(),
+): Promise<LdapSettingsView> {
+  const settings = await readSettings(database);
+  if (!settings) {
+    return defaultSettings;
+  }
+  return {
+    baseDn: settings.baseDn,
+    bindDn: settings.bindDn,
+    caCert: settings.caCert ?? undefined,
+    emailAttribute: settings.emailAttribute,
+    enabled: settings.enabled,
+    nameAttribute: settings.nameAttribute,
+    passwordConfigured: settings.bindPassword !== null,
+    url: settings.url,
+    userFilter: settings.userFilter,
+  };
+}
+
+export async function loadLdapConfig(
+  database: Database = createDb(),
+): Promise<LdapConfig | null> {
+  const settings = await readSettings(database);
+  if (!settings?.enabled || !settings.bindPassword) {
+    return null;
+  }
+  return parseLdapConfig({
+    ...settings,
+    bindPassword: decryptPassword(settings.bindPassword),
+    caCert: settings.caCert ?? undefined,
+  });
+}
+
+export async function saveLdapSettings(
+  database: Database,
+  rawInput: LdapSettingsInput,
+  actor: { actorId: string; ipAddress?: string; userAgent?: string },
+) {
+  const input = ldapSettingsInputSchema.parse(rawInput);
+  const current = await readSettings(database);
+  const bindPassword = input.bindPassword
+    ? encryptPassword(input.bindPassword)
+    : current?.bindPassword;
+  if (input.enabled && !bindPassword) {
+    throw new Error("A bind password is required when LDAP is enabled");
+  }
+
+  await database.transaction(async (tx) => {
+    await tx
+      .insert(ldapSettings)
+      .values({
+        baseDn: input.baseDn,
+        bindDn: input.bindDn,
+        bindPassword,
+        caCert: input.caCert || null,
+        emailAttribute: input.emailAttribute,
+        enabled: input.enabled,
+        id: LDAP_SETTINGS_ID,
+        nameAttribute: input.nameAttribute,
+        url: input.url,
+        userFilter: input.userFilter,
+      })
+      .onConflictDoUpdate({
+        set: {
+          baseDn: input.baseDn,
+          bindDn: input.bindDn,
+          ...(input.bindPassword ? { bindPassword } : {}),
+          caCert: input.caCert || null,
+          emailAttribute: input.emailAttribute,
+          enabled: input.enabled,
+          nameAttribute: input.nameAttribute,
+          updatedAt: new Date(),
+          url: input.url,
+          userFilter: input.userFilter,
+        },
+        target: ldapSettings.id,
+      });
+    {{#if (includes addons "rbac")}}
+    await tx.insert(auditLog).values({
+      ...actor,
+      action: "settings.ldap.updated",
+      id: crypto.randomUUID(),
+      metadata: { enabled: input.enabled },
+      targetId: LDAP_SETTINGS_ID,
+      targetType: "settings",
+    });
+    {{/if}}
+  });
+}

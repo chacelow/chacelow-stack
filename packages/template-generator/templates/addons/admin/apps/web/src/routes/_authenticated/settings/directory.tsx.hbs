@@ -1,0 +1,22 @@
+import { createFileRoute } from "@tanstack/react-router";
+
+{{#if (includes addons "rbac")}}
+import { PermissionGuard } from "@/components/permission-guard";
+{{/if}}
+import { SettingsDirectory } from "@/features/settings/directory";
+
+export const Route = createFileRoute("/_authenticated/settings/directory")({
+  component: DirectorySettingsRoute,
+});
+
+function DirectorySettingsRoute() {
+  return (
+    {{#if (includes addons "rbac")}}
+    <PermissionGuard permission="setting:read">
+      <SettingsDirectory />
+    </PermissionGuard>
+    {{else}}
+    <SettingsDirectory />
+    {{/if}}
+  );
+}

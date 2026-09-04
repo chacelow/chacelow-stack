@@ -3,8 +3,13 @@ import { useTranslation } from "@{{projectName}}/i18n/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, LogIn } from "lucide-react";
+{{#if (includes addons "ldap")}}
+import { useCallback, useMemo, useState } from "react";
+import { type ControllerRenderProps, useForm } from "react-hook-form";
+{{else}}
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+{{/if}}
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -19,6 +24,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+{{#if (includes addons "ldap")}}
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+{{/if}}
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -27,17 +35,42 @@ interface UserAuthValues {
   password: string;
 }
 
+{{#if (includes addons "ldap")}}
+type SignInMethod = "ldap" | "local";
+{{/if}}
+
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
   redirectTo?: string;
 }
 
 export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormProps) {
   const [isLoading, setIsLoading] = useState(false);
+  {{#if (includes addons "ldap")}}
+  const [method, setMethod] = useState<SignInMethod>("local");
+  {{/if}}
   const navigate = useNavigate();
   const { t } = useTranslation();
   const formSchema = useMemo(
     () =>
       z.object({
+        {{#if (includes addons "ldap")}}
+        email:
+          method === "ldap"
+            ? z.string().trim().min(1, t("validation.credential_required"))
+            : z.email({
+                error: (issue) =>
+                  issue.input === ""
+                    ? t("validation.email_required")
+                    : t("validation.email_invalid"),
+              }),
+        password:
+          method === "ldap"
+            ? z.string().min(1, t("validation.password_required"))
+            : z
+                .string()
+                .min(1, t("validation.password_required"))
+                .min(8, t("validation.password_min_8")),
+        {{else}}
         email: z.email({
           error: (issue) =>
             issue.input === ""
@@ -48,8 +81,9 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
           .string()
           .min(1, t("validation.password_required"))
           .min(8, t("validation.password_min_8")),
+        {{/if}}
       }),
-    [t],
+    [{{#if (includes addons "ldap")}}method, {{/if}}t],
   );
 
   const form = useForm<UserAuthValues>({
@@ -60,6 +94,72 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
     resolver: zodResolver(formSchema),
   });
 
+  {{#if (includes addons "ldap")}}
+  const onSubmit = useCallback(
+    async (data: UserAuthValues) => {
+      setIsLoading(true);
+      const { error } =
+        method === "ldap"
+          ? await authClient.signIn.ldap({
+              credential: data.email,
+              password: data.password,
+            })
+          : await authClient.signIn.email({
+              email: data.email,
+              password: data.password,
+            });
+      setIsLoading(false);
+      if (error) {
+        toast.error(t("auth.sign_in_error"));
+        return;
+      }
+      toast.success(t("auth.welcome_back", { email: data.email }));
+      await navigate({ replace: true, to: redirectTo || "/" });
+    },
+    [method, navigate, redirectTo, t],
+  );
+  const changeMethod = useCallback(
+    (value: string) => setMethod(value === "ldap" ? "ldap" : "local"),
+    [],
+  );
+  const renderEmailField = useCallback(
+    ({ field }: { field: ControllerRenderProps<UserAuthValues, "email"> }) => (
+      <FormItem>
+        <FormLabel>
+          {method === "ldap" ? t("auth.directory_credential") : t("auth.email")}
+        </FormLabel>
+        <FormControl>
+          <Input
+            placeholder={
+              method === "ldap"
+                ? t("auth.directory_credential_placeholder")
+                : t("auth.email_placeholder")
+            }
+            {...field}
+          />
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    ),
+    [method, t],
+  );
+  const renderPasswordField = useCallback(
+    ({
+      field,
+    }: {
+      field: ControllerRenderProps<UserAuthValues, "password">;
+    }) => (
+      <FormItem className="relative">
+        <FormLabel>{t("auth.password")}</FormLabel>
+        <FormControl>
+          <PasswordInput placeholder="********" {...field} />
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    ),
+    [t],
+  );
+  {{else}}
   async function onSubmit(data: UserAuthValues) {
     setIsLoading(true);
     const { error } = await authClient.signIn.email({
@@ -74,45 +174,64 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
     toast.success(t("auth.welcome_back", { email: data.email }));
     await navigate({ replace: true, to: redirectTo || "/" });
   }
+  {{/if}}
 
   return (
-    <Form {...form}>
-      <form
-        className={cn("grid gap-3", className)}
-        onSubmit={form.handleSubmit(onSubmit)}
-        {...props}
-      >
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t("auth.email")}</FormLabel>
-              <FormControl>
-                <Input placeholder="name@example.com" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem className="relative">
-              <FormLabel>{t("auth.password")}</FormLabel>
-              <FormControl>
-                <PasswordInput placeholder="********" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <Button className="mt-2" disabled={isLoading}>
-          {isLoading ? <Loader2 className="animate-spin" /> : <LogIn />}
-          {t("auth.sign_in_btn")}
-        </Button>
-      </form>
-    </Form>
+    <>
+      {{#if (includes addons "ldap")}}
+      <Tabs className="mb-4" onValueChange={changeMethod} value={method}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="local">{t("auth.local_account")}</TabsTrigger>
+          <TabsTrigger value="ldap">{t("auth.directory_account")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {{/if}}
+      <Form {...form}>
+        <form
+          className={cn("grid gap-3", className)}
+          onSubmit={form.handleSubmit(onSubmit)}
+          {...props}
+        >
+          <FormField
+            control={form.control}
+            name="email"
+            {{#if (includes addons "ldap")}}
+            render={renderEmailField}
+            {{else}}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t("auth.email")}</FormLabel>
+                <FormControl>
+                  <Input placeholder="name@example.com" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+            {{/if}}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            {{#if (includes addons "ldap")}}
+            render={renderPasswordField}
+            {{else}}
+            render={({ field }) => (
+              <FormItem className="relative">
+                <FormLabel>{t("auth.password")}</FormLabel>
+                <FormControl>
+                  <PasswordInput placeholder="********" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+            {{/if}}
+          />
+          <Button className="mt-2" disabled={isLoading}>
+            {isLoading ? <Loader2 className="animate-spin" /> : <LogIn />}
+            {t("auth.sign_in_btn")}
+          </Button>
+        </form>
+      </Form>
+    </>
   );
 }

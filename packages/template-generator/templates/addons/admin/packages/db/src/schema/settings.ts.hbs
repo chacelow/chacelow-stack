@@ -1,0 +1,19 @@
+import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+export const ldapSettings = pgTable("ldap_settings", {
+  baseDn: text("base_dn").notNull(),
+  bindDn: text("bind_dn").notNull(),
+  bindPassword: text("bind_password"),
+  caCert: text("ca_cert"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  emailAttribute: text("email_attribute").notNull(),
+  enabled: boolean("enabled").default(false).notNull(),
+  id: text("id").primaryKey(),
+  nameAttribute: text("name_attribute").notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+  url: text("url").notNull(),
+  userFilter: text("user_filter").notNull(),
+});

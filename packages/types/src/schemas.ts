@@ -53,6 +53,7 @@ export const AddonsSchema = z
     "evlog",
     "admin",
     "rbac",
+    "ldap",
     "i18n",
     "organization",
     "none",

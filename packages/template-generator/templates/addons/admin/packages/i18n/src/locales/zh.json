@@ -147,7 +147,12 @@
 		"error": "错误",
 		"name": "姓名",
 		"sign_in_error": "无法登录，请检查凭证后重试。",
-		"sign_up_error": "无法创建账户，请重试。"
+		"sign_up_error": "无法创建账户，请重试。",
+		"local_account": "本地账户",
+		"directory_account": "目录账户",
+		"directory_credential": "目录凭证",
+		"directory_credential_placeholder": "输入目录用户名、UPN 或邮箱",
+		"email_placeholder": "name@example.com"
 	},
 	"errors": {
 		"unauthorized_title": "未授权访问",
@@ -630,7 +635,8 @@
 		"select_priority": "请选择优先级。",
 		"upload_file": "请上传文件。",
 		"upload_csv": "请上传 CSV 格式文件。",
-		"new_passwords_not_match": "两次输入的新密码不一致。"
+		"new_passwords_not_match": "两次输入的新密码不一致。",
+		"credential_required": "请输入您的目录凭证。"
 	},
 	"clerk": {
 		"no_key_title": "未找到 Publishable Key！",
@@ -703,5 +709,26 @@
 		"accept_invitation": "接受邀请",
 		"invitation_accept_failed": "无法接受邀请",
 		"invitation_accepted": "已接受邀请"
+	},
+	"ldap_settings": {
+		"title": "目录（LDAP）",
+		"description": "为本应用配置 LDAP/AD 目录登录。",
+		"enabled": "启用目录登录",
+		"enabled_desc": "启用后，用户可使用目录凭证登录，同时保留本地账户登录。",
+		"url": "服务器 URL",
+		"base_dn": "Base DN",
+		"bind_dn": "Bind DN",
+		"bind_password": "Bind 密码",
+		"password_configured": "已配置密码，留空则保留原值。",
+		"password_required": "请输入 Bind 密码。",
+		"email_attribute": "邮箱属性",
+		"name_attribute": "姓名属性",
+		"user_filter": "用户过滤器",
+		"user_filter_placeholder": "(uid={0})",
+		"ca_cert": "自定义 CA 证书（PEM）",
+		"ca_cert_placeholder": "如果 LDAPS 主机使用私有 CA，请粘贴 PEM 编码的 CA 证书。",
+		"save": "保存设置",
+		"saved": "LDAP 设置已保存。",
+		"save_error": "无法保存 LDAP 设置。"
 	}
 }

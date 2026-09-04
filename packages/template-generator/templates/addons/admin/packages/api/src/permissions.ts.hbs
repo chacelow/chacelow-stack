@@ -59,6 +59,20 @@ export const PERMISSIONS = [
     key: "audit:read",
     resource: "Audit",
   },
+  {{#if (includes addons "ldap")}}
+  {
+    action: "read",
+    description: "View system settings",
+    key: "setting:read",
+    resource: "Settings",
+  },
+  {
+    action: "update",
+    description: "Update system settings",
+    key: "setting:update",
+    resource: "Settings",
+  },
+  {{/if}}
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number]["key"];

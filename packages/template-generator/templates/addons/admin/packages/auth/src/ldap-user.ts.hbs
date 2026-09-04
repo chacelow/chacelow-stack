@@ -1,0 +1,67 @@
+import type { Database } from "@{{projectName}}/db";
+import { account, user } from "@{{projectName}}/db/schema/auth";
+import { and, eq } from "drizzle-orm";
+
+import { LDAP_PROVIDER_ID, type LdapIdentity } from "./ldap";
+
+type DirectoryUser = {
+  banned: boolean;
+  banReason: string | null;
+  email: string;
+  id: string;
+};
+
+async function findDirectoryUser(database: Database, identity: LdapIdentity) {
+  const [linked] = await database
+    .select({
+      banned: user.banned,
+      banReason: user.banReason,
+      email: user.email,
+      id: user.id,
+    })
+    .from(account)
+    .innerJoin(user, eq(account.userId, user.id))
+    .where(
+      and(
+        eq(account.providerId, LDAP_PROVIDER_ID),
+        eq(account.accountId, identity.dn),
+      ),
+    )
+    .limit(1);
+  if (linked) {
+    return linked;
+  }
+
+  const [matchingEmail] = await database
+    .select({
+      banned: user.banned,
+      banReason: user.banReason,
+      email: user.email,
+      id: user.id,
+    })
+    .from(user)
+    .where(eq(user.email, identity.email))
+    .limit(1);
+  return matchingEmail;
+}
+
+export async function prepareLdapIdentityForSignIn(
+  database: Database,
+  identity: LdapIdentity,
+): Promise<DirectoryUser | undefined> {
+  const existing = await findDirectoryUser(database, identity);
+  if (!existing) {
+    return undefined;
+  }
+
+  await database
+    .update(user)
+    .set({
+      email: identity.email,
+      emailVerified: true,
+      name: identity.name,
+    })
+    .where(eq(user.id, existing.id));
+
+  return { ...existing, email: identity.email };
+}

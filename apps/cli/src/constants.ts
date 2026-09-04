@@ -53,6 +53,7 @@ export { desktopWebFrontends };
 export const ADDON_COMPATIBILITY = {
   admin: ["tanstack-router"],
   rbac: ["tanstack-router"],
+  ldap: ["tanstack-router"],
   i18n: ["tanstack-router"],
   organization: ["tanstack-router"],
   pwa: ["tanstack-router", "react-router", "solid", "next"],

@@ -31,6 +31,9 @@ import {
   organizationRole,
 } from "./schema/organization";
 {{/if}}
+{{#if (includes addons "ldap")}}
+import { ldapSettings } from "./schema/settings";
+{{/if}}
 
 export function createDb() {
   return drizzle(env.DATABASE_URL, {
@@ -60,6 +63,9 @@ export function createDb() {
       member,
       organization,
       organizationRole,
+      {{/if}}
+      {{#if (includes addons "ldap")}}
+      ldapSettings,
       {{/if}}
     },
   });

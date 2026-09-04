@@ -1,0 +1,196 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "@{{projectName}}/i18n/react";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { useTRPC } from "@/lib/trpc";
+
+interface DirectorySettings {
+  baseDn: string;
+  bindDn: string;
+  caCert?: string;
+  emailAttribute: string;
+  enabled: boolean;
+  nameAttribute: string;
+  passwordConfigured: boolean;
+  url: string;
+  userFilter: string;
+}
+
+interface DirectorySettingsInput
+  extends Omit<DirectorySettings, "passwordConfigured"> {
+  bindPassword?: string;
+}
+
+export function DirectoryForm() {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const settingsQuery = useQuery(trpc.admin.ldapSettings.queryOptions());
+  const settings = settingsQuery.data;
+  const refresh = useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: trpc.admin.ldapSettings.queryKey(),
+      }),
+    [queryClient, trpc.admin.ldapSettings],
+  );
+  const update = useMutation(
+    trpc.admin.updateLdapSettings.mutationOptions({
+      onError: () => toast.error(t("ldap_settings.save_error")),
+      onSuccess: async () => {
+        await refresh();
+        toast.success(t("ldap_settings.saved"));
+      },
+    }),
+  );
+
+  if (!settings) {
+    return null;
+  }
+
+  return (
+    <DirectorySettingsFields
+      key={JSON.stringify(settings)}
+      pending={update.isPending}
+      settings={settings}
+      submit={update.mutate}
+    />
+  );
+}
+
+function DirectorySettingsFields({
+  pending,
+  settings,
+  submit,
+}: {
+  pending: boolean;
+  settings: DirectorySettings;
+  submit: (input: DirectorySettingsInput) => void;
+}) {
+  const [enabled, setEnabled] = useState(settings.enabled);
+  const { t } = useTranslation();
+  const onSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const value = (name: string) => String(form.get(name) ?? "");
+      submit({
+        baseDn: value("baseDn"),
+        bindDn: value("bindDn"),
+        bindPassword: value("bindPassword") || undefined,
+        caCert: value("caCert") || undefined,
+        emailAttribute: value("emailAttribute"),
+        enabled,
+        nameAttribute: value("nameAttribute"),
+        url: value("url"),
+        userFilter: value("userFilter"),
+      });
+    },
+    [enabled, submit],
+  );
+
+  return (
+    <form className="space-y-8" onSubmit={onSubmit}>
+      <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+        <div className="space-y-1">
+          <Label htmlFor="ldap-enabled">{t("ldap_settings.enabled")}</Label>
+          <p className="text-muted-foreground text-sm">
+            {t("ldap_settings.enabled_desc")}
+          </p>
+        </div>
+        <Switch
+          checked={enabled}
+          id="ldap-enabled"
+          onCheckedChange={setEnabled}
+        />
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Field
+          defaultValue={settings.url}
+          label={t("ldap_settings.url")}
+          name="url"
+          required={enabled}
+        />
+        <Field
+          defaultValue={settings.baseDn}
+          label={t("ldap_settings.base_dn")}
+          name="baseDn"
+          required={enabled}
+        />
+        <Field
+          defaultValue={settings.bindDn}
+          label={t("ldap_settings.bind_dn")}
+          name="bindDn"
+          required={enabled}
+        />
+        <Field
+          autoComplete="new-password"
+          label={t("ldap_settings.bind_password")}
+          name="bindPassword"
+          placeholder={
+            settings.passwordConfigured
+              ? t("ldap_settings.password_configured")
+              : t("ldap_settings.password_required")
+          }
+          required={enabled && !settings.passwordConfigured}
+          type="password"
+        />
+        <Field
+          defaultValue={settings.emailAttribute}
+          label={t("ldap_settings.email_attribute")}
+          name="emailAttribute"
+          required
+        />
+        <Field
+          defaultValue={settings.nameAttribute}
+          label={t("ldap_settings.name_attribute")}
+          name="nameAttribute"
+          required
+        />
+      </div>
+
+      <Field
+        defaultValue={settings.userFilter}
+        label={t("ldap_settings.user_filter")}
+        name="userFilter"
+        placeholder={t("ldap_settings.user_filter_placeholder")}
+        required
+      />
+      <div className="space-y-2">
+        <Label htmlFor="ldap-ca-cert">{t("ldap_settings.ca_cert")}</Label>
+        <Textarea
+          className="min-h-32 font-mono"
+          defaultValue={settings.caCert}
+          id="ldap-ca-cert"
+          name="caCert"
+          placeholder={t("ldap_settings.ca_cert_placeholder")}
+        />
+      </div>
+
+      <Button disabled={pending} type="submit">
+        {pending ? t("common.updating") : t("ldap_settings.save")}
+      </Button>
+    </form>
+  );
+}
+
+function Field({
+  label,
+  name,
+  ...props
+}: React.ComponentProps<typeof Input> & { label: string; name: string }) {
+  const id = `ldap-${name}`;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} name={name} {...props} />
+    </div>
+  );
+}

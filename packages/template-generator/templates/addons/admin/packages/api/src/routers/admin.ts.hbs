@@ -1,3 +1,10 @@
+{{#if (includes addons "ldap")}}
+import {
+	getLdapSettings,
+	ldapSettingsInputSchema,
+	saveLdapSettings,
+} from "@{{projectName}}/auth/ldap-settings";
+{{/if}}
 import { db } from "@{{projectName}}/db";
 import { user } from "@{{projectName}}/db/schema/auth";
 import {
@@ -88,6 +95,28 @@ export const adminRouter = router({
 			.orderBy(desc(auditLog.createdAt))
 			.limit(200),
 	),
+
+	{{#if (includes addons "ldap")}}
+	ldapSettings: permissionProcedure("setting:read").query(() =>
+		getLdapSettings(db),
+	),
+
+	updateLdapSettings: permissionProcedure("setting:update")
+		.input(ldapSettingsInputSchema)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				await saveLdapSettings(db, input, auditContext(ctx));
+			} catch (error) {
+				const message =
+					error instanceof Error &&
+					error.message === "A bind password is required when LDAP is enabled"
+						? error.message
+						: "Unable to save LDAP settings";
+				throw new TRPCError({ cause: error, code: "BAD_REQUEST", message });
+			}
+			return getLdapSettings(db);
+		}),
+	{{/if}}
 
 	createRole: permissionProcedure("role:create")
 		.input(

@@ -1,0 +1,152 @@
+import { Buffer } from "node:buffer";
+import { env } from "@{{projectName}}/env/server";
+import { Client, type Entry, Filter } from "ldapts";
+import { z } from "zod";
+
+export const LDAP_PROVIDER_ID = "ldap";
+
+const ldapAttribute = z.string().regex(/^[A-Za-z0-9.-]+$/);
+const ldapFilter = z
+  .string()
+  .regex(/^\(.+\)$/)
+  .refine((value) => value.includes("{0}"), "Filter must include {0}");
+
+const configSchema = z.object({
+  baseDn: z.string().min(1),
+  bindDn: z.string().min(1),
+  bindPassword: z.string().min(1),
+  caCert: z.string().min(1).optional(),
+  emailAttribute: ldapAttribute,
+  nameAttribute: ldapAttribute,
+  url: z
+    .url()
+    .refine((value) => ["ldap:", "ldaps:"].includes(new URL(value).protocol)),
+  userFilter: ldapFilter,
+});
+
+export type LdapConfig = z.infer<typeof configSchema>;
+
+export interface LdapIdentity {
+  dn: string;
+  email: string;
+  name: string;
+}
+
+export function parseLdapConfig(input: unknown): LdapConfig {
+  const config = configSchema.parse(input);
+  if (
+    env.NODE_ENV === "production" &&
+    new URL(config.url).protocol !== "ldaps:"
+  ) {
+    throw new Error("LDAP URL must use ldaps:// in production");
+  }
+  return config;
+}
+
+function createClient(config: LdapConfig) {
+  return new Client({
+    connectTimeout: 5000,
+    strictDN: true,
+    timeout: 5000,
+    ...(new URL(config.url).protocol === "ldaps:"
+      ? {
+          tlsOptions: {
+            ...(config.caCert ? { ca: config.caCert } : {}),
+            minVersion: "TLSv1.2" as const,
+          },
+        }
+      : {}),
+    url: config.url,
+  });
+}
+
+function readAttribute(entry: Entry, attribute: string): string | undefined {
+  const value = entry[attribute];
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return String(value);
+  }
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const first = value[0];
+  return first === undefined ? undefined : String(first);
+}
+
+async function unbind(client: Client) {
+  try {
+    await client.unbind();
+  } catch {
+    // The connection may already be closed after an LDAP failure.
+  }
+}
+
+async function findLdapIdentity(
+  config: LdapConfig,
+  credential: string,
+): Promise<LdapIdentity> {
+  const client = createClient(config);
+  try {
+    try {
+      await client.bind(config.bindDn, config.bindPassword);
+    } catch (cause) {
+      throw new Error("LDAP service bind failed", { cause });
+    }
+    const filter = config.userFilter.replaceAll(
+      "{0}",
+      Filter.escape(credential),
+    );
+    let searchEntries: Entry[];
+    try {
+      ({ searchEntries } = await client.search(config.baseDn, {
+        attributes: [config.emailAttribute, config.nameAttribute],
+        filter,
+        scope: "sub",
+        sizeLimit: 2,
+      }));
+    } catch (cause) {
+      throw new Error("LDAP user search failed", { cause });
+    }
+    if (searchEntries.length !== 1) {
+      throw new Error(
+        "LDAP credential did not resolve to exactly one identity",
+      );
+    }
+
+    const entry = searchEntries[0];
+    if (!entry) {
+      throw new Error("LDAP identity was not returned");
+    }
+    const email = z
+      .email()
+      .parse(readAttribute(entry, config.emailAttribute)?.toLowerCase());
+    return {
+      dn: entry.dn,
+      email,
+      name: readAttribute(entry, config.nameAttribute) ?? credential,
+    };
+  } finally {
+    await unbind(client);
+  }
+}
+
+export async function authenticateLdap(
+  config: LdapConfig,
+  credential: string,
+  password: string,
+): Promise<LdapIdentity> {
+  const identity = await findLdapIdentity(config, credential);
+  const client = createClient(config);
+  try {
+    try {
+      await client.bind(identity.dn, password);
+    } catch (cause) {
+      throw new Error("LDAP user bind failed", { cause });
+    }
+    return identity;
+  } finally {
+    await unbind(client);
+  }
+}
